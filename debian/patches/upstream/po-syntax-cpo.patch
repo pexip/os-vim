@@ -1,0 +1,30 @@
+Subject: Enable line continuations in syntax/po.vim
+ Vim's line continuations are only enabled when using 'nocompatible' or
+ 'cpoptions' does not contain C.  The po.vim syntax file does not handle
+ the situation where those cases aren't true.
+Forwarded: 2008-07-16, 2009-06-20
+Author: James Vega <jamessan@debian.org>
+Bug-Debian: http://bugs.debian.org/368589
+
+Index: b/runtime/syntax/po.vim
+===================================================================
+--- a/runtime/syntax/po.vim
++++ b/runtime/syntax/po.vim
+@@ -14,6 +14,9 @@
+   finish
+ endif
+ 
++let s:cpo_save = &cpo
++set cpo-=C  " Allow line continuations
++
+ syn sync minlines=10
+ 
+ " Identifiers
+@@ -130,6 +133,7 @@
+   delcommand HiLink
+ endif
+ 
++let &cpo = s:cpo_save
+ let b:current_syntax = "po"
+ 
+ " vim:set ts=8 sts=2 sw=2 noet:

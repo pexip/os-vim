@@ -1,0 +1,18 @@
+Subject: Set keywordprg=pydoc in ftplugin/python.vim
+Forwarded: 2008-07-16
+Author: Stefano Zacchiroli <zack@debian.org>
+Bug-Debian: http://bugs.debian.org/389332
+
+Index: b/runtime/ftplugin/python.vim
+===================================================================
+--- a/runtime/ftplugin/python.vim
++++ b/runtime/ftplugin/python.vim
+@@ -14,6 +14,8 @@
+ setlocal comments-=:%
+ setlocal commentstring=#%s
+ 
++setlocal keywordprg=pydoc
++
+ setlocal omnifunc=pythoncomplete#Complete
+ 
+ set wildignore+=*.pyc

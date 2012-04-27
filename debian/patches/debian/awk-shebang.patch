@@ -1,0 +1,17 @@
+Subject: Use #!/usr/bin/awk for awk scripts
+ Instead of forcing a specific type of awk to be available, rely on the
+ fact that there is always some kind of awk installed on Debian and set
+ the shebang line to #!/usr/bin/awk.
+Forwarded: not-needed
+Author: James Vega <jamessan@debian.org>
+
+Index: b/runtime/tools/mve.awk
+===================================================================
+--- a/runtime/tools/mve.awk
++++ b/runtime/tools/mve.awk
+@@ -1,4 +1,4 @@
+-#!/usr/bin/nawk -f
++#!/usr/bin/awk -f
+ #
+ # Change "nawk" to "awk" or "gawk" if you get errors.
+ #

@@ -1,0 +1,21 @@
+Subject: Correct syntax highlighting of #define in X resource files
+ The syntax of #define for X resource files is the same as that for C
+ source files, yet the syntax rule in the xdefaults differed from that
+ of the c.vim syntax.  This fixes that oversight.
+Forwarded: 2008-07-16
+Author: Peter De Wachter <pdewacht@vub.ac.be>
+Bug-Debian: http://bugs.debian.org/264284
+
+Index: b/runtime/syntax/xdefaults.vim
+===================================================================
+--- a/runtime/syntax/xdefaults.vim
++++ b/runtime/syntax/xdefaults.vim
+@@ -76,7 +76,7 @@
+ syn match	xdefaultsIncluded	contained "<[^>]*>"
+ syn match	xdefaultsInclude	"^\s*#\s*include\>\s*["<]" contains=xdefaultsIncluded
+ syn cluster	xdefaultsPreProcGroup	contains=xdefaultsPreProc,xdefaultsIncluded,xdefaultsInclude,xdefaultsDefine
+-syn region	xdefaultsDefine		start="^\s*#\s*\(define\|undef\)\>" skip="\\$" end="$" contains=ALLBUT,@xdefaultsPreProcGroup,xdefaultsCommentH,xdefaultsErrorLine
++syn region	xdefaultsDefine		start="^\s*#\s*\(define\|undef\)\>" skip="\\$" end="$" contains=ALLBUT,@xdefaultsPreProcGroup,xdefaultsCommentH,xdefaultsErrorLine,xdefaultsCppOut2
+ syn region	xdefaultsPreProc	start="^\s*#\s*\(pragma\>\|line\>\|warning\>\|warn\>\|error\>\)" skip="\\$" end="$" keepend contains=ALLBUT,@xdefaultsPreProcGroup,xdefaultsCommentH,xdefaultsErrorLine
+ 
+ 

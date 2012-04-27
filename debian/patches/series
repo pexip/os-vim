@@ -1,0 +1,15 @@
+upstream/fr-manpage-fixes.patch
+upstream/python-ftplugin-include.patch
+upstream/python-ftplugin-keywordprg.patch
+upstream/xdefaults-syntax-define.patch
+upstream/po-syntax-cpo.patch
+upstream/extra-rst-detection.patch
+upstream/es.po-recover.patch
+upstream/pythoncomplete-autoload-init.patch
+upstream/debian-runtime-precise-quantal.patch
+upstream/debian-runtime-sections.patch
+debian/vim-tiny.patch
+debian/disabled-modelines.patch
+debian/awk-shebang.patch
+debian/extra-tex-detection.patch
+debian/ubuntu-grub-syntax.patch
