@@ -1,3 +1,9 @@
+vim (2:7.3.429-2ubuntu2.1pexip1) pexip; urgency=low
+
+  * Prepare Pexip packaging
+
+ -- John-Mark Bell <jmb@pexip.com>  Wed, 25 Dec 2013 05:13:51 +0000
+
 vim (2:7.3.429-2ubuntu2.1) precise-proposed; urgency=low
 
   * Add quantal to the deb{changelog,sources} hilighting (LP: #994208)
