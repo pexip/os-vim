@@ -284,7 +284,12 @@ buf_init_chartab(buf, global)
 		}
 		++c;
 	    }
+
+	    c = *p;
 	    p = skip_to_option_part(p);
+	    if (c == ',' && *p == NUL)
+		/* Trailing comma is not allowed. */
+		return FAIL;
 	}
     }
     chartab_initialized = TRUE;
@@ -862,9 +867,10 @@ linetabsize_col(startcol, s)
     char_u	*s;
 {
     colnr_T	col = startcol;
+    char_u	*line = s; /* pointer to start of line, for breakindent */
 
     while (*s != NUL)
-	col += lbr_chartabsize_adv(&s, col);
+	col += lbr_chartabsize_adv(line, &s, col);
     return (int)col;
 }
 
@@ -872,16 +878,17 @@ linetabsize_col(startcol, s)
  * Like linetabsize(), but for a given window instead of the current one.
  */
     int
-win_linetabsize(wp, p, len)
+win_linetabsize(wp, line, len)
     win_T	*wp;
-    char_u	*p;
+    char_u	*line;
     colnr_T	len;
 {
     colnr_T	col = 0;
     char_u	*s;
 
-    for (s = p; *s != NUL && (len == MAXCOL || s < p + len); mb_ptr_adv(s))
-	col += win_lbr_chartabsize(wp, s, col, NULL);
+    for (s = line; *s != NUL && (len == MAXCOL || s < line + len);
+								mb_ptr_adv(s))
+	col += win_lbr_chartabsize(wp, line, s, col, NULL);
     return (int)col;
 }
 
@@ -905,6 +912,14 @@ vim_isIDc(c)
 vim_iswordc(c)
     int c;
 {
+    return vim_iswordc_buf(c, curbuf);
+}
+
+    int
+vim_iswordc_buf(c, buf)
+    int		c;
+    buf_T	*buf;
+{
 #ifdef FEAT_MBYTE
     if (c >= 0x100)
     {
@@ -914,7 +929,7 @@ vim_iswordc(c)
 	    return utf_class(c) >= 2;
     }
 #endif
-    return (c > 0 && c < 0x100 && GET_CHARTAB(curbuf, c) != 0);
+    return (c > 0 && c < 0x100 && GET_CHARTAB(buf, c) != 0);
 }
 
 /*
@@ -931,19 +946,17 @@ vim_iswordp(p)
     return GET_CHARTAB(curbuf, *p) != 0;
 }
 
-#if defined(FEAT_SYN_HL) || defined(PROTO)
     int
-vim_iswordc_buf(p, buf)
+vim_iswordp_buf(p, buf)
     char_u	*p;
     buf_T	*buf;
 {
-# ifdef FEAT_MBYTE
+#ifdef FEAT_MBYTE
     if (has_mbyte && MB_BYTE2LEN(*p) > 1)
 	return mb_get_class(p) >= 2;
-# endif
+#endif
     return (GET_CHARTAB(buf, *p) != 0);
 }
-#endif
 
 /*
  * return TRUE if 'c' is a valid file-name character
@@ -1010,12 +1023,13 @@ vim_isprintc_strict(c)
  * like chartabsize(), but also check for line breaks on the screen
  */
     int
-lbr_chartabsize(s, col)
+lbr_chartabsize(line, s, col)
+    char_u		*line UNUSED; /* start of the line */
     unsigned char	*s;
     colnr_T		col;
 {
 #ifdef FEAT_LINEBREAK
-    if (!curwin->w_p_lbr && *p_sbr == NUL)
+    if (!curwin->w_p_lbr && *p_sbr == NUL && !curwin->w_p_bri)
     {
 #endif
 #ifdef FEAT_MBYTE
@@ -1025,7 +1039,7 @@ lbr_chartabsize(s, col)
 	RET_WIN_BUF_CHARTABSIZE(curwin, curbuf, s, col)
 #ifdef FEAT_LINEBREAK
     }
-    return win_lbr_chartabsize(curwin, s, col, NULL);
+    return win_lbr_chartabsize(curwin, line == NULL ? s : line, s, col, NULL);
 #endif
 }
 
@@ -1033,13 +1047,14 @@ lbr_chartabsize(s, col)
  * Call lbr_chartabsize() and advance the pointer.
  */
     int
-lbr_chartabsize_adv(s, col)
+lbr_chartabsize_adv(line, s, col)
+    char_u	*line; /* start of the line */
     char_u	**s;
     colnr_T	col;
 {
     int		retval;
 
-    retval = lbr_chartabsize(*s, col);
+    retval = lbr_chartabsize(line, *s, col);
     mb_ptr_adv(*s);
     return retval;
 }
@@ -1052,8 +1067,9 @@ lbr_chartabsize_adv(s, col)
  * value, init to 0 before calling.
  */
     int
-win_lbr_chartabsize(wp, s, col, headp)
+win_lbr_chartabsize(wp, line, s, col, headp)
     win_T	*wp;
+    char_u	*line UNUSED; /* start of the line */
     char_u	*s;
     colnr_T	col;
     int		*headp UNUSED;
@@ -1062,6 +1078,7 @@ win_lbr_chartabsize(wp, s, col, headp)
     int		c;
     int		size;
     colnr_T	col2;
+    colnr_T	col_adj = 0; /* col + screen size of tab */
     colnr_T	colmax;
     int		added;
 # ifdef FEAT_MBYTE
@@ -1075,9 +1092,9 @@ win_lbr_chartabsize(wp, s, col, headp)
     int		n;
 
     /*
-     * No 'linebreak' and 'showbreak': return quickly.
+     * No 'linebreak', 'showbreak' and 'breakindent': return quickly.
      */
-    if (!wp->w_p_lbr && *p_sbr == NUL)
+    if (!wp->w_p_lbr && !wp->w_p_bri && *p_sbr == NUL)
 #endif
     {
 #ifdef FEAT_MBYTE
@@ -1093,6 +1110,8 @@ win_lbr_chartabsize(wp, s, col, headp)
      */
     size = win_chartabsize(wp, s, col);
     c = *s;
+    if (tab_corr)
+	col_adj = size - 1;
 
     /*
      * If 'linebreak' set check at a blank before a non-blank if the line
@@ -1101,7 +1120,6 @@ win_lbr_chartabsize(wp, s, col, headp)
     if (wp->w_p_lbr
 	    && vim_isbreak(c)
 	    && !vim_isbreak(s[1])
-	    && !wp->w_p_list
 	    && wp->w_p_wrap
 # ifdef FEAT_VERTSPLIT
 	    && wp->w_width != 0
@@ -1114,12 +1132,13 @@ win_lbr_chartabsize(wp, s, col, headp)
 	 */
 	numberextra = win_col_off(wp);
 	col2 = col;
-	colmax = (colnr_T)(W_WIDTH(wp) - numberextra);
+	colmax = (colnr_T)(W_WIDTH(wp) - numberextra - col_adj);
 	if (col >= colmax)
 	{
-	    n = colmax + win_col_off2(wp);
+	    colmax += col_adj;
+	    n = colmax +  win_col_off2(wp);
 	    if (n > 0)
-		colmax += (((col - colmax) / n) + 1) * n;
+		colmax += (((col - colmax) / n) + 1) * n - col_adj;
 	}
 
 	for (;;)
@@ -1136,7 +1155,7 @@ win_lbr_chartabsize(wp, s, col, headp)
 	    col2 += win_chartabsize(wp, s, col2);
 	    if (col2 >= colmax)		/* doesn't fit */
 	    {
-		size = colmax - col;
+		size = colmax - col + col_adj;
 		tab_corr = FALSE;
 		break;
 	    }
@@ -1152,11 +1171,12 @@ win_lbr_chartabsize(wp, s, col, headp)
 # endif
 
     /*
-     * May have to add something for 'showbreak' string at start of line
+     * May have to add something for 'breakindent' and/or 'showbreak'
+     * string at start of line.
      * Set *headp to the size of what we add.
      */
     added = 0;
-    if (*p_sbr != NUL && wp->w_p_wrap && col != 0)
+    if ((*p_sbr != NUL || wp->w_p_bri) && wp->w_p_wrap && col != 0)
     {
 	numberextra = win_col_off(wp);
 	col += numberextra + mb_added;
@@ -1164,16 +1184,24 @@ win_lbr_chartabsize(wp, s, col, headp)
 	{
 	    col -= W_WIDTH(wp);
 	    numberextra = W_WIDTH(wp) - (numberextra - win_col_off2(wp));
+	    if (*p_sbr != NUL)
+	    {
+		colnr_T sbrlen = (colnr_T)MB_CHARLEN(p_sbr);
+		if (col >= sbrlen)
+		    col -= sbrlen;
+	    }
 	    if (numberextra > 0)
 		col = col % numberextra;
 	}
 	if (col == 0 || col + size > (colnr_T)W_WIDTH(wp))
 	{
-	    added = vim_strsize(p_sbr);
-	    if (tab_corr)
-		size += (added / wp->w_buffer->b_p_ts) * wp->w_buffer->b_p_ts;
-	    else
-		size += added;
+	    added = 0;
+	    if (*p_sbr != NUL)
+		added += vim_strsize(p_sbr);
+	    if (wp->w_p_bri)
+		added += get_breakindent_win(wp, line);
+
+	    size += added;
 	    if (col != 0)
 		added = 0;
 	}
@@ -1263,13 +1291,14 @@ getvcol(wp, pos, start, cursor, end)
     colnr_T	vcol;
     char_u	*ptr;		/* points to current char */
     char_u	*posptr;	/* points to char at pos->col */
+    char_u	*line;		/* start of the line */
     int		incr;
     int		head;
     int		ts = wp->w_buffer->b_p_ts;
     int		c;
 
     vcol = 0;
-    ptr = ml_get_buf(wp->w_buffer, pos->lnum, FALSE);
+    line = ptr = ml_get_buf(wp->w_buffer, pos->lnum, FALSE);
     if (pos->col == MAXCOL)
 	posptr = NULL;  /* continue until the NUL */
     else
@@ -1277,12 +1306,13 @@ getvcol(wp, pos, start, cursor, end)
 
     /*
      * This function is used very often, do some speed optimizations.
-     * When 'list', 'linebreak' and 'showbreak' are not set use a simple loop.
+     * When 'list', 'linebreak', 'showbreak' and 'breakindent' are not set
+     * use a simple loop.
      * Also use this when 'list' is set but tabs take their normal size.
      */
     if ((!wp->w_p_list || lcs_tab1 != NUL)
 #ifdef FEAT_LINEBREAK
-	    && !wp->w_p_lbr && *p_sbr == NUL
+	    && !wp->w_p_lbr && *p_sbr == NUL && !wp->w_p_bri
 #endif
        )
     {
@@ -1344,7 +1374,7 @@ getvcol(wp, pos, start, cursor, end)
 	{
 	    /* A tab gets expanded, depending on the current column */
 	    head = 0;
-	    incr = win_lbr_chartabsize(wp, ptr, vcol, &head);
+	    incr = win_lbr_chartabsize(wp, line, ptr, vcol, &head);
 	    /* make sure we don't go past the end of the line */
 	    if (*ptr == NUL)
 	    {
@@ -1369,10 +1399,7 @@ getvcol(wp, pos, start, cursor, end)
 		&& (State & NORMAL)
 		&& !wp->w_p_list
 		&& !virtual_active()
-#ifdef FEAT_VISUAL
-		&& !(VIsual_active
-				   && (*p_sel == 'e' || ltoreq(*pos, VIsual)))
-#endif
+		&& !(VIsual_active && (*p_sel == 'e' || ltoreq(*pos, VIsual)))
 		)
 	    *cursor = vcol + incr - 1;	    /* cursor at end */
 	else
@@ -1452,7 +1479,6 @@ getvvcol(wp, pos, start, cursor, end)
 }
 #endif
 
-#if defined(FEAT_VISUAL) || defined(PROTO)
 /*
  * Get the leftmost and rightmost virtual column of pos1 and pos2.
  * Used for Visual block mode.
@@ -1489,7 +1515,6 @@ getvcols(wp, pos1, pos2, left, right)
     else
 	*right = to1;
 }
-#endif
 
 /*
  * skipwhite: skip over ' ' and '\t'.
@@ -1602,10 +1627,9 @@ vim_isxdigit(c)
 #define LATIN1LOWER 'l'
 #define LATIN1UPPER 'U'
 
-/*                                                                 !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]%_'abcdefghijklmnopqrstuvwxyz{|}~                                  ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ×ØÙÚÛÜİŞßàáâãäåæçèéêëìíîïğñòóôõö÷øùúûüışÿ */
 static char_u latin1flags[257] = "                                                                 UUUUUUUUUUUUUUUUUUUUUUUUUU      llllllllllllllllllllllllll                                                                     UUUUUUUUUUUUUUUUUUUUUUU UUUUUUUllllllllllllllllllllllll llllllll";
-static char_u latin1upper[257] = "                                 !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`ABCDEFGHIJKLMNOPQRSTUVWXYZ{|}~€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸ ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ×ØÙÚÛÜİŞßÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ÷ØÙÚÛÜİŞÿ";
-static char_u latin1lower[257] = "                                 !\"#$%&'()*+,-./0123456789:;<=>?@abcdefghijklmnopqrstuvwxyz[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸ ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿àáâãäåæçèéêëìíîïğñòóôõö×øùúûüışßàáâãäåæçèéêëìíîïğñòóôõö÷øùúûüışÿ";
+static char_u latin1upper[257] = "                                 !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`ABCDEFGHIJKLMNOPQRSTUVWXYZ{|}~\x7f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xf7\xd8\xd9\xda\xdb\xdc\xdd\xde\xff";
+static char_u latin1lower[257] = "                                 !\"#$%&'()*+,-./0123456789:;<=>?@abcdefghijklmnopqrstuvwxyz[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\x7f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xd7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xdf\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff";
 
     int
 vim_islower(c)

@@ -1,36 +1,354 @@
-vim (2:7.3.429-2ubuntu2.1) precise-proposed; urgency=low
+vim (2:7.4.488-7+deb8u2) jessie-security; urgency=high
 
-  * Add quantal to the deb{changelog,sources} hilighting (LP: #994208)
+  * Backport patch 8.0.0322 to fix a buffer overflow if a spellfile has an
+    invalid length in it.  (Closes: #854969, CVE-2017-5953)
 
- -- Adam Conrad <adconrad@ubuntu.com>  Fri, 27 Apr 2012 10:17:02 -0600
+ -- James McCoy <jamessan@debian.org>  Sun, 12 Feb 2017 20:02:50 -0500
 
-vim (2:7.3.429-2ubuntu2) precise; urgency=low
+vim (2:7.4.488-7+deb8u1) jessie-security; urgency=high
 
-  * debian/runtime/vimrc, debian/runtime/gvimrc:
-    Undo the changes from the previous upload as they conflict with/override
-    user settings from ~/.vimrc (lp: #951440; re-open #871907).
+  * Backport patch 8.0.0056 (and adapt tests) to fix an issue where malicious
+    modelines could execute arbitrary shell commands.  (CVE-2016-1248)
 
- -- Michael Bienia <geser@ubuntu.com>  Sun, 11 Mar 2012 14:30:55 +0100
+ -- James McCoy <jamessan@debian.org>  Wed, 16 Nov 2016 21:27:43 -0500
 
-vim (2:7.3.429-2ubuntu1) precise; urgency=low
+vim (2:7.4.488-7) unstable; urgency=medium
 
-  * Merge with Debian testing/unstable (lp: #927642). Remaining changes: 
-    - debian/runtime/debian.vim.in:
-      + Add Launchpad integration to the Help menu if launchpad-integration is
-        installed.
-    - debian/runtime/vimrc:
-      + "syntax on" is a sane default for non-tiny vim
-    - debian/patches/debian/ubuntu-grub-syntax.patch:
-      + Add Ubuntu-specific "quiet" keyword.
-  * debian/runtime/vimrc, debian/runtime/gvimrc:
-    Set background=dark for vim and background=light for gvim (lp: #871907)
+  * Backport patch 7.4.576 to fix jarring toggling of 'linebreak' option when
+    using the c command to change the buffer.  (Closes: #774492)
+  * Backport upstream fix for call to unknown function in NetRW plugin.
+    (Closes: #768467)
 
- -- Michael Bienia <geser@ubuntu.com>  Sun, 26 Feb 2012 15:26:29 +0100
+ -- James McCoy <jamessan@debian.org>  Tue, 31 Mar 2015 19:30:17 -0400
+
+vim (2:7.4.488-6) unstable; urgency=medium
+
+  * Build vim logo from the eps instead of pdf so the svg has the correct
+    bounding box.  Thanks to Simon McVittie for the idea!  (Closes: #778477)
+  * syntax/debchangelog.vim:
+    + Recognize jessie, jessie-backports, and sid targets
+    + Recognize binary-only=yes key value in debchangelogHeader
+
+ -- James McCoy <jamessan@debian.org>  Sat, 21 Mar 2015 14:24:01 -0400
+
+vim (2:7.4.488-5) unstable; urgency=medium
+
+  * Install icons to the proper directory.  dh_install doesn't rename files,
+    even though the last upload pretended it does.
+    - Use upstream's icons and remove the ones in debian/
+    - Add Build-Depends: pdf2svg to create a scalable icon
+
+ -- James McCoy <jamessan@debian.org>  Wed, 11 Feb 2015 21:38:10 -0500
+
+vim (2:7.4.488-4) unstable; urgency=medium
+
+  * Move vim icon from vim-gui-common to vim-common since both vim.desktop and
+    gvim.desktop use it.  (Closes: #773930)
+
+ -- James McCoy <jamessan@debian.org>  Mon, 29 Dec 2014 23:13:17 -0500
+
+vim (2:7.4.488-3) unstable; urgency=medium
+
+  * Install icons to /usr/share/icons/hicolor to work around #765069.
+    (Closes: #768256)
+
+ -- James McCoy <jamessan@debian.org>  Sun, 30 Nov 2014 15:08:09 -0500
+
+vim (2:7.4.488-2) unstable; urgency=medium
+
+  * Actually fix the Name in vim.desktop.  (Closes: #769575)
+
+ -- James McCoy <jamessan@debian.org>  Fri, 14 Nov 2014 21:06:27 -0500
+
+vim (2:7.4.488-1) unstable; urgency=medium
+
+  * Merge upstream tag v7-4-488
+  * Fix the Name in vim.desktop.
+
+ -- James McCoy <jamessan@debian.org>  Wed, 22 Oct 2014 21:07:59 -0400
+
+vim (2:7.4.481-1) unstable; urgency=medium
+
+  * Merge upstream tag v7-4-481
+    + Updated Russian translation of vimtutor.  (Closes: #722673)
+  * syntax/debcontrol.vim: Recognize https URLs for Vcs-Git.  (Closes:
+    #763553)
+  * debian/rules: Request all hardening features, other than fortify, from
+    dpkg-buildflags.
+  * Add codename for Ubuntu's next release, vivid.
+  * Install a .desktop file for terminal vim.  (Closes: #760512)
+
+ -- James McCoy <jamessan@debian.org>  Mon, 20 Oct 2014 23:26:20 -0400
+
+vim (2:7.4.430-1) unstable; urgency=medium
+
+  * Merge upstream tag v7-4-430
+    + 7.4.397: Fix paren matching in zsh scripts.  (Closes: #754507)
+    + Runtime updates:
+      - Improve highlighting of Python's \N{…} sequences.  (Closes: #749175)
+  * Add jessie release and remove EOLed saucy release from Debian runtime
+    files.  (Closes: #753823)
+
+ -- James McCoy <jamessan@debian.org>  Mon, 01 Sep 2014 04:11:24 -0400
+
+vim (2:7.4.335-1) unstable; urgency=medium
+
+  * Merge upstream tag v7-4-335
+    + Avoid setting buftype=nofile for scp buffers.  (Closes: #743136)
+    + Properly handle scp://user@host/ URLs  (Closes: #744111)
+  * Remove EOLed Quantal release from Debian runtime files.
+  * Transition from Lua 5.1 to Lua 5.2
+
+ -- James McCoy <jamessan@debian.org>  Thu, 19 Jun 2014 23:02:17 -0400
+
+vim (2:7.4.273-2) unstable; urgency=medium
+
+  * syntax/debcontrol.vim:
+    + Fix architecture orders to work with left-most regex matching.
+
+ -- James McCoy <jamessan@debian.org>  Fri, 02 May 2014 00:17:48 -0400
+
+vim (2:7.4.273-1) unstable; urgency=medium
+
+  * Merge upstream tag v7-4-273
+  * syntax/debcontrol.vim:
+    + Correctly highlight any-x32 in Architecture field
+    + Add ppc64el architecture
+  * syntax/deb{changelog,sources}.vim:
+    + Add codenames for Ubuntu's development release (devel, utopic)
+
+ -- James McCoy <jamessan@debian.org>  Thu, 01 May 2014 21:50:24 -0400
+
+vim (2:7.4.253-1) unstable; urgency=medium
+
+  * Merge upstream tag v7-4-253
+    + 7.4.252: Clear blink timer after removing it to avoid GLib-CRITICAL
+      error.  (Closes: #743668)
+  * rules: Explicitly disable SMACK on Linux, in favor of SELinux.
+
+ -- James McCoy <jamessan@debian.org>  Mon, 07 Apr 2014 22:47:57 -0400
+
+vim (2:7.4.225-1) unstable; urgency=medium
+
+  * Merge upstream tag v7-4-225
+    + Patches merged upstream:
+      - upstream/python-ftplugin-include.patch and
+        upstream/shadowdir-tests.diff
+    + netrw: Don't try to access the clipboard when support isn't enabled.
+      (Closes: #737530)
+    + 7.4.209: Escape a repeated command when storing it for redo.  (Closes:
+      #739656)
+    + 7.4.222: Use RbConfig::CONFIG['rubyarchhdrdir'] to allow building Vim
+      against Ruby 2.x.  (Closes: #739125)
+
+ -- James McCoy <jamessan@debian.org>  Thu, 27 Mar 2014 22:13:31 -0400
+
+vim (2:7.4.161-1) unstable; urgency=medium
+
+  * Merge upstream tag v7-4-161
+    + Fix loading of NetRW when editing a directory.  (Closes: #732091)
+  * Update Ubuntu releases in Debian syntax files.
+  * Add more debian-ports architectures to debcontrol syntax file.  (Closes:
+    #722313)
+  * ftplugin/debchangelog: Allow changing distribution from UNRELEASED.
+    (Closes: #734267)
+  * control: Bump Standards-Version to 3.9.5, no changes needed.
+  * Add shadowdir-tests.diff to fix building in a shadow build directory.
+
+ -- James McCoy <jamessan@debian.org>  Sun, 02 Feb 2014 19:27:58 -0500
+
+vim (2:7.4.052-1) unstable; urgency=low
+
+  * Merge upstream tag v7-4-052
+    - Remove upstream/python-ftplugin-keywordprg.patch, merged upstream
+  * debian/watch: Use the pasv option.
+  * debian/control: Version the ruby1.8{,-dev} Build-Conflicts now that the
+    Provides: have been dropped.
+
+ -- James McCoy <jamessan@debian.org>  Wed, 09 Oct 2013 00:06:41 -0400
+
+vim (2:7.4.027-1) unstable; urgency=low
+
+  * Merge upstream tag v7-4-027
+    + 7.4.003: Refresh a stale pointer in new regex engine to avoid
+      dereferencing a freed pointer.  (Closes: #722081)
+    + 7.4.024: Read an undo file owned by the current user, even if that
+      differs from the owner of the edited file.  (Closes: #721944)
+    + Use old regex engine for yamlBlockMappingKey highlighting to workaround
+      performance problem with new engine.  (Closes: #719510)
+
+ -- James McCoy <jamessan@debian.org>  Tue, 17 Sep 2013 20:29:24 -0400
+
+vim (2:7.4.000-1) unstable; urgency=low
+
+  * New upstream release.
+  * Upload to unstable.
+  * Stop providing /usr/share/vim/vimcurrent.  It shouldn't be used by
+    anything, since it's Debian specific, and the Vim packaging hasn't used it
+    (other than documenting the location of debian.vim) for years.
+  * Override spelling-error-in-binary … tEH the.
+
+ -- James McCoy <jamessan@debian.org>  Sat, 10 Aug 2013 21:24:02 -0400
+
+vim (2:7.4b.004-1) experimental; urgency=low
+
+  * Merge upstream tag v7-4b-004
+    + 7.4a.044: Clear window from b_wininfo in win_free().  (Closes: #717529)
+  * debian/rules: Install Japanese translations of man pages.
+  * Update path in binaries-have-file-conflict lintian override.
+  * Use canonical URI for Vcs-*.
+
+ -- James McCoy <jamessan@debian.org>  Fri, 02 Aug 2013 22:58:04 -0400
+
+vim (2:7.4a.012-1) experimental; urgency=low
+
+  * Merge upstream tag v7-4a-012
+    + New NFA regex engine.  Vim automatically determines whether to use the
+      new or old engine based on the pattern.  A specific engine can be
+      forced with the 'regexengine' option or within a pattern using the \%#=
+      atom.
+    + Updated Perl syntax files
+      - Adds support for Perl 5.10 syntax.  (Closes: #681606)
+      - Fixes syntax highlighting when qq{} contains a } character.  (Closes:
+        #598197)
+    + Fix display of an empty entry in NetRW directory listing.  (Closes:
+      #709101)
+    + Recognize Ikiwiki's *.mdwn as markdown filetype.  (Closes: #672597)
+    + 7.3.985: Call g_set_prgname() on startup to set a proper WM_CLASS.
+      (Closes: #639925)
+    + Source ~/.vim/vimrc or ~/.vim/gvimrc in favor of ~/.vimrc or ~/.gvimrc.
+    + Update sh syntax file
+      - Recognize when sh is dash and change the default behavior highlighting
+        to be POSIX instead of Bourne.  (Closes: #712657, #699172)
+      - Correctly highlight text after a "--".  (Closes: #713922)
+  * debian/rules: Simplify version handling and bump for the pre-release.
+  * Add shadowdir-fixes.patch, to fix test failures when building in a
+    shadow directory.
+
+ -- James McCoy <jamessan@debian.org>  Fri, 12 Jul 2013 22:30:28 -0400
+
+vim (2:7.3.923-3) unstable; urgency=low
+
+  * Build-Conflict against ruby1.8{,-dev} to work around incorrect ruby{,-dev}
+    Provides (c.f., #710022).
+
+ -- James McCoy <jamessan@debian.org>  Sun, 23 Jun 2013 22:12:29 -0400
+
+vim (2:7.3.923-2) unstable; urgency=low
+
+  * Fix FTBFS with M-A Python.  (Closes: #701513)
+
+ -- James McCoy <jamessan@debian.org>  Sun, 26 May 2013 22:18:36 -0400
+
+vim (2:7.3.923-1) unstable; urgency=low
+
+  * Merge upstream tag v7-3-923
+    + Updated documentation for Python syntax file.  (Closes: #613038)
+    + NetRW no longer creates files in ~/.vim (or ~/.vim itself) if
+      g:netrw_dirhistmax <= 0.  (Closes: #635984)
+  * Remove EOLed Oneiric and Hardy releases from Debian runtime files.  Add
+    Saucy and wheezy-backports.
+  * Bump Standards-Version to 3.9.4, no changes needed.
+  * Recognize “-b $branch” as part of a Vcs-Git field.  (Closes: #702751)
+
+ -- James McCoy <jamessan@debian.org>  Sun, 05 May 2013 23:07:27 -0400
+
+vim (2:7.3.831-1) experimental; urgency=low
+
+  * Merge upstream tag v7-3-831
+    + Merged patches:
+      - upstream/debian-runtime-spell.patch, upstream/if_py-crash.patch,
+        upstream/netrw-syntax-fix.patch, upstream/remove-py_config.patch
+    + 7.3.607: Swap fg and bg colors for completion menu.  (Closes: #680772)
+    + 7.3.750: Fix off-by-one error in justify macro.  (Closes: #620106)
+    + 7.3.751: Retry test61 once if it fails.
+      - Remove the explicit ignoring of test61 failures in debian/rules
+  * Mark "DM-Upload-Allowed" in debian/control files as an "Error", since the
+    field is no longer supported by the Debian archives.
+  * Re-enable vim-gnome on m68k.
+  * Update Ubuntu release names in Debian runtime files.
+
+ -- James McCoy <jamessan@debian.org>  Thu, 21 Feb 2013 22:13:43 -0500
+
+vim (2:7.3.547-7) unstable; urgency=low
+
+  * Add vim-lesstif.preinst to handle transitioning /usr/share/doc/vim-lesstif
+    from a symlink to a directory.  (Closes: #700069)
+  * Add clarification to short description of vim-nox.  (Closes: #699780)
+
+ -- James McCoy <jamessan@debian.org>  Sat, 09 Feb 2013 18:43:57 -0500
+
+vim (2:7.3.547-6) unstable; urgency=low
+
+  * Always enable ACL support.  (Closes: #693462)
+
+ -- James McCoy <jamessan@debian.org>  Thu, 22 Nov 2012 09:37:52 -0500
+
+vim (2:7.3.547-5) unstable; urgency=low
+
+  * Use xz compression for all binary packages.  (Closes: #687265)
+  * Backport patches 7.3.652 and 7.3.661 to fix crash in Python bindings when
+    GCC 4.7 is used to build Vim.  (Closes: #678122)
+
+ -- James McCoy <jamessan@debian.org>  Sat, 15 Sep 2012 23:59:18 -0400
+
+vim (2:7.3.547-4) unstable; urgency=low
+
+  * Add remove-py_config.patch, removing the dependence on Python's config.c.
+    (Closes: #681599)
+
+ -- James McCoy <jamessan@debian.org>  Mon, 23 Jul 2012 22:55:51 -0400
+
+vim (2:7.3.547-3) unstable; urgency=low
+
+  * Add netrw-syntax-fix.patch to fix a syntax error in NetRead's ftp
+    handling.  (Closes: #678513)
+
+ -- James McCoy <jamessan@debian.org>  Tue, 26 Jun 2012 19:14:28 -0400
+
+vim (2:7.3.547-2) unstable; urgency=low
+
+  * Work around GCC 4.7 optimization bug, #678122, by explicitly using gcc-4.6
+
+ -- James McCoy <jamessan@debian.org>  Thu, 21 Jun 2012 22:28:51 -0400
+
+vim (2:7.3.547-1) unstable; urgency=low
+
+  * Merge upstream tag v7-3-547
+  * Change ruby(-dev) Build-Depends to use unversioned package names in order
+    to build with the default ruby version.
+  * Add spell-check support to Debian control syntax file.
+
+ -- James McCoy <jamessan@debian.org>  Wed, 06 Jun 2012 20:20:05 -0400
+
+vim (2:7.3.524-1) unstable; urgency=low
+
+  * Merge upstream tag v7-3-524
+    + Recognize git commit files in submodules. (Closes: #663735)
+    + Fix NetRW's munging of options when opening files.  (Closes: #661720)
+    + 7.3.485: Use environment's LDFLAGS when building xxd.  (Closes: #663605)
+    + Update recognized keywords for dircolors syntax.  (Closes: #660632)
+  * Exclude the tools directory from the install.
+    + Stop shipping scripts which use Perl4 functionality.  (Closes: #659431)
+    + Remove lintian overrides for csh scripts.
+    + Remove patch debian/awk-shebang.patch
+  * Remove EOLed Lenny/Maverick releases, add Quantal release to runtime
+    files.
+  * Remove upstream/po-syntax-cpo.patch, merged upstream.
+  * Remove upstream/debian-runtime-*.patch, merged upstream.
+  * Remove upstream/fr-manpage-fixes.patch, merged upstream.
+  * Remove upstream/xdefaults-syntax-define.patch, merged upstream.
+  * Add lintian override for binaries-have-file-conflict.  vim-runtime diverts
+    vim-tiny's doc/help.txt and doc/tags.
+  * Remove unused menu-icon-missing override.
+
+ -- James McCoy <jamessan@debian.org>  Thu, 24 May 2012 21:37:40 -0400
 
 vim (2:7.3.429-2) unstable; urgency=low
 
   * Ignore failures in test61 since it is highly sensitive to timing.
-    Slow/heavily loaded systems will cause the test to fail.
+    Slow/heavily loaded systems will cause the test to fail.  (Closes:
+    #625941)
   * Install bug scripts with correct permissions.
     + Use dh_bugfiles to simplify process
     + Bump debhelper B-D to >= 7.2.3~
@@ -43,6 +361,8 @@ vim (2:7.3.429-1) unstable; urgency=low
     + Updated sshconfig syntax file.  (Closes: #594296)
     + 7.3.365: Fix crash when using a large Unicode character with syntax
       highlighting.  (Closes: #657777)
+    + Updated java indent file handles indentation of annotations.  (Closes:
+      #519240)
   * Add new education and introspection sections to debcontrol syntax file.
     (Closes: #651381)
   * Update vim-common's mime information to handle only having vim-tiny
@@ -68,19 +388,6 @@ vim (2:7.3.363-1) unstable; urgency=low
 
  -- James McCoy <jamessan@debian.org>  Wed, 30 Nov 2011 21:53:43 -0500
 
-vim (2:7.3.346-1ubuntu1) precise; urgency=low
-
-  * Merge with Debian testing/unstable (lp: #896587). Remaining changes: 
-    - debian/runtime/debian.vim.in:
-      + Add Launchpad integration to the Help menu if launchpad-integration is
-        installed.
-    - debian/runtime/vimrc:
-      + "syntax on" is a sane default for non-tiny vim
-    - debian/patches/debian/ubuntu-grub-syntax.patch:
-      + Add Ubuntu-specific "quiet" keyword.
-
- -- Michael Bienia <geser@ubuntu.com>  Sat, 26 Nov 2011 14:40:17 +0100
-
 vim (2:7.3.346-1) unstable; urgency=low
 
   * Pull upstream tag v7-3-346
@@ -100,29 +407,6 @@ vim (2:7.3.346-1) unstable; urgency=low
   * Bump Standards-Version to 3.9.2, no changes needed.
 
  -- James McCoy <jamessan@debian.org>  Thu, 20 Oct 2011 22:17:16 -0400
-
-vim (2:7.3.333-1ubuntu2) precise; urgency=low
-
-  * Rebuild for Perl 5.14.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Tue, 15 Nov 2011 23:22:43 +0000
-
-vim (2:7.3.333-1ubuntu1) precise; urgency=low
-
-  * Merge with Debian testing/unstable; remaining changes:
-    - debian/rules:
-      + Work around ICE on ppc64 by exporting DEB_GCC_NO_O3=1.
-    - debian/runtime/debian.vim.in:
-      + Add Launchpad integration to the Help menu if launchpad-integration is
-        installed.
-    - debian/runtime/vimrc:
-      + "syntax on" is a sane default for non-tiny vim
-    - debian/patches/debian/ubuntu-grub-syntax.patch:
-      + Add Ubuntu-specific "quiet" keyword.
-    - debian/patches/debian/ubuntu-version.patch:
-      + Update supported Ubuntu codenames: add precise.
-
- -- Loïc Minier <loic.minier@ubuntu.com>  Mon, 17 Oct 2011 13:47:55 +0200
 
 vim (2:7.3.333-1) unstable; urgency=low
 
@@ -181,40 +465,6 @@ vim (2:7.3.280-1) unstable; urgency=low
 
  -- James Vega <jamessan@debian.org>  Mon, 15 Aug 2011 06:35:08 -0400
 
-vim (2:7.3.154+hg~74503f6ee649-2ubuntu3) oneiric; urgency=low
-
-  * Update patch debian/ubuntu-version to list new "precise" dist/series in
-    debchangelog and debsources.vim.
-
- -- Loïc Minier <loic.minier@ubuntu.com>  Thu, 06 Oct 2011 12:03:26 +0200
-
-vim (2:7.3.154+hg~74503f6ee649-2ubuntu2) oneiric; urgency=low
-
-  * No-change rebuild with perl 5.12 (lp: #778053)
-
- -- Michael Bienia <geser@ubuntu.com>  Thu, 05 May 2011 20:38:12 +0200
-
-vim (2:7.3.154+hg~74503f6ee649-2ubuntu1) oneiric; urgency=low
-
-  * Merge with Debian unstable (lp: #774233)
-  * Remaining changes:
-    - debian/rules:
-      + Work around ICE on ppc64 by exporting DEB_GCC_NO_O3=1.
-    - debian/runtime/debian.vim.in:
-      + Add Launchpad integration to the Help menu if launchpad-integration is
-        installed.
-    - debian/runtime/vimrc:
-      + "syntax on" is a sane default for non-tiny vim
-    - debian/patches/debian/ubuntu-grub-syntax.patch:
-      + Add Ubuntu-specific "quiet" keyword.
-    - debian/patches/debian/ubuntu-version.patch:
-      + Update supported Ubuntu codenames: drop jaunty and karmic, add oneiric.
-  * debian/gvim.desktop:
-    Drop path and extension from the Icon filename to allow themes to change
-    the icon (lp: #740842).
-
- -- Michael Bienia <geser@ubuntu.com>  Sat, 30 Apr 2011 17:21:30 +0200
-
 vim (2:7.3.154+hg~74503f6ee649-2) unstable; urgency=low
 
   * Remove upstream/Makefile-parallel.patch as many parallel invocations of
@@ -267,69 +517,6 @@ vim (2:7.3.154+hg~74503f6ee649-1) unstable; urgency=low
   + Update Lintian overrides for the consistent path names in 2.5.0.
 
  -- James Vega <jamessan@debian.org>  Sat, 09 Apr 2011 19:18:27 -0400
-
-vim (2:7.3.035+hg~8fdc12103333-1ubuntu7) natty; urgency=low
-
-  * Updated upstream/debian-runtime.patch to includes Multi-Arch field.
-
- -- Kees Cook <kees@ubuntu.com>  Wed, 23 Mar 2011 22:45:53 -0700
-
-vim (2:7.3.035+hg~8fdc12103333-1ubuntu6) natty; urgency=low
-
-  * Update patch upstream/debian-runtime to also list oneiric in
-    runtime/syntax/debchangelog.vim and runtime/syntax/debsources.vim.
-
- -- Loïc Minier <loic.minier@linaro.org>  Wed, 23 Mar 2011 13:23:38 +0100
-
-vim (2:7.3.035+hg~8fdc12103333-1ubuntu5) natty; urgency=low
-
-  * runtime/syntax/upstart.vim: Improvements.
-
- -- James Hunt <james.hunt@ubuntu.com>  Fri, 11 Mar 2011 15:20:06 +0000
-
-vim (2:7.3.035+hg~8fdc12103333-1ubuntu4) natty; urgency=low
-
-  * runtime/syntax/upstart.vim: New syntax file for Upstart.
-  * runtime/filetype.vim: Updated to recognise Upstart configuration files.
-
- -- James Hunt <james.hunt@ubuntu.com>  Tue, 08 Mar 2011 12:14:56 +0000
-
-vim (2:7.3.035+hg~8fdc12103333-1ubuntu3) natty; urgency=low
-
-  * Work around ICE on ppc64 by exporting DEB_GCC_NO_O3=1.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Fri, 18 Feb 2011 17:37:44 +0000
-
-vim (2:7.3.035+hg~8fdc12103333-1ubuntu2) natty; urgency=low
-
-  * No-change rebuild with Python 2.7 (lp: #688149).
-
- -- Michael Bienia <geser@ubuntu.com>  Thu, 09 Dec 2010 17:24:51 +0100
-
-vim (2:7.3.035+hg~8fdc12103333-1ubuntu1) natty; urgency=low
-
-  * Merge with Debian unstable (lp: #662276):
-    - Use case-insensitive matching for month and day of week names in
-      crontab's syntax file (lp: #517019 aka Debian bug #568378).
-    - Fix sqlcomplete's <Left>/<Right> maps so they don't interfere with
-      normal usage (lp: #584797 aka Debian bug #560083).
-    - [7.2.386] KDE 3.1 focus hack causes problems for other window managers
-      (lp: #535341).
-  * Remaining changes:
-    - debian/control:
-      + Drop vim-lesstif package and lesstif2-dev build-dependency.
-      + Rename Vcs-* to XS-Debian-Vcs-*.
-    - debian/rules:
-      + Don't build the vim-lesstif variant in Ubuntu.
-    - debian/runtime/debian.vim.in:
-      + Add Launchpad integration to the Help menu if launchpad-integration is
-        installed.
-    - debian/runtime/vimrc:
-      + "syntax on" is a sane default for non-tiny vim
-    - debian/patches/debian/ubuntu-grub-syntax.patch:
-      + Add Ubuntu-specific "quiet" keyword.
-
- -- Michael Bienia <geser@ubuntu.com>  Mon, 25 Oct 2010 10:55:05 +0200
 
 vim (2:7.3.035+hg~8fdc12103333-1) unstable; urgency=low
 
@@ -520,57 +707,6 @@ vim (2:7.2.436+hg~e12b9d992389-1) unstable; urgency=low
 
  -- James Vega <jamessan@debian.org>  Tue, 18 May 2010 18:40:17 -0400
 
-vim (2:7.2.330-1ubuntu4) maverick; urgency=low
-
-  * runtime/syntax/debchangelog.vim, runtime/syntax/debsources.vim: add natty
-    to allowed dists.
-
- -- Loïc Minier <loic.minier@ubuntu.com>  Tue, 28 Sep 2010 02:49:59 +0200
-
-vim (2:7.2.330-1ubuntu3) lucid; urgency=low
-
-  * runtime/syntax/debchangelog.vim, runtime/syntax/debsources.vim: add
-    maverick to allowed dists.
-
- -- Loïc Minier <loic.minier@ubuntu.com>  Fri, 16 Apr 2010 11:31:40 +0200
-
-vim (2:7.2.330-1ubuntu2) lucid; urgency=low
-
-  * debian/rules: Temporarily disable parallel building until we figure out
-    where it is broken (fixes the current FTBFS).
-
- -- Michael Bienia <geser@ubuntu.com>  Mon, 08 Mar 2010 20:35:33 +0100
-
-vim (2:7.2.330-1ubuntu1) lucid; urgency=low
-
-  [ Michael Bienia ]
-  * Merge with Debian unstable (LP: #509900):
-    - Highlight Breaks in debian/control (LP: #498303).
-    - [7.2.257] GTK 2.17: lots of assertion error messages (LP: #402188).
-  * Remaining changes:
-    - debian/runtime/vimrc: "syntax on" is a sane default for non-tiny vim.
-    - runtime/syntax/debcontrol.vim:
-      + Add "metapackages" to the list of valid sections.
-    - runtime/syntax/grub.vim:
-      + Add Ubuntu-specific 'quiet' keyword.
-    - Drop vim-lesstif package and lesstif2-dev build-dependency.
-    - Enable Python interpreter on basic builds.
-    - Rename Vcs-* to XS-Debian-Vcs-*.
-  * runtime/ftplugin/debchangelog.vim: Use python-launchpadlib (and LP API)
-    instead of python-launchpad-bugs for bug completion for Ubuntu
-    (forwarded to Debian as bug #566841).
-  * src/configure.in, src/auto/configure:
-    As MODLIBS from python's config/Makefile includes LOCALMODLIBS which
-    shouldn't be used and breaks the build with newer python versions, use
-    BASEMODLIBS instead of MODLIBS (forwarded to Debian as bug #566842;
-    LP: #534251).
-
-  [ Colin Watson ]
-  * Add Launchpad integration to the Help menu if launchpad-integration is
-    installed (LP: #453103).
-
- -- Colin Watson <cjwatson@ubuntu.com>  Mon, 08 Mar 2010 17:08:44 +0000
-
 vim (2:7.2.330-1) unstable; urgency=low
 
   * [34a85b6] Update README for patches 285 - 330
@@ -617,33 +753,6 @@ vim (2:7.2.284-1) unstable; urgency=low
     (Closes: #553525)
 
  -- James Vega <jamessan@debian.org>  Sun, 08 Nov 2009 16:51:59 -0500
-
-vim (2:7.2.245-2ubuntu3) lucid; urgency=low
-
-  * rebuild rest of main for armel armv7/thumb2 optimization;
-    UbuntuSpec:mobile-lucid-arm-gcc-v7-thumb2
-
- -- Alexander Sack <asac@ubuntu.com>  Sun, 07 Mar 2010 01:10:27 +0100
-
-vim (2:7.2.245-2ubuntu2) karmic; urgency=low
-
-  * Add lucid as a valid suite in changelogs and sources.list.
-  * Rename Vcs-* to XS-Debian-Vcs-*.
-
- -- Loïc Minier <loic.minier@ubuntu.com>  Mon, 21 Sep 2009 13:07:03 +0200
-
-vim (2:7.2.245-2ubuntu1) karmic; urgency=low
-
-  * Merge from debian unstable, remaining changes: LP: #407038
-    - debian/runtime/vimrc: "syntax on" is a sane default for non-tiny vim.
-    - runtime/syntax/debcontrol.vim:
-      + Add "metapackages" to the list of valid sections.
-    - runtime/syntax/grub.vim:
-      + Add Ubuntu-specific 'quiet' keyword.
-    - Drop vim-lesstif package and lesstif2-dev build-dependency.
-    - Enable Python interpreter on basic builds.
-
- -- Bhavani Shankar <right2bhavi@gmail.com>  Fri, 21 Aug 2009 20:07:37 +0530
 
 vim (2:7.2.245-2) unstable; urgency=low
 
@@ -722,33 +831,6 @@ vim (2:7.2.245-1) unstable; urgency=low
 
  -- James Vega <jamessan@debian.org>  Wed, 29 Jul 2009 20:18:17 +0200
 
-vim (2:7.2.148-2ubuntu2) karmic; urgency=low
-
-  * Drop the changes to debian/runtime/debian.vim.in, which were no-ops
-    since these options are already disabled by default.  Thanks to James
-    Vega for pointing this out.
-
- -- Steve Langasek <steve.langasek@ubuntu.com>  Tue, 05 May 2009 18:45:52 +0000
-
-vim (2:7.2.148-2ubuntu1) karmic; urgency=low
-
-  * Merge from Debian unstable, remaining changes:
-    - debian/runtime/vimrc: "syntax on" is a sane default for non-tiny vim.
-    - runtime/syntax/debcontrol.vim:
-      + Add "metapackages" to the list of valid sections.
-    - runtime/syntax/grub.vim:
-      + Add Ubuntu-specific 'quiet' keyword.
-    - Drop vim-lesstif package and lesstif2-dev build-dependency.
-    - Enable Python interpreter on basic builds.
-  * Dropped changes, merged in Debian:
-    - Add jaunty, karmic to the list of valid suites.
-    - runtime/syntax/debsources.vim:
-      + Add "jaunty" to debsourcesDistrKeyword
-    - Create a .pot file for translations.
-  * Drop gutsy from the list of valid distro series, it's been EOLed.
-
- -- Steve Langasek <steve.langasek@ubuntu.com>  Mon, 04 May 2009 11:13:42 +0000
-
 vim (2:7.2.148-2) unstable; urgency=low
 
   * [0657c8d] debian/rules: SHELL really does need to be bash...
@@ -807,52 +889,6 @@ vim (2:7.2.130-1) unstable; urgency=low
 
  -- James Vega <jamessan@debian.org>  Thu, 05 Mar 2009 08:58:23 -0500
 
-vim (2:7.2.079-1ubuntu5) jaunty; urgency=low
-
-  * Guard "syntax on" default so that it's only used if the syntax feature
-    is available, since /etc/vim/vimrc is sometimes used by vim-tiny too
-    (LP: #342174).
-
- -- Colin Watson <cjwatson@ubuntu.com>  Thu, 19 Mar 2009 15:16:10 +0000
-
-vim (2:7.2.079-1ubuntu4) jaunty; urgency=low
-
-  * Added karmic to the list of valid distro series.
-
- -- Soren Hansen <soren@ubuntu.com>  Fri, 13 Mar 2009 16:07:45 +0100
-
-vim (2:7.2.079-1ubuntu3) jaunty; urgency=low
-
-  * debian/runtime/vimrc: "syntax on" is a sane default for non-tiny vim,
-    LP: #63172
-
- -- Dustin Kirkland <kirkland@ubuntu.com>  Thu, 05 Mar 2009 09:28:52 -0600
-
-vim (2:7.2.079-1ubuntu2) jaunty; urgency=low
-
-  * Rebuild for python2.6.
-
- -- Matthias Klose <doko@ubuntu.com>  Mon, 02 Mar 2009 12:19:07 +0100
-
-vim (2:7.2.079-1ubuntu1) jaunty; urgency=low
-
-  * Resynchronise with Debian (diversions fix closes LP: #296324). Remaining
-    changes:
-    - runtime/syntax/debcontrol.vim:
-      + Add "metapackages" to the list of valid sections.
-    - runtime/syntax/debchangelog.vim:
-      + Add "jaunty" to the list of valid suites.
-    - Drop vim-lesstif package and lesstif2-dev build-dependency.
-    - Enable Python interpreter on basic builds.
-    - Create a .pot file for translations.
-    - Disable autoindent, line-wrapping, and backup files by default.
-    - runtime/syntax/debsources.vim:
-      + Add "jaunty" to debsourcesDistrKeyword
-    - runtime/syntax/grub.vim:
-      + Add Ubuntu-specific 'quiet' keyword.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Tue, 13 Jan 2009 18:39:18 +0000
-
 vim (2:7.2.079-1) unstable; urgency=low
 
   * [4d191a4] Update README for patches 50 - 065
@@ -901,24 +937,6 @@ vim (2:7.2.049-1) unstable; urgency=low
   * [64d3690] policy: bump version and copyright year
 
  -- James Vega <jamessan@debian.org>  Tue, 25 Nov 2008 23:38:38 -0500
-
-vim (2:7.2.025-2ubuntu1) jaunty; urgency=low
-
-  * Merge from debian unstable, remaining changes:
-    - runtime/syntax/debcontrol.vim:
-      + Add "metapackages" to the list of valid sections.
-    - runtime/syntax/debchangelog.vim:
-      + Add "jaunty" to the list of valid suites.
-    - Drop vim-lesstif package and lesstif2-dev build-dependency.
-    - Enable Python interpreter on basic builds.
-    - Create a .pot file for translations.
-    - Disable autoindent, line-wrapping, and backup files by default.
-    - runtime/syntax/debsources.vim:
-      + Add "jaunty" to debsourcesDistrKeyword
-    - runtime/syntax/grub.vim:
-      + Add Ubuntu-specific 'quiet' keyword.
-
- -- Soren Hansen <soren@ubuntu.com>  Wed, 05 Nov 2008 11:37:43 +0100
 
 vim (2:7.2.025-2) unstable; urgency=low
 
@@ -1131,45 +1149,6 @@ vim (1:7.2.0~a-1) experimental; urgency=low
 
  -- James Vega <jamessan@debian.org>  Thu, 26 Jun 2008 12:49:16 -0400
 
-vim (1:7.1.314-3ubuntu3) intrepid; urgency=low
-
-  * runtime/syntax/grub.vim:
-    - Add Ubuntu-specific 'quiet' keyword.
-  * Remove some unnecessary divergence from Debian, thanks to James Vega
-    (LP: #248713):
-    - Remove explicit settings of textwidth=0 and nobackup, since those are
-      already the defaults.
-    - Remove explicit setting of viminfo to a subset of the default, thereby
-      adding s10 and h.
-    - Remove NoDisplay=true from gvim.desktop; vim-gui-common isn't
-      installed by default and there's no reason to withhold the menu entry
-      from those who have installed it (LP: #3222).
-
- -- Colin Watson <cjwatson@ubuntu.com>  Mon, 21 Jul 2008 14:22:09 +0100
-
-vim (1:7.1.314-3ubuntu2) intrepid; urgency=low
-
-  * Rebuild for libgpmg1 -> libgpm2 transistion.
-
- -- Steve Kowalik <stevenk@ubuntu.com>  Sun, 20 Jul 2008 05:24:49 +1000
-
-vim (1:7.1.314-3ubuntu1) intrepid; urgency=low
-
-  * Resynchronise with Debian. Remaining changes:
-    - Enable detection of GNU screen as a mouse-capable terminal.
-    - Add NoDisplay=true to gvim.desktop.
-    - Drop vim-lesstif package and lesstif2-dev build-dependency.
-    - Build-depend on libxt-dev.
-    - Enable Python interpreter on basic builds.
-    - Create a .pot file for translations.
-    - Disable autoindent, line-wrapping, and backup files by default.
-  * Fixes various vulnerabilities due to improper quoting of 'execute'
-    arguments (LP: #240216).
-  * Drop fixes for upgrade problems from Ubuntu 6.06 LTS; direct upgrades
-    from 6.06 to 8.10 will not be supported.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Thu, 26 Jun 2008 13:42:18 +0100
-
 vim (1:7.1.314-3) unstable; urgency=high
 
   * Update runtime files affected by the filename escape vulnerability.
@@ -1232,23 +1211,6 @@ vim (1:7.1.314-1) unstable; urgency=low
 
  -- James Vega <jamessan@debian.org>  Tue, 10 Jun 2008 22:28:10 -0400
 
-vim (1:7.1.293-3ubuntu1) intrepid; urgency=low
-
-  * Merge from debian unstable (LP: #234766), remaining changes:
-    - Enable detection of GNU screen as a mouse-capable terminal.
-    - Add NoDisplay=true to gvim.desktop.
-    - Drop vim-lesstif package and lesstif2-dev build-dependency.
-    - Build-depend on libxt-dev.
-    - Restore a number of Conflicts/Replaces and include
-      /usr/share/man/ru.{KOI8-R,UTF-8}{,/man1}, both to help with upgrade
-      problems from 6.06.
-    - Enable Python interpreter on basic builds.
-    - Create a .pot file for translations.
-    - Disable autoindent, line-wrapping, and backup files by default.
-    - Omni completion for Launchpad bugs.
-
- -- Fabien Tassin <fta@sofaraway.org>  Sun, 25 May 2008 14:10:50 +0200
-
 vim (1:7.1.293-3) unstable; urgency=low
 
   * runtime/syntax/debchangelog.vim,debsources.vim:
@@ -1273,32 +1235,6 @@ vim (1:7.1.293-3) unstable; urgency=low
       PEP 353.
 
  -- James Vega <jamessan@debian.org>  Sun, 04 May 2008 14:11:17 -0400
-
-vim (1:7.1.293-2ubuntu1) intrepid; urgency=low
-
-  * Resynchronise with Debian (LP: #183935); thanks to James Vega for
-    including a number of our changes! Remaining changes:
-    - Enable detection of GNU screen as a mouse-capable terminal.
-    - Add NoDisplay=true to gvim.desktop.
-    - Drop vim-lesstif package and lesstif2-dev build-dependency.
-    - Build-depend on libxt-dev.
-    - Restore a number of Conflicts/Replaces and include
-      /usr/share/man/ru.{KOI8-R,UTF-8}{,/man1}, both to help with upgrade
-      problems from 6.06.
-    - Enable Python interpreter on basic builds.
-    - Create a .pot file for translations.
-    - Disable autoindent, line-wrapping, and backup files by default.
-    - Add intrepid to lists of Ubuntu distributions.
-    - Add metapackages to list of allowed debian/control sections.
-    - Add omni completion support for Launchpad bugs via
-      python-launchpad-bugs.
-  * Improve omni completion for Launchpad and debbugs, so that it allows
-    completion of bug number parts (base), e.g.
-    "LP:<space>#1<ctrl-x><ctrl-o>" will include all bugs from the package
-    beginning with "1". Previously, this would have invoked a completion
-    using debbugs (thanks, Daniel Hahler; LP: #196112).
-
- -- Colin Watson <cjwatson@ubuntu.com>  Thu, 01 May 2008 21:56:46 +0100
 
 vim (1:7.1.293-2) unstable; urgency=low
 
@@ -1700,73 +1636,6 @@ vim (1:7.1-167+1) unstable; urgency=low
 
  -- James Vega <jamessan@debian.org>  Mon, 03 Dec 2007 15:53:27 -0500
 
-vim (1:7.1-138+1ubuntu3) hardy; urgency=low
-
-  * patches/debchangelog_launchpad.diff:
-    - Add omni completion support for Launchpad bugs via
-      python-launchpad-bugs.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Thu, 31 Jan 2008 10:59:03 +0000
-
-vim (1:7.1-138+1ubuntu2) hardy; urgency=low
-
-  * debian/control:
-    - re-add the removed conflicts/replaces that apply for the
-      dapper->hardy upgrades
-  
- -- Michael Vogt <michael.vogt@ubuntu.com>  Tue, 20 Nov 2007 14:01:58 +0100
-
-vim (1:7.1-138+1ubuntu1) hardy; urgency=low
-
-  * Merge from debian unstable, remaining changes:
-    + debian/runtime/debian.vim.in:
-      - Disable autoindent, linebreak and backup files
-    + debian/rules:
-      - Enable pythoninterpreter on basic builds
-      - Skip -lesstif variant
-      - Create a .pot file for translations
-      - Use bzip2 compression for vim-runtime
-    + debian/vim-common.dirs:
-      - Include /usr/share/man/ru.{KOI8-R,UTF-8}{,/man1} to help with
-        upgrade problems from dapper; retain this until at least the first
-        Ubuntu LTS release after 6.06
-    + debian/gvim.desktop:
-      - Add NoDisplay=true
-    + debian/control:
-      - DebianMaintainerField
-      - Drop lesstif2-dev from Build-Depends
-      - Add libxt-dev to Build-Depends to fix build
-      - Drop vim-lesstif package
-    + patches/debcontrol.vim.diff:
-      - Add XSBC-Original-Maintainer as legal field
-    + patches/900_debcontrol.vim.diff:
-      - Add restricted, universe, multiverse, and metapackages to allowed
-        sections
-    + patches/screen-mouse-support.diff:
-      - Enable detection of GNU screen as a mouse-capable terminal
-        (LP #113227)
-    + patches/901_debchangelog.vim.diff:
-      - Add warty, hoary, breezy, dapper, edgy, feisty, gutsy, hardy,
-        *-proposed, *-updates, *-security, *-backports, *-commercial, and
-        *-partner to allowed distributions.
-    + patches/add-ubuntu-sources.diff:
-      - Add restricted, universe, multiverse to allowed sections
-      - Add dapper, edgy, feisty, gutsy, hardy, *-proposed, *-updates,
-        *-security, *-backports, *-commercial, and *-partner to allowed
-        distributions.
-    + patches/debchangelog_launchpad.diff:
-      - Highlight Launchpad bug-closing syntax in debian/changelog files.
-  * New changes:
-    + debian/control:
-      - Add dpkg-dev (>= 1.13.19) dependency (Debian removed it because
-        stable has new enough dpkg-dev, but Dapper doesn't, so we keep it) 
-  * The following changes were dropped:
-    + debian/control:
-      - Pre-Depend on dpkg with bzip2 support (oldest support release has this
-        already)
-
- -- Soren Hansen <soren@ubuntu.com>  Fri, 19 Oct 2007 15:37:56 +0200
-
 vim (1:7.1-138+1) unstable; urgency=medium
 
   [ Debian Vim Maintainers ]
@@ -1827,55 +1696,6 @@ vim (1:7.1-135+1) unstable; urgency=low
 
  -- James Vega <jamessan@debian.org>  Sun, 07 Oct 2007 15:47:26 -0400
 
-vim (1:7.1-056+2ubuntu2) gutsy; urgency=low
-
-  * Trigger rebuild for hppa
-
- -- LaMont Jones <lamont@ubuntu.com>  Thu, 04 Oct 2007 12:26:15 -0600
-
-vim (1:7.1-056+2ubuntu1) gutsy; urgency=low
-
-  * Merge from debian unstable, remaining changes:
-    + debian/runtime/debian.vim.in:
-      - Disable autoindent, linebreak and backup files
-    + debian/rules:
-      - Enable pythoninterpreter on basic builds
-      - Skip -lesstif variant
-      - Create a .pot file for translations
-      - Use bzip2 compression for vim-runtime
-    + debian/vim-common.dirs:
-      - Include /usr/share/man/ru.{KOI8-R,UTF-8}{,/man1} to help with
-        upgrade problems from dapper; retain this until at least the first
-        Ubuntu LTS release after 6.06
-    + debian/gvim.desktop:
-      - Add NoDisplay=true
-    + debian/control:
-      - DebianMaintainerField field
-      - Drop lesstif2-dev from Build-Depends
-      - Add libxt-dev to Build-Depends to fix build
-      - Pre-Depend on dpkg with bzip2 support
-      - Drop vim-lesstif package
-    + patches/debcontrol.vim.diff:
-      - Add XSBC-Original-Maintainer as legal field
-    + patches/900_debcontrol.vim.diff:
-      - Add restricted, universe, multiverse, and metapackages to allowed
-        sections
-    + patches/901_debchangelog.vim.diff:
-      - Add warty, hoary, breezy, dapper, edgy, feisty, gutsy, *-proposed,
-        *-updates, *-security, *-backports, and *-commercial to allowed
-        distributions.
-    + patches/add-ubuntu-sources.diff:
-      - Add restricted, universe, multiverse to allowed sections
-      - Add dapper, edgy, feisty, gutsy, *-proposed, *-updates, *-security,
-        and *-backports to allowed distributions.
-    + patches/debchangelog_launchpad.diff:
-      - Highlight Launchpad bug-closing syntax in debian/changelog files.
-    + patches/screen-mouse-support.diff:
-      - Enable detection of GNU screen as a mouse-capable terminal
-        (LP #113227)
-
- -- Soren Hansen <soren@ubuntu.com>  Tue, 28 Aug 2007 17:02:33 +0200
-
 vim (1:7.1-056+2) unstable; urgency=low
 
   * Brown paper bag release -- vimrc.tiny should not be calling :let since
@@ -1935,52 +1755,6 @@ vim (1:7.1-056+1) unstable; urgency=low
 
  -- James Vega <jamessan@debian.org>  Wed, 08 Aug 2007 00:18:16 -0400
 
-vim (1:7.1-022+1ubuntu1) gutsy; urgency=low
-
-  * Merge from debian unstable, remaining changes:
-    + debian/runtime/debian.vim.in:
-      - disable autoindent and backup files
-    + debian/rules:
-      - enable pythoninterpreter on basic builds
-      - skip -lesstif and -full variants
-      - remove references to vim-full package
-      - create a .pot file for translations
-      - use bzip2 compression for vim-runtime
-    + debian/vim-common.dirs:
-      - include /usr/share/man/ru.{KOI8-R,UTF-8}{,/man1} to help with
-        upgrade problems from dapper; retain this until at least the first
-        Ubuntu LTS release after 6.06
-    + debian/gvim.desktop:
-      - add NoDisplay=true
-    + debian/control:
-      - DebianMaintainerField field
-      - drop lesstif2-dev from Build-Depends
-      - add libxt-dev to Build-Depends to fix build
-      - pre-depend on dpkg with bzip2 support
-      - drop vim-lesstif package
-    + patches/debcontrol.vim.diff:
-      - add XSBC-Original-Maintainer as legal field
-    + patches/add-ubuntu-sources.diff:
-      - add restricted, universe, multiverse to allowed sections
-      - add dapper, edgy, feisty, gutsy, *-proposed, *-updates, *-security,
-        and *-backports to allowed distributions.
-    + patches/901_debchangelog.vim.diff:
-      - add warty, hoary, breezy, dapper, edgy, feisty, gutsy, *-proposed,
-        *-updates, *-security, *-backports, and *-commercial to allowed
-        distributions.
-    + patches/900_debcontrol.vim.diff:
-      - add restricted, universe, multiverse, and metapackages to allowed
-        sections
-    + patches/screen-mouse-support.diff:
-      - Enable detection of GNU screen as a mouse-capable terminal
-        (LP #113227)
-    + patches/debchangelog_launchpad.diff:
-      - Highlight Launchpad bug-closing syntax in debian/changelog files.
-  * Dropped debian/kubuntu_01_xdg_menus.diff (hasn't been used in years) and 
-    patches/proc-filetype-detection-fix.diff (applied upstream).
-
- -- Soren Hansen <soren@ubuntu.com>  Fri, 13 Jul 2007 15:32:59 +0200
-
 vim (1:7.1-022+1) unstable; urgency=low
 
   [ Debian Vim Maintainers ]
@@ -2036,60 +1810,6 @@ vim (1:7.1-022+1) unstable; urgency=low
 
  -- James Vega <jamessan@debian.org>  Sat, 07 Jul 2007 15:04:57 -0400
 
-vim (1:7.1-000+1ubuntu2) gutsy; urgency=low
-
-  [ Micah Cowan ]
-  * patches/screen-mouse-support.diff:
-    - Enable detection of GNU screen as a mouse-capable terminal
-      (LP: #113227)
-  * patches/proc-filetype-detection-fix.diff:
-    - Fix detection of files of type Oracle ProC (LP: #86916)
-
-  [ Colin Watson ]
-  * patches/debchangelog_launchpad.diff:
-    - Highlight Launchpad bug-closing syntax in debian/changelog files.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Wed, 04 Jul 2007 04:38:55 +0100
-
-vim (1:7.1-000+1ubuntu1) gutsy; urgency=low
-
-  * Resynchronise with Debian. Remaining changes:
-    + debian/runtime/debian.vim.in:
-      - disable autoindent and backup files
-    + patches/debcontrol.vim.diff:
-      - add XSBC-Original-Maintainer as legal field
-    + patches/900_debcontrol.vim.diff:
-      - add restricted, universe, multiverse, and metapackages to allowed
-        sections
-    + patches/901_debchangelog.vim.diff:
-      - add breezy, dapper, edgy, feisty, gutsy, *-proposed, *-updates,
-        *-security, *-backports, and dapper-commercial to allowed
-        distributions
-    + patches/add-ubuntu-sources.diff:
-      - add restricted, universe, multiverse to allowed sections
-      - add dapper, edgy, feisty, gutsy, *-proposed, *-updates, *-security,
-        and *-backports to allowed distributions
-    + debian/control:
-      - drop lesstif2-dev from Build-Depends
-      - drop vim-lesstif package
-      - add libxt-dev to Build-Depends to fix build
-      - pre-depend on dpkg with bzip2 support
-      - Ubuntu-specific Maintainer field
-    + debian/rules:
-      - enable pythoninterpreter on basic builds
-      - skip -lesstif and -full variants
-      - remove references to vim-full package
-      - create a .pot file for translations
-      - use bzip2 compression for vim-runtime
-    + debian/gvim.desktop:
-      - add NoDisplay=true
-    + debian/vim-common.dirs:
-      - include /usr/share/man/ru.{KOI8-R,UTF-8}{,/man1} to help with
-        upgrade problems from dapper; retain this until at least the first
-        Ubuntu LTS release after 6.06
-
- -- Colin Watson <cjwatson@ubuntu.com>  Thu, 24 May 2007 13:12:54 +0100
-
 vim (1:7.1-000+1) unstable; urgency=low
 
   [ Debian Vim Maintainers ]
@@ -2122,56 +1842,6 @@ vim (1:7.1-000+1) unstable; urgency=low
         but 'foldmethod' will not be set to 'expr'.
 
  -- James Vega <jamessan@debian.org>  Sat, 12 May 2007 13:24:27 -0400
-
-vim (1:7.0-219+1ubuntu2) gutsy; urgency=low
-
-  [ Soren Hansen ]
-  * patches/901_debchangelog.vim.diff:
-    - Simplify regex for Ubuntu distributions.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Fri, 20 Apr 2007 21:25:54 +0100
-
-vim (1:7.0-219+1ubuntu1) gutsy; urgency=low
-
-  * Resynchronise with Debian. Remaining changes:
-    + debian/runtime/debian.vim.in:
-      - disable autoindent and backup files
-    + patches/debcontrol.vim.diff:
-      - add XSBC-Original-Maintainer as legal field
-    + patches/900_debcontrol.vim.diff:
-      - add restricted, universe, multiverse, and metapackages to allowed
-        sections
-    + patches/901_debchangelog.vim.diff:
-      - add breezy, dapper, edgy, feisty, *-proposed, *-updates, *-security,
-        *-backports, and dapper-commercial to allowed distributions
-    + patches/add-ubuntu-sources.diff:
-      - add restricted, universe, multiverse to allowed sections
-      - add dapper, edgy, feisty, *-proposed, *-updtaes, *-security, and
-        *-backports to allowed distributions
-    + debian/control:
-      - drop lesstif2-dev from Build-Depends
-      - drop vim-lesstif package
-      - add libxt-dev to Build-Depends to fix build
-      - pre-depend on dpkg with bzip2 support
-      - Ubuntu-specific Maintainer field
-    + debian/rules:
-      - enable pythoninterpreter on basic builds
-      - skip -lesstif and -full variants
-      - remove references to vim-full package
-      - create a .pot file for translations
-      - use bzip2 compression for vim-runtime
-    + debian/gvim.desktop:
-      - add NoDisplay=true
-    + debian/vim-common.dirs:
-      - include /usr/share/man/ru.{KOI8-R,UTF-8}{,/man1} to help with
-        upgrade problems from dapper; retain this until at least the first
-        Ubuntu LTS release after 6.06
-  * patches/901_debchangelog.vim.diff: Add gutsy, gutsy-security,
-    gutsy-proposed, gutsy-updates, and gutsy-backports targets.
-  * patches/add-ubuntu-sources.diff: Add gutsy distribution.
-  * patches/cindent-fix.patch: Remove; this is upstream patch 7.0.211.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Fri, 20 Apr 2007 19:24:56 +0100
 
 vim (1:7.0-219+1) unstable; urgency=low
 
@@ -2218,78 +1888,6 @@ vim (1:7.0-164+2) unstable; urgency=medium
       upgrade.  Fixes upgrades from Etch.  (closes: #399024)
 
  -- James Vega <jamessan@debian.org>  Thu,  4 Jan 2007 01:50:25 -0500
-
-vim (1:7.0-164+1ubuntu7) feisty; urgency=low
-
-  * Add XSBC-Original-Maintainer to debcontrol syntax highlighting.
-
- -- Soren Hansen <sh@linux2go.dk>  Sat, 10 Mar 2007 22:07:48 +0100
-
-vim (1:7.0-164+1ubuntu6) feisty; urgency=low
-
-  * Ubuntu-specific Maintainer field (really, this time saving
-    the control file before building the package).
-
- -- Ian Jackson <iwj@ubuntu.com>  Tue, 20 Feb 2007 16:45:18 +0000
-
-vim (1:7.0-164+1ubuntu5) feisty; urgency=low
-
-  * Re-upload with .orig.tar.gz as intended, and bump version number.
-  * Ubuntu-specific Maintainer field.
-
- -- Ian Jackson <iwj@ubuntu.com>  Tue, 20 Feb 2007 14:13:33 +0000
-
-vim (1:7.0-164+1ubuntu4) feisty; urgency=low
-
-  * Include /usr/share/man/ru.{KOI8-R,UTF-8}{,/man1} in the
-    vim-common package which will help with some upgrade problems (LP
-    #84906).  These directories should be retained until at least the
-    first Ubuntu LTS release after 6.06, to smooth upgrades from Dapper.
-
- -- Ian Jackson <iwj@ubuntu.com>  Tue, 20 Feb 2007 12:31:22 +0000
-
-vim (1:7.0-164+1ubuntu3) feisty; urgency=low
-
-  * Use bzip2 compression for vim-runtime, saving about 1MB of .deb size.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Tue, 30 Jan 2007 16:08:49 +0000
-
-vim (1:7.0-164+1ubuntu2) feisty; urgency=low
-
-  * Rebuild for python2.5 as the default python version.
-
- -- Matthias Klose <doko@ubuntu.com>  Sun, 14 Jan 2007 16:25:53 +0000
-
-vim (1:7.0-164+1ubuntu1) feisty; urgency=low
-
-  * Resynchronise with Debian. Remaining changes:
-    + debian/runtime/debian.vim.in:
-      - disable autoindent and backup files
-    + patches/900_debcontrol.vim.diff:
-      - add restricted, universe, multiverse, and metapackages to allowed
-        sections
-    + patches/901_debchangelog.vim.diff:
-      - add breezy, dapper, edgy, feisty, *-proposed, *-updates, *-security,
-        *-backports, and dapper-commercial to allowed distributions
-    + patches/add-ubuntu-sources.diff:
-      - add restricted, universe, multiverse to allowed sections
-      - add dapper, edgy, feisty, *-proposed, *-updtaes, *-security, and
-        *-backports to allowed distributions
-    + patches/cindent-fix.patch:
-      - added again
-    + debian/control:
-      - drop lesstif2-dev from Build-Depends
-      - drop vim-lesstif package
-      - add libxt-dev to Build-Depends to fix build
-    + debian/rules:
-      - enable pythoninterpreter on basic builds
-      - skip -lesstif and -full variants
-      - remove references to vim-full package
-      - create a .pot file for translations
-    + debian/gvim.desktop:
-      - add NoDisplay=true
-
- -- Colin Watson <cjwatson@ubuntu.com>  Fri, 15 Dec 2006 12:15:18 +0000
 
 vim (1:7.0-164+1) unstable; urgency=low
 
@@ -2352,18 +1950,6 @@ vim (1:7.0-152+1) unstable; urgency=low
       name
 
  -- Stefano Zacchiroli <zack@debian.org>  Wed, 25 Oct 2006 17:07:37 +0200
-
-vim (1:7.0-122+1ubuntu1) feisty; urgency=low
-
-  * Resynchronise with Debian.
-  * patches/900_debcontrol.vim.diff: Add metapackages section.
-  * patches/901_debchangelog.vim.diff: Add dapper-proposed, edgy-proposed,
-    feisty, feisty-security, feisty-proposed, feisty-updates, and
-    feisty-backports targets.
-  * patches/add-ubuntu-sources.diff: Add feisty, *-proposed, and *-backports
-    distributions.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Fri, 27 Oct 2006 11:57:31 +0100
 
 vim (1:7.0-122+1) unstable; urgency=medium
 
@@ -2429,41 +2015,6 @@ vim (1:7.0-094+1) unstable; urgency=medium
 
  -- Stefano Zacchiroli <zack@debian.org>  Sun, 10 Sep 2006 11:59:14 +0200
 
-vim (1:7.0-035+1ubuntu5) edgy; urgency=low
-
-  * Backport from Debian (James Vega, closes: Malone #66733):
-    - Build vim-tiny with multibyte support. (closes: #361378)
-
- -- Colin Watson <cjwatson@ubuntu.com>  Wed, 18 Oct 2006 18:43:57 +0100
-
-vim (1:7.0-035+1ubuntu4) edgy; urgency=low
-
-  * patches/901_debchangelog.vim.diff: Add *-backports and
-    dapper-commercial.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Mon, 11 Sep 2006 15:52:54 +0100
-
-vim (1:7.0-035+1ubuntu3) edgy; urgency=low
-
-  * patches/901_debchangelog.vim.diff: Fix a couple of misplaced spaces so
-    that dapper and edgy-updates are highlighted properly.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Mon, 11 Sep 2006 13:53:48 +0100
-
-vim (1:7.0-035+1ubuntu2) edgy; urgency=low
-
-  * patches/add-ubuntu-sources.diff:
-    + Add Ubuntu specific parts to the sources.list syntax highlighting.
-      Thanks to Karl Goetz for the patch (Ubuntu: #30796)
-
- -- Sebastian Dröge <slomo@ubuntu.com>  Sat, 22 Jul 2006 17:13:23 +0200
-
-vim (1:7.0-035+1ubuntu1) edgy; urgency=low
-
-  * Merge from debian unstable.
-
- -- Martin Pitt <martin.pitt@ubuntu.com>  Wed, 12 Jul 2006 15:16:50 +0200
-
 vim (1:7.0-035+1) unstable; urgency=low
 
   [ Debian Vim Maintainers ]
@@ -2484,45 +2035,6 @@ vim (1:7.0-035+1) unstable; urgency=low
   * Removed patch edit.c.diff, no longer needed after upstream patch 023
 
  -- James Vega <jamessan@debian.org>  Mon,  3 Jul 2006 01:43:11 -0400
-
-vim (1:7.0-017+8ubuntu2) edgy; urgency=low
-
-  * Cleaned up cruft in debian/rules diff.
-  * Build vim-full, since we can build it in main.
-  * Restore old changelog entries.
-  * patches/901_debchangelog: Add *-security and *-updates pockets for Ubuntu
-    releases.
-
- -- Martin Pitt <martin.pitt@ubuntu.com>  Thu, 29 Jun 2006 12:47:54 +0200
-
-vim (1:7.0-017+8ubuntu1) edgy; urgency=low
-
-  * Sync with Debian:
-    Remaining Ubuntu Changes
-    + debian/runtime/debian.vim.in:
-      - disable autoindent and backup files
-    + patches/debcontrol.vim.diff:
-      - add restricted, universe, multiverse to allowed sections
-    + patches/debsources.vim.diff:
-      - add restricted, universe, multiverse to allowed sections
-      - add dapper and edgy to allowed distributions
-    + patches/debchangelog.syntax.vim.diff:
-      - add breezy, dapper and edgy to allowed distributions
-    + debian/control:
-      - drop lesstif2-dev from Build-Depends
-      - drop vim-lesstif and vim-full packages
-      - add libxt-dev to Build-Depends to fix build
-    + debian/rules:
-      - enable pythoninterpreter on basic builds
-      - skip -lesstif and -full variants
-      - remove references to vim-full package
-      - create a .pot file for translations
-    + debian/gvim.desktop:
-      - add NoDisplay=true
-    + patch/cindent-fix.patch:
-      - added again
-
- -- Sebastian Dröge <slomo@ubuntu.com>  Wed, 28 Jun 2006 00:58:52 +0200
 
 vim (1:7.0-017+8) unstable; urgency=medium
 
@@ -2851,50 +2363,6 @@ vim (1:6.4-007+1) unstable; urgency=low
 
  -- James Vega <jamessan@debian.org>  Wed,  8 Feb 2006 15:11:37 -0500
 
-vim (1:6.4-006+2ubuntu6) dapper; urgency=low
-
-  * debian/rules: Create a POT file on build.
-
- -- Martin Pitt <martin.pitt@ubuntu.com>  Tue, 23 May 2006 11:39:49 +0200
-
-vim (1:6.4-006+2ubuntu5) dapper; urgency=low
-
-  * Apply patch from Ryan Lortie to fix Ubuntu #44431.
-  * Also add edgy to the Ubuntu releases list.
-
- -- Scott James Remnant <scott@ubuntu.com>  Thu, 18 May 2006 06:11:48 +0100
-
-vim (1:6.4-006+2ubuntu4) dapper; urgency=low
-
-  * Reduce the vim alternative to 35 priority, it was having ideas
-    somewhat above its station.
-
- -- Scott James Remnant <scott@ubuntu.com>  Thu, 27 Apr 2006 23:21:42 +0100
-
-vim (1:6.4-006+2ubuntu3) dapper; urgency=low
-
-  * debian/updates/deb{control,sources}.vim: Add Ubuntu releases and
-    components. Thanks to Karl Goetz <kamping_kaiser@internode.on.net> and
-    Barry deFreese <bddebian@comcast.net> for their initial patches.
-    Closes: LP#30796
-
- -- Martin Pitt <martin.pitt@ubuntu.com>  Wed, 26 Apr 2006 20:49:31 +0200
-
-vim (1:6.4-006+2ubuntu2) dapper; urgency=low
-
-  * Reenable vim-ruby since we can now build it in main.
-
- -- Daniel Silverstone <daniel.silverstone@ubuntu.com>  Thu, 23 Mar 2006 12:32:25 +0000
-
-vim (1:6.4-006+2ubuntu1) dapper; urgency=low
-
-  * Synchronize with Debian unstable.
-  * Convert Ubuntu patches to use quilt.
-  * Re-register alternative for `editor'.
-  * Install .desktop file again, add attribute NoDisplay=true.
-
- -- Matthias Klose <doko@ubuntu.com>  Thu,  2 Feb 2006 13:55:52 +0000
-
 vim (1:6.4-006+2) unstable; urgency=low
 
   [ Norbert Tretkowski ]
@@ -3006,35 +2474,6 @@ vim (1:6.4-004+1) unstable; urgency=low
   * Updated syntax highlighting for asterisk.vim (Closes: #338256)
 
  -- Debian VIM Maintainers <pkg-vim-maintainers@lists.alioth.debian.org>  Wed,  7 Dec 2005 22:02:34 +0100
-
-vim (1:6.4-001+2) unstable; urgency=low
-
-  [ Stefano Zacchiroli ]
-  * Fixed debian/runtime/vimrc, last version broke some plugins behaviour
-    (e.g. gzip, netrw) on files specified on cmdline.
-
- -- Debian VIM Maintainers <pkg-vim-maintainers@lists.alioth.debian.org>  Sun, 23 Oct 2005 16:03:43 +0200
-
-vim (1:6.4-001+2ubuntu3) dapper; urgency=low
-
-  * Drop GTK support in vim-basic again, to stop blowing out ubuntu-minimal.
-
- -- Adam Conrad <adconrad@ubuntu.com>  Thu, 10 Nov 2005 12:28:39 -0500
-
-vim (1:6.4-001+2ubuntu2) dapper; urgency=low
-
-  * Remove .desktop items -- oops.
-  * Re-enable GTK support in vim-basic.
-
- -- Daniel Stone <daniel.stone@ubuntu.com>  Fri, 28 Oct 2005 09:44:51 +1000
-
-vim (1:6.4-001+2ubuntu1) dapper; urgency=low
-
-  * Resync with Debian.
-  * Add 'dapper' to the list of supported distribution keywords.
-  * Drop patch #990, as it has been merged upstream.
-
- -- Daniel Stone <daniel.stone@ubuntu.com>  Tue, 25 Oct 2005 07:57:58 +1000
 
 vim (1:6.4-001+2) unstable; urgency=low
 
@@ -3226,32 +2665,6 @@ vim (1:6.3-085+1) unstable; urgency=high
 
  -- Debian VIM Maintainers <pkg-vim-maintainers@lists.alioth.debian.org>  Thu, 28 Jul 2005 12:16:06 +0200
 
-vim (1:6.3-078+1ubuntu3) breezy; urgency=low
-
-  * Rebuild for the cairo1 -> cairo2 transition.
-
- -- Adam Conrad <adconrad@ubuntu.com>  Tue, 23 Aug 2005 01:57:09 +1000
-
-vim (1:6.3-078+1ubuntu2) breezy; urgency=low
-
-  * SECURITY UPDATE: Fix code execution.
-  * Add debian/patches/990_modeline_codeexec.diff:
-    - Do not execute code in glob() and expand() statements when we read them
-      from a modeline.
-    - Combined upstream patches 6.3.081 and 6.3.082.
-    - References:
-      http://www.guninski.com/where_do_you_want_billg_to_go_today_5.html
-  * debian/patches/124_errorformat.vim.diff: Remove obsolete hunk that doesn't
-    apply any more.
-
- -- Martin Pitt <martin.pitt@ubuntu.com>  Tue, 26 Jul 2005 11:30:46 +0000
-
-vim (1:6.3-078+1ubuntu1) breezy; urgency=low
-
-  * Resynchronise with Debian.
-
- -- Michael Vogt <michael.vogt@ubuntu.com>  Thu, 23 Jun 2005 15:32:31 +0200
-
 vim (1:6.3-078+1) unstable; urgency=low
 
   * New upstream patches (073 to 078), see README.gz for details.
@@ -3350,25 +2763,6 @@ vim (1:6.3-071+1) unstable; urgency=medium
       CHECK/INIT blocks (similar to BEGIN/END).
 
  -- Norbert Tretkowski <nobse@debian.org>  Sun, 24 Apr 2005 17:26:49 +0200
-
-vim (1:6.3-68+4ubuntu3) breezy; urgency=low
-
-  * debian/control:
-    - Build-Depends on libxt-dev (Ubuntu: #11113).
-
- -- Sebastien Bacher <seb128@canonical.com>  Fri, 27 May 2005 19:46:38 +0200
-
-vim (1:6.3-68+4ubuntu2) breezy; urgency=low
-
-  * Drop vim-lesstif package.
-
- -- Daniel Stone <daniel.stone@ubuntu.com>  Mon, 23 May 2005 22:19:45 +1000
-
-vim (1:6.3-68+4ubuntu1) breezy; urgency=low
-
-  * Add 'breezy' to the list of accepted distribution keywords.
-
- -- Daniel Stone <daniel.stone@ubuntu.com>  Wed, 13 Apr 2005 12:44:25 +1000
 
 vim (1:6.3-068+4) unstable; urgency=medium
 
@@ -3574,57 +2968,6 @@ vim (1:6.3-054+1) unstable; urgency=low
 
  -- Norbert Tretkowski <nobse@debian.org>  Wed, 05 Jan 2005 20:51:36 +0100
 
-vim (1:6.3-046+1ubuntu7) hoary; urgency=low
-
-  * Ensure kubuntu_01_xdg_menus.diff is not applied before uploading.
-
- -- Jonathan Riddell <jr@jriddell.org>  Sun,  3 Apr 2005 13:09:32 +0100
-
-vim (1:6.3-046+1ubuntu6) hoary; urgency=low
-
-  * Add kubuntu_01_xdg_menus.diff to make kvim menu entry XDG compliant.
-
- -- Jonathan Riddell <jr@jriddell.org>  Sun,  3 Apr 2005 00:44:21 +0000
-
-vim (1:6.3-046+1ubuntu5) hoary; urgency=low
-
-  * Revert KDE removal, thus making the kvim package actually have useful
-    content rather than just a broken diversion of vim. kvim-ruby is still
-    skipped.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Tue,  8 Mar 2005 00:09:16 +0000
-
-vim (1:6.3-046+1ubuntu4) hoary; urgency=low
-
-  * Drop editor alternative priority to 35, since Ubuntu installs vim by
-    default (closes: Ubuntu #4710).
-
- -- Colin Watson <cjwatson@ubuntu.com>  Tue,  1 Mar 2005 15:37:33 +0000
-
-vim (1:6.3-046+1ubuntu3) hoary; urgency=low
-
-  * Don't autoindent by default (Ubuntu: #5602)
-
- -- Thom May <thom@planetarytramp.net>  Wed, 19 Jan 2005 12:10:29 +0000
-
-vim (1:6.3-046+1ubuntu2) hoary; urgency=low
-
-  * SECURITY UPDATE: fix insecure temporary files
-  * Added patch 104_secure_tempfiles.diff: use mktemp instead of insecure $$
-    construction to create temporary files in vimspell.sh and tcltags.sh
-  * References:
-    CAN-2005-0069
-    http://bugs.debian.org/289560
-
- -- Martin Pitt <martin.pitt@ubuntu.com>  Tue, 18 Jan 2005 16:29:10 +0100
-
-vim (1:6.3-046+1ubuntu1) hoary; urgency=low
-
-  * Resynchronise with Debian.
-  * debian/vim-variant.desktop: Disable menu item again.
-
- -- Colin Watson <cjwatson@canonical.com>  Sun, 19 Dec 2004 11:42:55 +0000
-
 vim (1:6.3-046+0sarge1) testing-proposed-updates; urgency=high
 
   * Built on testing for testing-proposed-updates because patch 045 fixes
@@ -3641,35 +2984,6 @@ vim (1:6.3-046+1) unstable; urgency=low
   * Added farsi fonts to vim-common package. (closes: #258773)
 
  -- Norbert Tretkowski <nobse@debian.org>  Sun, 12 Dec 2004 02:36:11 +0100
-
-vim (1:6.3-031+3ubuntu4) hoary; urgency=low
-
-  * Rebuild with python2.4.
-
- -- Matthias Klose <m@klose.in-berlin.de>  Thu, 16 Dec 2004 11:57:12 +0100
-
-vim (1:6.3-031+3ubuntu3) hoary; urgency=low
-
-  * 900_debcontrol.vim.diff: Add restricted, universe, and multiverse to
-    debcontrolSection.
-  * debian/rules (make_patch): Ignore error code from diff, since it'll
-    normally be non-zero.
-
- -- Colin Watson <cjwatson@canonical.com>  Fri, 10 Dec 2004 12:47:00 +0100
-
-vim (1:6.3-031+3ubuntu2) hoary; urgency=low
-
-  * 900_debcontrol.vim.diff: Add amd64 to debcontrolArchitecture.
-  * 901_debchangelog.vim.diff: Add warty and hoary to debchangelogTarget.
-  * Fix changelog ordering.
-
- -- Colin Watson <cjwatson@canonical.com>  Mon,  6 Dec 2004 18:23:01 +0100
-
-vim (1:6.3-031+3ubuntu1) hoary; urgency=low
-
-  * Resynchronise with Debian.
-
- -- Scott James Remnant <scott@canonical.com>  Wed, 17 Nov 2004 00:17:02 +0000
 
 vim (1:6.3-031+3) unstable; urgency=low
 
@@ -3697,30 +3011,6 @@ vim (1:6.3-031+1) unstable; urgency=low
   * Updated tpp and debcontrol syntax files, thanks to Gerfried Fuchs.
 
  -- Norbert Tretkowski <nobse@debian.org>  Tue, 09 Nov 2004 18:56:42 +0100
-
-vim (1:6.3-025+1ubuntu2) warty; urgency=low
-
-  * debian/vim-gnome.desktop:
-    - Disable menu item.
-
- -- Jeff Waugh <jeff.waugh@canonical.com>  Fri,  8 Oct 2004 10:04:36 +1000
-
-vim (1:6.3-025+1ubuntu1) warty; urgency=low
-
-  * New version from sid (Closes: Warty#1687)
-    - Fixes diversions (Closes: Warty#834)
-  * Merge changes from 1:6.2-532+4ubuntu1
-    - Don't build kvim*
-    - Remove build-dependency on kdelibs
-    - Don't build vim-ruby
-    - Remove build-dependencies on ruby, ruby-dev
-  * Build vim-basic with python support
-  * Don't build with GNOME support, since that would bloat base
-  * Add conflicts: vim (= 1:6.2-532+4ubuntu2) to vim variants
-    due to moving of gvimrc
-    (Closes: Warty#1717
-
- -- Matt Zimmerman <mdz@canonical.com>  Fri, 24 Sep 2004 13:46:42 -0700
 
 vim (1:6.3-025+1) unstable; urgency=low
 

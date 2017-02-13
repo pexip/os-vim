@@ -8,10 +8,8 @@ Author: Stefano Zacchiroli <zack@debian.org>
 Author: James Vega <jamessan@debian.org>
 Bug-Debian: http://bugs.debian.org/222138
 
-Index: vim/src/main.c
-===================================================================
---- vim.orig/src/main.c	2011-10-04 20:05:50.765593650 -0400
-+++ vim/src/main.c	2011-10-04 20:06:00.185790392 -0400
+--- a/src/main.c
++++ b/src/main.c
 @@ -83,6 +83,9 @@
  #ifdef FEAT_DIFF
      int		diff_mode;		/* start with 'diff' set */
@@ -22,7 +20,7 @@ Index: vim/src/main.c
  } mparm_T;
  
  /* Values for edit_type. */
-@@ -1575,6 +1578,10 @@
+@@ -1661,6 +1664,10 @@
      }
      else if (STRNICMP(initstr, "vim", 3) == 0)
  	initstr += 3;
@@ -33,7 +31,7 @@ Index: vim/src/main.c
  
      /* Catch "[r][g]vimdiff" and "[r][g]viewdiff". */
      if (STRICMP(initstr, "diff") == 0)
-@@ -2885,7 +2892,12 @@
+@@ -2988,7 +2995,12 @@
  	 * Get system wide defaults, if the file name is defined.
  	 */
  #ifdef SYS_VIMRC_FILE
@@ -47,11 +45,9 @@ Index: vim/src/main.c
  #endif
  #ifdef MACOS_X
  	(void)do_source((char_u *)"$VIMRUNTIME/macmap.vim", FALSE, DOSO_NONE);
-Index: vim/src/os_unix.h
-===================================================================
---- vim.orig/src/os_unix.h	2011-10-04 20:05:50.789594152 -0400
-+++ vim/src/os_unix.h	2011-10-04 20:06:00.189790476 -0400
-@@ -233,6 +233,9 @@
+--- a/src/os_unix.h
++++ b/src/os_unix.h
+@@ -242,6 +242,9 @@
  /*
   * Unix system-dependent file names
   */

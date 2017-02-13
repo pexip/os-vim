@@ -43,7 +43,7 @@
  * it becomes zero.  This is likely a problem of not being able to run the
  * test program.  Other items from configure may also be wrong then!
  */
-# if (SIZEOF_INT == 0)
+# if (VIM_SIZEOF_INT == 0)
     Error: configure did not run properly.  Check auto/config.log.
 # endif
 
@@ -77,6 +77,10 @@
 # endif
 # include <floss.h>
 # define ROOT_UID 65535
+# define OLDXAW
+# if (_TANDEM_ARCH_ == 2 && __H_Series_RVU >= 621)
+#  define SA_ONSTACK_COMPATIBILITY
+# endif
 #else
 # define ROOT_UID 0
 #endif
@@ -101,10 +105,13 @@
 # endif
 # ifndef FEAT_CLIPBOARD
 #  define FEAT_CLIPBOARD
+#  if defined(FEAT_SMALL) && !defined(FEAT_MOUSE)
+#   define FEAT_MOUSE
+#  endif
 # endif
 #endif
 #if defined(MACOS_X) || defined(MACOS_CLASSIC)
-#  define MACOS
+# define MACOS
 #endif
 #if defined(MACOS_X) && defined(MACOS_CLASSIC)
     Error: To compile for both MACOS X and Classic use a Classic Carbon
@@ -127,6 +134,13 @@
 # endif
 #endif
 
+/* Check support for rendering options */
+#ifdef FEAT_GUI
+# if defined(FEAT_DIRECTX)
+#  define FEAT_RENDER_OPTIONS
+# endif
+#endif
+
 /* Visual Studio 2005 has 'deprecated' many of the standard CRT functions */
 #if _MSC_VER >= 1400
 # define _CRT_SECURE_NO_DEPRECATE
@@ -145,22 +159,22 @@
 #endif
 
 /*
- * SIZEOF_INT is used in feature.h, and the system-specific included files
- * need items from feature.h.  Therefore define SIZEOF_INT here.
+ * VIM_SIZEOF_INT is used in feature.h, and the system-specific included files
+ * need items from feature.h.  Therefore define VIM_SIZEOF_INT here.
  */
 #ifdef WIN3264
-# define SIZEOF_INT 4
+# define VIM_SIZEOF_INT 4
 #endif
 #ifdef MSDOS
 # ifdef DJGPP
 #  ifndef FEAT_GUI_GTK		/* avoid problems when generating prototypes */
-#   define SIZEOF_INT 4		/* 32 bit ints */
+#   define VIM_SIZEOF_INT 4	/* 32 bit ints */
 #  endif
 #  define DOS32
 #  define FEAT_CLIPBOARD
 # else
 #  ifndef FEAT_GUI_GTK		/* avoid problems when generating prototypes */
-#   define SIZEOF_INT 2		/* 16 bit ints */
+#   define VIM_SIZEOF_INT 2	/* 16 bit ints */
 #  endif
 #  define SMALL_MALLOC		/* 16 bit storage allocation */
 #  define DOS16
@@ -171,18 +185,18 @@
   /* Be conservative about sizeof(int). It could be 4 too. */
 # ifndef FEAT_GUI_GTK	/* avoid problems when generating prototypes */
 #  ifdef __GNUC__
-#   define SIZEOF_INT	4
+#   define VIM_SIZEOF_INT	4
 #  else
-#   define SIZEOF_INT	2
+#   define VIM_SIZEOF_INT	2
 #  endif
 # endif
 #endif
 #ifdef MACOS
 # if defined(__POWERPC__) || defined(MACOS_X) || defined(__fourbyteints__) \
   || defined(__MRC__) || defined(__SC__) || defined(__APPLE_CC__)/* MPW Compilers */
-#  define SIZEOF_INT 4
+#  define VIM_SIZEOF_INT 4
 # else
-#  define SIZEOF_INT 2
+#  define VIM_SIZEOF_INT 2
 # endif
 #endif
 
@@ -414,12 +428,12 @@ typedef		 long __w64     long_i;
 #define PRINTF_DECIMAL_LONG_U SCANF_DECIMAL_LONG_U
 
 /*
- * Only systems which use configure will have SIZEOF_OFF_T and SIZEOF_LONG
+ * Only systems which use configure will have SIZEOF_OFF_T and VIM_SIZEOF_LONG
  * defined, which is ok since those are the same systems which can have
  * varying sizes for off_t.  The other systems will continue to use "%ld" to
  * print off_t since off_t is simply a typedef to long for them.
  */
-#if defined(SIZEOF_OFF_T) && (SIZEOF_OFF_T > SIZEOF_LONG)
+#if defined(SIZEOF_OFF_T) && (SIZEOF_OFF_T > VIM_SIZEOF_LONG)
 # define LONG_LONG_OFF_T
 #endif
 
@@ -445,7 +459,7 @@ typedef unsigned char sattr_T;
 # ifdef UNICODE16
 typedef unsigned short u8char_T;    /* short should be 16 bits */
 # else
-#  if SIZEOF_INT >= 4
+#  if VIM_SIZEOF_INT >= 4
 typedef unsigned int u8char_T;	    /* int is 32 bits */
 #  else
 typedef unsigned long u8char_T;	    /* long should be 32 bits or more */
@@ -490,7 +504,7 @@ typedef unsigned long u8char_T;	    /* long should be 32 bits or more */
 #  include <string.h>
 # endif
 # if defined(HAVE_STRINGS_H) && !defined(NO_STRINGS_WITH_STRING_H)
-#   include <strings.h>
+#  include <strings.h>
 # endif
 # ifdef HAVE_STAT_H
 #  include <stat.h>
@@ -515,22 +529,22 @@ typedef unsigned long u8char_T;	    /* long should be 32 bits or more */
 # include <stdarg.h>
 #endif
 
-# if defined(HAVE_SYS_SELECT_H) && \
+#if defined(HAVE_SYS_SELECT_H) && \
 	(!defined(HAVE_SYS_TIME_H) || defined(SYS_SELECT_WITH_SYS_TIME))
-#  include <sys/select.h>
-# endif
+# include <sys/select.h>
+#endif
 
-# ifndef HAVE_SELECT
-#  ifdef HAVE_SYS_POLL_H
-#   include <sys/poll.h>
+#ifndef HAVE_SELECT
+# ifdef HAVE_SYS_POLL_H
+#  include <sys/poll.h>
+#  define HAVE_POLL
+# else
+#  ifdef HAVE_POLL_H
+#   include <poll.h>
 #   define HAVE_POLL
-#  else
-#   ifdef HAVE_POLL_H
-#    include <poll.h>
-#    define HAVE_POLL
-#   endif
 #  endif
 # endif
+#endif
 
 /* ================ end of the header file puzzle =============== */
 
@@ -781,6 +795,9 @@ extern char *(*dyn_libintl_textdomain)(const char *domainname);
 #define EXPAND_FILES_IN_PATH	38
 #define EXPAND_OWNSYNTAX	39
 #define EXPAND_LOCALES		40
+#define EXPAND_HISTORY		41
+#define EXPAND_USER		42
+#define EXPAND_SYNTIME		43
 
 /* Values for exmode_active (0 is no exmode) */
 #define EXMODE_NORMAL		1
@@ -794,6 +811,7 @@ extern char *(*dyn_libintl_textdomain)(const char *domainname);
 #define WILD_PREV		5
 #define WILD_ALL		6
 #define WILD_LONGEST		7
+#define WILD_ALL_KEEP		8
 
 #define WILD_LIST_NOTFOUND	1
 #define WILD_HOME_REPLACE	2
@@ -817,6 +835,7 @@ extern char *(*dyn_libintl_textdomain)(const char *domainname);
 #define EW_ICASE	0x100	/* ignore case */
 #define EW_NOERROR	0x200	/* no error for bad regexp */
 #define EW_NOTWILD	0x400	/* add match with literal name if exists */
+#define EW_KEEPDOLLAR	0x800	/* do not escape $, $var is expanded */
 /* Note: mostly EW_NOTFOUND and EW_SILENT are mutually exclusive: EW_NOTFOUND
  * is used when executing commands and EW_SILENT for interactive expanding. */
 
@@ -1070,12 +1089,14 @@ extern char *(*dyn_libintl_textdomain)(const char *domainname);
 #define INSCHAR_DO_COM	2	/* format comments */
 #define INSCHAR_CTRLV	4	/* char typed just after CTRL-V */
 #define INSCHAR_NO_FEX	8	/* don't use 'formatexpr' */
+#define INSCHAR_COM_LIST 16	/* format comments with list/2nd line indent */
 
 /* flags for open_line() */
 #define OPENLINE_DELSPACES  1	/* delete spaces after cursor */
 #define OPENLINE_DO_COM	    2	/* format comments */
 #define OPENLINE_KEEPTRAIL  4	/* keep trailing spaces */
 #define OPENLINE_MARKFIX    8	/* fix mark positions */
+#define OPENLINE_COM_LIST  16	/* format comments with list/2nd line indent */
 
 /*
  * There are four history tables:
@@ -1167,6 +1188,15 @@ extern char *(*dyn_libintl_textdomain)(const char *domainname);
 #define RESIZE_BOTH	15	/* resize in both directions */
 
 /*
+ * flags for check_changed()
+ */
+#define CCGD_AW		1	/* do autowrite if buffer was changed */
+#define CCGD_MULTWIN	2	/* check also when several wins for the buf */
+#define CCGD_FORCEIT	4	/* ! used */
+#define CCGD_ALLBUF	8	/* may write all buffers */
+#define CCGD_EXCMD	16	/* may suggest using ! */
+
+/*
  * "flags" values for option-setting functions.
  * When OPT_GLOBAL and OPT_LOCAL are both missing, set both local and global
  * values, get local value.
@@ -1237,6 +1267,7 @@ enum auto_event
     EVENT_CMDWINENTER,		/* after entering the cmdline window */
     EVENT_CMDWINLEAVE,		/* before leaving the cmdline window */
     EVENT_COLORSCHEME,		/* after loading a colorscheme */
+    EVENT_COMPLETEDONE,		/* after finishing insert complete */
     EVENT_FILEAPPENDPOST,	/* after appending to a file */
     EVENT_FILEAPPENDPRE,	/* before appending to a file */
     EVENT_FILEAPPENDCMD,	/* append to a file using command */
@@ -1262,8 +1293,9 @@ enum auto_event
     EVENT_INSERTENTER,		/* when entering Insert mode */
     EVENT_INSERTLEAVE,		/* when leaving Insert mode */
     EVENT_MENUPOPUP,		/* just before popup menu is displayed */
-    EVENT_QUICKFIXCMDPOST,	/* after :make, :grep etc */
-    EVENT_QUICKFIXCMDPRE,	/* before :make, :grep etc */
+    EVENT_QUICKFIXCMDPOST,	/* after :make, :grep etc. */
+    EVENT_QUICKFIXCMDPRE,	/* before :make, :grep etc. */
+    EVENT_QUITPRE,		/* before :quit */
     EVENT_SESSIONLOADPOST,	/* after loading a session file */
     EVENT_STDINREADPOST,	/* after reading from stdin */
     EVENT_STDINREADPRE,		/* before reading from stdin */
@@ -1293,6 +1325,9 @@ enum auto_event
     EVENT_TABENTER,		/* after entering a tab page */
     EVENT_SHELLCMDPOST,		/* after ":!cmd" */
     EVENT_SHELLFILTERPOST,	/* after ":1,2!cmd", ":w !cmd", ":r !cmd". */
+    EVENT_TEXTCHANGED,		/* text was modified */
+    EVENT_TEXTCHANGEDI,		/* text was modified in Insert mode*/
+    EVENT_CMDUNDEFINED,		/* command undefined */
     NUM_EVENTS			/* MUST be the last one */
 };
 
@@ -1317,6 +1352,7 @@ typedef enum
     , HLF_M	    /* "--More--" message */
     , HLF_CM	    /* Mode (e.g., "-- INSERT --") */
     , HLF_N	    /* line number for ":number" and ":#" commands */
+    , HLF_CLN	    /* current line number */
     , HLF_R	    /* return to continue message and yes/no questions */
     , HLF_S	    /* status lines */
     , HLF_SNC	    /* status lines of not-current windows */
@@ -1354,7 +1390,7 @@ typedef enum
 /* The HL_FLAGS must be in the same order as the HLF_ enums!
  * When changing this also adjust the default for 'highlight'. */
 #define HL_FLAGS {'8', '@', 'd', 'e', 'h', 'i', 'l', 'm', 'M', \
-		  'n', 'r', 's', 'S', 'c', 't', 'v', 'V', 'w', 'W', \
+		  'n', 'N', 'r', 's', 'S', 'c', 't', 'v', 'V', 'w', 'W', \
 		  'f', 'F', 'A', 'C', 'D', 'T', '-', '>', \
 		  'B', 'P', 'R', 'L', \
 		  '+', '=', 'x', 'X', '*', '#', '_', '!', '.', 'o'}
@@ -1585,7 +1621,7 @@ typedef unsigned short disptick_T;	/* display tick type */
  * With this we restrict the maximum line length to 1073741823. I guess this is
  * not a real problem. BTW:  Longer lines are split.
  */
-#if SIZEOF_INT >= 4
+#if VIM_SIZEOF_INT >= 4
 # ifdef __MVS__
 #  define MAXCOL (0x3fffffffL)		/* maximum column number, 30 bits */
 # else
@@ -1617,18 +1653,8 @@ void mch_memmove __ARGS((void *, void *, size_t));
  * (this does not account for maximum name lengths and things like "../dir",
  * thus it is not 100% accurate!)
  */
-#ifdef CASE_INSENSITIVE_FILENAME
-# ifdef BACKSLASH_IN_FILENAME
-#  define fnamecmp(x, y) vim_fnamecmp((x), (y))
-#  define fnamencmp(x, y, n) vim_fnamencmp((x), (y), (size_t)(n))
-# else
-#  define fnamecmp(x, y) MB_STRICMP((x), (y))
-#  define fnamencmp(x, y, n) MB_STRNICMP((x), (y), (n))
-# endif
-#else
-# define fnamecmp(x, y) strcmp((char *)(x), (char *)(y))
-# define fnamencmp(x, y, n) strncmp((char *)(x), (char *)(y), (size_t)(n))
-#endif
+#define fnamecmp(x, y) vim_fnamecmp((char_u *)(x), (char_u *)(y))
+#define fnamencmp(x, y, n) vim_fnamencmp((char_u *)(x), (char_u *)(y), (size_t)(n))
 
 #ifdef HAVE_MEMSET
 # define vim_memset(ptr, c, size)   memset((ptr), (c), (size))
@@ -1700,6 +1726,8 @@ int vim_memcmp __ARGS((void *, void *, size_t));
  * character of up to 6 bytes, or one 16-bit character of up to three bytes
  * plus six following composing characters of three bytes each. */
 # define MB_MAXBYTES	21
+#else
+# define MB_MAXBYTES	1
 #endif
 
 #if (defined(FEAT_PROFILE) || defined(FEAT_RELTIME)) && !defined(PROTO)
@@ -1858,17 +1886,19 @@ typedef int proftime_T;	    /* dummy for function prototypes */
 #define VV_MOUSE_COL	51
 #define VV_OP		52
 #define VV_SEARCHFORWARD 53
-#define VV_OLDFILES	54
-#define VV_WINDOWID	55
-#define VV_LEN		56	/* number of v: vars */
+#define VV_HLSEARCH	54
+#define VV_OLDFILES	55
+#define VV_WINDOWID	56
+#define VV_PROGPATH	57
+#define VV_LEN		58	/* number of v: vars */
 
 #ifdef FEAT_CLIPBOARD
 
 /* VIM_ATOM_NAME is the older Vim-specific selection type for X11.  Still
  * supported for when a mix of Vim versions is used. VIMENC_ATOM_NAME includes
  * the encoding to support Vims using different 'encoding' values. */
-#define VIM_ATOM_NAME "_VIM_TEXT"
-#define VIMENC_ATOM_NAME "_VIMENC_TEXT"
+# define VIM_ATOM_NAME "_VIM_TEXT"
+# define VIMENC_ATOM_NAME "_VIMENC_TEXT"
 
 /* Selection states for modeless selection */
 # define SELECT_CLEARED		0
@@ -1917,7 +1947,7 @@ typedef struct VimClipboard
     GdkAtom     gtk_sel_atom;	/* PRIMARY/CLIPBOARD selection ID */
 # endif
 
-# ifdef MSWIN
+# if defined(MSWIN) || defined(FEAT_CYGWIN_WIN32_CLIPBOARD)
     int_u	format;		/* Vim's own special clipboard format */
     int_u	format_raw;	/* Vim's raw text clipboard format */
 # endif
@@ -2014,6 +2044,7 @@ typedef int VimClipboard;	/* This is required for the prototypes. */
  #pragma warning(disable : 4312)
 #endif
 
+/* Note: a NULL argument for vim_realloc() is not portable, don't use it. */
 #if defined(MEM_PROFILE)
 # define vim_realloc(ptr, size)  mem_realloc((ptr), (size))
 #else
@@ -2116,6 +2147,12 @@ typedef int VimClipboard;	/* This is required for the prototypes. */
 # endif
 #endif
 
+#if defined(FEAT_BROWSE) && defined(GTK_CHECK_VERSION)
+# if GTK_CHECK_VERSION(2,4,0)
+#  define USE_FILE_CHOOSER
+# endif
+#endif
+
 #ifndef FEAT_NETBEANS_INTG
 # undef NBDEBUG
 #endif
@@ -2167,10 +2204,6 @@ typedef int VimClipboard;	/* This is required for the prototypes. */
   /* Borland has the structure stati64 but not _stati64 */
 #  define _stati64 stati64
 # endif
-
-# include <EXTERN.h>
-# include <perl.h>
-# include <XSUB.h>
 #endif
 
 /* values for vim_handle_signal() that are not a signal */
@@ -2220,5 +2253,33 @@ typedef int VimClipboard;	/* This is required for the prototypes. */
 #define FILEINFO_ENC_FAIL    1	/* enc_to_utf16() failed */
 #define FILEINFO_READ_FAIL   2	/* CreateFile() failed */
 #define FILEINFO_INFO_FAIL   3	/* GetFileInformationByHandle() failed */
+
+/* Return value from get_option_value_strict */
+#define SOPT_BOOL	0x01	/* Boolean option */
+#define SOPT_NUM	0x02	/* Number option */
+#define SOPT_STRING	0x04	/* String option */
+#define SOPT_GLOBAL	0x08	/* Option has global value */
+#define SOPT_WIN	0x10	/* Option has window-local value */
+#define SOPT_BUF	0x20	/* Option has buffer-local value */
+#define SOPT_UNSET	0x40	/* Option does not have local value set */
+
+/* Option types for various functions in option.c */
+#define SREQ_GLOBAL	0	/* Request global option */
+#define SREQ_WIN	1	/* Request window-local option */
+#define SREQ_BUF	2	/* Request buffer-local option */
+
+/* Flags for get_reg_contents */
+#define GREG_NO_EXPR	1	/* Do not allow expression register */
+#define GREG_EXPR_SRC	2	/* Return expression itself for "=" register */
+#define GREG_LIST	4	/* Return list */
+
+/* Character used as separated in autoload function/variable names. */
+#define AUTOLOAD_CHAR '#'
+
+#ifdef FEAT_EVAL
+# define SET_NO_HLSEARCH(flag) no_hlsearch = (flag); set_vim_var_nr(VV_HLSEARCH, !no_hlsearch)
+#else
+# define SET_NO_HLSEARCH(flag) no_hlsearch = (flag)
+#endif
 
 #endif /* VIM__H */

@@ -29,7 +29,7 @@ Modeline support disabled by default
 ------------------------------------
 
 Modelines have historically been a source of security/resource vulnerabilities
-and are therefore disabled by default in /usr/share/vim/vimcurrent/debian.vim.
+and are therefore disabled by default in $VIMRUNTIME/debian.vim.
 
 You can enable them in ~/.vimrc or /etc/vim/vimrc with "set modeline".
 

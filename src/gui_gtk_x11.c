@@ -732,7 +732,10 @@ blink_cb(gpointer data UNUSED)
 gui_mch_start_blink(void)
 {
     if (blink_timer)
+    {
 	gtk_timeout_remove(blink_timer);
+	blink_timer = 0;
+    }
     /* Only switch blinking on if none of the times is zero */
     if (blink_waittime && blink_ontime && blink_offtime && gui.in_focus)
     {
@@ -1257,7 +1260,7 @@ selection_received_cb(GtkWidget		*widget UNUSED,
 	}
     }
 
-    /* Chop off any traiing NUL bytes.  OpenOffice sends these. */
+    /* Chop off any trailing NUL bytes.  OpenOffice sends these. */
     while (len > 0 && text[len - 1] == NUL)
 	--len;
 
@@ -1414,7 +1417,29 @@ selection_get_cb(GtkWidget	    *widget UNUSED,
 }
 
 /*
- * Check if the GUI can be started.  Called before gvimrc is sourced.
+ * Check if the GUI can be started.  Called before gvimrc is sourced and
+ * before fork().
+ * Return OK or FAIL.
+ */
+    int
+gui_mch_early_init_check(void)
+{
+    char_u *p;
+
+    /* Guess that when $DISPLAY isn't set the GUI can't start. */
+    p = mch_getenv((char_u *)"DISPLAY");
+    if (p == NULL || *p == NUL)
+    {
+	gui.dying = TRUE;
+	EMSG(_((char *)e_opendisp));
+	return FAIL;
+    }
+    return OK;
+}
+
+/*
+ * Check if the GUI can be started.  Called before gvimrc is sourced but after
+ * fork().
  * Return OK or FAIL.
  */
     int
@@ -1424,6 +1449,11 @@ gui_mch_init_check(void)
     if (gtk_socket_id == 0)
 	using_gnome = 1;
 #endif
+
+    /* This defaults to argv[0], but we want it to match the name of the
+     * shipped gvim.desktop so that Vim's windows can be associated with this
+     * file. */
+    g_set_prgname("gvim");
 
     /* Don't use gtk_init() or gnome_init(), it exits on failure. */
     if (!gtk_init_check(&gui_argc, &gui_argv))
@@ -2024,6 +2054,7 @@ write_session_file(char_u *filename)
 
     ssop_flags = save_ssop_flags;
     g_free(mksession_cmdline);
+
     /*
      * Reopen the file and append a command to restore v:this_session,
      * as if this save never happened.	This is to avoid conflicts with
@@ -3050,7 +3081,7 @@ gui_gtk_set_selection_targets(void)
 
     for (i = 0; i < (int)N_SELECTION_TARGETS; ++i)
     {
-	/* OpenOffice tries to use TARGET_HTML and fails when it doesn't
+	/* OpenOffice tries to use TARGET_HTML and fails when we don't
 	 * return something, instead of trying another target. Therefore only
 	 * offer TARGET_HTML when it works. */
 	if (!clip_html && selection_targets[i].info == TARGET_HTML)
@@ -3108,8 +3139,20 @@ gui_mch_init(void)
      * exits on failure, but that's a non-issue because we already called
      * gtk_init_check() in gui_mch_init_check(). */
     if (using_gnome)
+    {
 	gnome_program_init(VIMPACKAGE, VIM_VERSION_SHORT,
 			   LIBGNOMEUI_MODULE, gui_argc, gui_argv, NULL);
+# if defined(FEAT_FLOAT) && defined(LC_NUMERIC)
+	{
+	    char *p = setlocale(LC_NUMERIC, NULL);
+
+	    /* Make sure strtod() uses a decimal point, not a comma. Gnome
+	     * init may change it. */
+	    if (p == NULL || strcmp(p, "C") != 0)
+	       setlocale(LC_NUMERIC, "C");
+	}
+# endif
+    }
 #endif
     vim_free(gui_argv);
     gui_argv = NULL;
@@ -3663,6 +3706,7 @@ gui_mch_open(void)
 		p_window = h - 1;
 	    Rows = h;
 	}
+	limit_screen_size();
 
 	pixel_width = (guint)(gui_get_base_width() + Columns * gui.char_width);
 	pixel_height = (guint)(gui_get_base_height() + Rows * gui.char_height);
@@ -5134,8 +5178,7 @@ gui_mch_haskey(char_u *name)
     return FAIL;
 }
 
-#if defined(FEAT_TITLE) \
-	|| defined(PROTO)
+#if defined(FEAT_TITLE) || defined(FEAT_EVAL) || defined(PROTO)
 /*
  * Return the text window-id and display.  Only required for X-based GUI's
  */
@@ -5645,12 +5688,8 @@ clip_mch_request_selection(VimClipboard *cbd)
     void
 clip_mch_lose_selection(VimClipboard *cbd UNUSED)
 {
-    /* WEIRD: when using NULL to actually disown the selection, we lose the
-     * selection the first time we own it. */
-    /*
-    gtk_selection_owner_set(NULL, cbd->gtk_sel_atom, (guint32)GDK_CURRENT_TIME);
+    gtk_selection_owner_set(NULL, cbd->gtk_sel_atom, gui.event_time);
     gui_mch_update();
-     */
 }
 
 /*
@@ -5674,6 +5713,12 @@ clip_mch_own_selection(VimClipboard *cbd)
     void
 clip_mch_set_selection(VimClipboard *cbd UNUSED)
 {
+}
+
+    int
+clip_gtk_owner_exists(VimClipboard *cbd)
+{
+    return gdk_selection_owner_get(cbd->gtk_sel_atom) != NULL;
 }
 
 
@@ -5920,27 +5965,48 @@ gui_mch_drawsign(int row, int col, int typenr)
 	 * Decide whether we need to scale.  Allow one pixel of border
 	 * width to be cut off, in order to avoid excessive scaling for
 	 * tiny differences in font size.
+	 * Do scale to fit the height to avoid gaps because of linespacing.
 	 */
 	need_scale = (width > SIGN_WIDTH + 2
-		      || height > SIGN_HEIGHT + 2
+		      || height != SIGN_HEIGHT
 		      || (width < 3 * SIGN_WIDTH / 4
 			  && height < 3 * SIGN_HEIGHT / 4));
 	if (need_scale)
 	{
-	    double aspect;
+	    double  aspect;
+	    int	    w = width;
+	    int	    h = height;
 
 	    /* Keep the original aspect ratio */
 	    aspect = (double)height / (double)width;
 	    width  = (double)SIGN_WIDTH * SIGN_ASPECT / aspect;
 	    width  = MIN(width, SIGN_WIDTH);
-	    height = (double)width * aspect;
+	    if (((double)(MAX(height, SIGN_HEIGHT)) /
+		 (double)(MIN(height, SIGN_HEIGHT))) < 1.15)
+	    {
+		/* Change the aspect ratio by at most 15% to fill the
+		 * available space completly. */
+		height = (double)SIGN_HEIGHT * SIGN_ASPECT / aspect;
+		height = MIN(height, SIGN_HEIGHT);
+	    }
+	    else
+		height = (double)width * aspect;
 
-	    /* This doesn't seem to be worth caching, and doing so
-	     * would complicate the code quite a bit. */
-	    sign = gdk_pixbuf_scale_simple(sign, width, height,
-					   GDK_INTERP_BILINEAR);
-	    if (sign == NULL)
-		return; /* out of memory */
+	    if (w == width && h == height)
+	    {
+		/* no change in dimensions; don't decrease reference counter
+		 * (below) */
+		need_scale = FALSE;
+	    }
+	    else
+	    {
+		/* This doesn't seem to be worth caching, and doing so would
+		 * complicate the code quite a bit. */
+		sign = gdk_pixbuf_scale_simple(sign, width, height,
+							 GDK_INTERP_BILINEAR);
+		if (sign == NULL)
+		    return; /* out of memory */
+	    }
 	}
 
 	/* The origin is the upper-left corner of the pixmap.  Therefore

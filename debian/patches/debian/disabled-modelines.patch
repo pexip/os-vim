@@ -9,11 +9,9 @@ Author: James Vega <jamessan@debian.org>
 Bug-Debian: http://bugs.debian.org/472522
 Bug-Ubuntu: https://launchpad.net/bugs/130531
 
-Index: vim/runtime/doc/options.txt
-===================================================================
---- vim.orig/runtime/doc/options.txt	2012-01-31 20:57:19.464161258 -0500
-+++ vim/runtime/doc/options.txt	2012-01-31 20:57:48.100798518 -0500
-@@ -4830,7 +4830,7 @@
+--- a/runtime/doc/options.txt
++++ b/runtime/doc/options.txt
+@@ -4969,7 +4969,7 @@
  
  				   *'modeline'* *'ml'* *'nomodeline'* *'noml'*
  'modeline' 'ml'		boolean	(Vim default: on (off for root),

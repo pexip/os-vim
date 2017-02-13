@@ -1,27 +1,29 @@
 Source: vim
 Section: editors
 Priority: optional
-Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
-XSBC-Original-Maintainer: Debian Vim Maintainers <pkg-vim-maintainers@lists.alioth.debian.org>
+Maintainer: Debian Vim Maintainers <pkg-vim-maintainers@lists.alioth.debian.org>
 Uploaders: James McCoy <jamessan@debian.org>
-Standards-Version: 3.9.2.0
-Build-Depends: libacl1-dev, libgpmg1-dev [linux-any],
+Standards-Version: 3.9.5
+Build-Depends: libacl1-dev, libgpmg1-dev [linux-any], autoconf,
+# Building Vim's svg icons
+ pdf2svg, ghostscript,
 # B-D for dh_bugfiles
  debhelper (>= 7.2.3~),
  libtinfo-dev | libncurses5-dev, libselinux1-dev [linux-any],
 # B-D for dpkg-vendor
  dpkg-dev (>= 1.15.1),
 # B-D for GUI support
- libgtk2.0-dev, libxaw7-dev, libxt-dev, libxpm-dev,
-# m68k currently can't build the Gnome dependencies
- libgnomeui-dev [!m68k],
+ libgtk2.0-dev, libxaw7-dev, libxt-dev, libxpm-dev, libgnomeui-dev,
 # B-D for language interpreters
 # Update d/rules when ruby version changes
- libperl-dev, tcl-dev, python-dev, ruby1.8, ruby1.8-dev, lua5.1,
- liblua5.1-dev
+ libperl-dev, tcl-dev, python-dev, ruby, ruby-dev, lua5.2, liblua5.2-dev
+# ruby1.8{,-dev} Provides: ruby{,-dev} which can cause breakage on buildds if
+# ruby/ruby1.8-dev or ruby1.8/ruby-dev pairs get installed due to a mismatch in
+# the ruby binary version and the library version
+Build-Conflicts: ruby1.8 (<< 1.8.7.358-8), ruby1.8-dev (<< 1.8.7.358-8)
 Build-Depends-Indep: docbook-xml, docbook-utils
-Vcs-Hg: http://hg.debian.org/hg/pkg-vim/vim
-Vcs-Browser: http://hg.debian.org/hg/pkg-vim/vim
+Vcs-Hg: http://anonscm.debian.org/hg/pkg-vim/vim
+Vcs-Browser: http://anonscm.debian.org/hg/pkg-vim/vim
 Homepage: http://www.vim.org/
 
 Package: vim-common
@@ -29,6 +31,9 @@ Priority: important
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Recommends: vim | vim-gnome | vim-gtk | vim-athena | vim-nox | vim-tiny
+# Move vim icon from vim-gui-common to vim-common
+Breaks: vim-gui-common (<< 2:7.4.488-4~)
+Replaces: vim-gui-common (<< 2:7.4.488-4~)
 Description: Vi IMproved - Common files
  Vim is an almost compatible version of the UNIX editor Vi.
  .
@@ -171,7 +176,7 @@ Architecture: any
 Depends: vim-common (= ${binary:Version}), vim-runtime (= ${source:Version}), ${misc:Depends}, ${shlibs:Depends}
 Suggests: cscope, vim-doc
 Provides: vim, editor, vim-perl, vim-python, vim-ruby, vim-tcl, vim-lua
-Description: Vi IMproved - enhanced vi editor
+Description: Vi IMproved - enhanced vi editor - with scripting languages support
  Vim is an almost compatible version of the UNIX editor Vi.
  .
  Many new features have been added: multi level undo, syntax
