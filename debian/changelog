@@ -1,3 +1,11 @@
+vim (2:7.4.488-7+deb8u3) jessie; urgency=medium
+
+  * Backport upstream patches v8.0.0377 & v8.0.0378, to fix buffer overflows
+    when reading corrupted undo files.  (Closes: #856266, CVE-2017-6349,
+    CVE-2017-6350)
+
+ -- James McCoy <jamessan@debian.org>  Mon, 06 Mar 2017 23:52:28 -0500
+
 vim (2:7.4.488-7+deb8u2) jessie-security; urgency=high
 
   * Backport patch 8.0.0322 to fix a buffer overflow if a spellfile has an
