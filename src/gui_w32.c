@@ -25,6 +25,145 @@
 
 #include "vim.h"
 
+#if defined(FEAT_DIRECTX)
+# include "gui_dwrite.h"
+#endif
+
+#if defined(FEAT_DIRECTX) || defined(PROTO)
+static DWriteContext *s_dwc = NULL;
+static int s_directx_enabled = 0;
+static int s_directx_load_attempted = 0;
+# define IS_ENABLE_DIRECTX() (s_directx_enabled && s_dwc != NULL)
+
+    int
+directx_enabled(void)
+{
+    if (s_dwc != NULL)
+	return 1;
+    else if (s_directx_load_attempted)
+	return 0;
+    /* load DirectX */
+    DWrite_Init();
+    s_directx_load_attempted = 1;
+    s_dwc = DWriteContext_Open();
+    return s_dwc != NULL ? 1 : 0;
+}
+#endif
+
+#if defined(FEAT_RENDER_OPTIONS) || defined(PROTO)
+    int
+gui_mch_set_rendering_options(char_u *s)
+{
+#ifdef FEAT_DIRECTX
+    int	    retval = FAIL;
+    char_u  *p, *q;
+
+    int	    dx_enable = 0;
+    int	    dx_flags = 0;
+    float   dx_gamma = 0.0f;
+    float   dx_contrast = 0.0f;
+    float   dx_level = 0.0f;
+    int	    dx_geom = 0;
+    int	    dx_renmode = 0;
+    int	    dx_taamode = 0;
+
+    /* parse string as rendering options. */
+    for (p = s; p != NULL && *p != NUL; )
+    {
+	char_u  item[256];
+	char_u  name[128];
+	char_u  value[128];
+
+	copy_option_part(&p, item, sizeof(item), ","); 
+	if (p == NULL)
+	    break;
+	q = &item[0];
+	copy_option_part(&q, name, sizeof(name), ":");
+	if (q == NULL)
+	    return FAIL;
+	copy_option_part(&q, value, sizeof(value), ":");
+
+	if (STRCMP(name, "type") == 0)
+	{
+	    if (STRCMP(value, "directx") == 0)
+		dx_enable = 1;
+	    else
+		return FAIL;
+	}
+	else if (STRCMP(name, "gamma") == 0)
+	{
+	    dx_flags |= 1 << 0;
+	    dx_gamma = (float)atof(value);
+	}
+	else if (STRCMP(name, "contrast") == 0)
+	{
+	    dx_flags |= 1 << 1;
+	    dx_contrast = (float)atof(value);
+	}
+	else if (STRCMP(name, "level") == 0)
+	{
+	    dx_flags |= 1 << 2;
+	    dx_level = (float)atof(value);
+	}
+	else if (STRCMP(name, "geom") == 0)
+	{
+	    dx_flags |= 1 << 3;
+	    dx_geom = atoi(value);
+	    if (dx_geom < 0 || dx_geom > 2)
+		return FAIL;
+	}
+	else if (STRCMP(name, "renmode") == 0)
+	{
+	    dx_flags |= 1 << 4;
+	    dx_renmode = atoi(value);
+	    if (dx_renmode < 0 || dx_renmode > 6)
+		return FAIL;
+	}
+	else if (STRCMP(name, "taamode") == 0)
+	{
+	    dx_flags |= 1 << 5;
+	    dx_taamode = atoi(value);
+	    if (dx_taamode < 0 || dx_taamode > 3)
+		return FAIL;
+	}
+	else
+	    return FAIL;
+    }
+
+    /* Enable DirectX/DirectWrite */
+    if (dx_enable)
+    {
+	if (!directx_enabled())
+	    return FAIL;
+	DWriteContext_SetRenderingParams(s_dwc, NULL);
+	if (dx_flags)
+	{
+	    DWriteRenderingParams param;
+	    DWriteContext_GetRenderingParams(s_dwc, &param);
+	    if (dx_flags & (1 << 0))
+		param.gamma = dx_gamma;
+	    if (dx_flags & (1 << 1))
+		param.enhancedContrast = dx_contrast;
+	    if (dx_flags & (1 << 2))
+		param.clearTypeLevel = dx_level;
+	    if (dx_flags & (1 << 3))
+		param.pixelGeometry = dx_geom;
+	    if (dx_flags & (1 << 4))
+		param.renderingMode = dx_renmode;
+	    if (dx_flags & (1 << 5))
+		param.textAntialiasMode = dx_taamode;
+	    DWriteContext_SetRenderingParams(s_dwc, &param);
+	}
+    }
+    s_directx_enabled = dx_enable;
+
+    return OK;
+#else
+    return FAIL;
+#endif
+}
+#endif
+
 /*
  * These are new in Windows ME/XP, only defined in recent compilers.
  */
@@ -198,11 +337,17 @@ static BalloonEval  *cur_beval = NULL;
 static UINT_PTR	    BevalTimerId = 0;
 static DWORD	    LastActivity = 0;
 
+
+/* cproto fails on missing include files */
+#ifndef PROTO
+
 /*
  * excerpts from headers since this may not be presented
  * in the extremely old compilers
  */
-#include <pshpack1.h>
+# include <pshpack1.h>
+
+#endif
 
 typedef struct _DllVersionInfo
 {
@@ -213,7 +358,9 @@ typedef struct _DllVersionInfo
     DWORD dwPlatformID;
 } DLLVERSIONINFO;
 
-#include <poppack.h>
+#ifndef PROTO
+# include <poppack.h>
+#endif
 
 typedef struct tagTOOLINFOA_NEW
 {
@@ -336,11 +483,13 @@ static UINT msh_msgmousewheel = 0;
 static int	s_usenewlook;	    /* emulate W95/NT4 non-bold dialogs */
 #ifdef FEAT_TOOLBAR
 static void initialise_toolbar(void);
+static LRESULT CALLBACK toolbar_wndproc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 static int get_toolbar_bitmap(vimmenu_T *menu);
 #endif
 
 #ifdef FEAT_GUI_TABLINE
 static void initialise_tabline(void);
+static LRESULT CALLBACK tabline_wndproc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 #endif
 
 #ifdef FEAT_MBYTE_IME
@@ -384,10 +533,6 @@ static void dyn_imm_load(void);
 # define pImmSetCompositionWindow ImmSetCompositionWindow
 # define pImmGetConversionStatus  ImmGetConversionStatus
 # define pImmSetConversionStatus  ImmSetConversionStatus
-#endif
-
-#ifndef ETO_IGNORELANGUAGE
-# define ETO_IGNORELANGUAGE  0x1000
 #endif
 
 /* multi monitor support */
@@ -1250,7 +1395,7 @@ gui_mch_prepare(int *argc, char **argv)
 
 #ifdef FEAT_NETBEANS_INTG
     {
-	/* stolen from gui_x11.x */
+	/* stolen from gui_x11.c */
 	int arg;
 
 	for (arg = 1; arg < *argc; arg++)
@@ -1517,6 +1662,14 @@ gui_mch_init(void)
     if (s_textArea == NULL)
 	return FAIL;
 
+    /* Try loading an icon from $RUNTIMEPATH/bitmaps/vim.ico. */
+    {
+	HANDLE	hIcon = NULL;
+
+	if (mch_icon_load(&hIcon) == OK && hIcon != NULL)
+	    SendMessage(s_hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+    }
+
 #ifdef FEAT_MENU
     s_menuBar = CreateMenu();
 #endif
@@ -1606,12 +1759,17 @@ gui_mch_init(void)
 #endif
 
 #ifdef FEAT_EVAL
-# if _MSC_VER < 1400
+# ifndef HandleToLong
 /* HandleToLong() only exists in compilers that can do 64 bit builds */
 #  define HandleToLong(h) ((long)(h))
 # endif
     /* set the v:windowid variable */
     set_vim_var_nr(VV_WINDOWID, HandleToLong(s_hwnd));
+#endif
+
+#ifdef FEAT_RENDER_OPTIONS
+    if (p_rop)
+	(void)gui_mch_set_rendering_options(p_rop);
 #endif
 
 theend:
@@ -1668,7 +1826,7 @@ gui_mch_set_shellsize(int width, int height,
      * used by the taskbar or appbars. */
     get_work_area(&workarea_rect);
 
-    /* Get current posision of our window.  Note that the .left and .top are
+    /* Get current position of our window.  Note that the .left and .top are
      * relative to the work area.  */
     wndpl.length = sizeof(WINDOWPLACEMENT);
     GetWindowPlacement(s_hwnd, &wndpl);
@@ -1684,8 +1842,10 @@ gui_mch_set_shellsize(int width, int height,
     }
 
     /* compute the size of the outside of the window */
-    win_width = width + GetSystemMetrics(SM_CXFRAME) * 2;
-    win_height = height + GetSystemMetrics(SM_CYFRAME) * 2
+    win_width = width + (GetSystemMetrics(SM_CXFRAME) +
+			 GetSystemMetrics(SM_CXPADDEDBORDER)) * 2;
+    win_height = height + (GetSystemMetrics(SM_CYFRAME) +
+			   GetSystemMetrics(SM_CXPADDEDBORDER)) * 2
 			+ GetSystemMetrics(SM_CYCAPTION)
 #ifdef FEAT_MENU
 			+ gui_mswin_get_menu_height(FALSE)
@@ -2227,6 +2387,9 @@ gui_mch_draw_string(
 #endif
     HPEN	hpen, old_pen;
     int		y;
+#ifdef FEAT_DIRECTX
+    int		font_is_ttf_or_vector = 0;
+#endif
 
 #ifndef MSWIN16_FASTTEXT
     /*
@@ -2314,6 +2477,20 @@ gui_mch_draw_string(
     SetTextColor(s_hdc, gui.currFgColor);
     SelectFont(s_hdc, gui.currFont);
 
+#ifdef FEAT_DIRECTX
+    if (IS_ENABLE_DIRECTX())
+    {
+	TEXTMETRIC tm;
+
+	GetTextMetrics(s_hdc, &tm);
+	if (tm.tmPitchAndFamily & (TMPF_TRUETYPE | TMPF_VECTOR))
+	{
+	    font_is_ttf_or_vector = 1;
+	    DWriteContext_SetFont(s_dwc, (HFONT)gui.currFont);
+	}
+    }
+#endif
+
     if (pad_size != Columns || padding == NULL || padding[0] != gui.char_width)
     {
 	vim_free(padding);
@@ -2326,12 +2503,6 @@ gui_mch_draw_string(
 	    for (i = 0; i < pad_size; i++)
 		padding[i] = gui.char_width;
     }
-
-    /* On NT, tell the font renderer not to "help" us with Hebrew and Arabic
-     * text.  This doesn't work in 9x, so we have to deal with it manually on
-     * those systems. */
-    if (os_version.dwPlatformId == VER_PLATFORM_WIN32_NT)
-	foptions |= ETO_IGNORELANGUAGE;
 
     /*
      * We have to provide the padding argument because italic and bold versions
@@ -2347,6 +2518,14 @@ gui_mch_draw_string(
 	for (n = 0; n < len; ++n)
 	    if (text[n] >= 0x80)
 		break;
+
+#if defined(FEAT_DIRECTX)
+    /* Quick hack to enable DirectWrite.  To use DirectWrite (antialias), it is
+     * required that unicode drawing routine, currently.  So this forces it
+     * enabled. */
+    if (enc_utf8 && IS_ENABLE_DIRECTX())
+	n = 0; /* Keep n < len, to enter block for unicode. */
+#endif
 
     /* Check if the Unicode buffer exists and is big enough.  Create it
      * with the same length as the multi-byte string, the number of wide
@@ -2406,8 +2585,18 @@ gui_mch_draw_string(
 	    i += utfc_ptr2len_len(text + i, len - i);
 	    ++clen;
 	}
-	ExtTextOutW(s_hdc, TEXT_X(col), TEXT_Y(row),
-			   foptions, pcliprect, unicodebuf, wlen, unicodepdy);
+#if defined(FEAT_DIRECTX)
+	if (IS_ENABLE_DIRECTX() && font_is_ttf_or_vector)
+	{
+	    /* Add one to "cells" for italics. */
+	    DWriteContext_DrawText(s_dwc, s_hdc, unicodebuf, wlen,
+		    TEXT_X(col), TEXT_Y(row), FILL_X(cells + 1), FILL_Y(1),
+		    gui.char_width, gui.currFgColor);
+	}
+	else
+#endif
+	    ExtTextOutW(s_hdc, TEXT_X(col), TEXT_Y(row),
+		    foptions, pcliprect, unicodebuf, wlen, unicodepdy);
 	len = cells;	/* used for underlining */
     }
     else if ((enc_codepage > 0 && (int)GetACP() != enc_codepage) || enc_latin9)
@@ -2450,10 +2639,9 @@ gui_mch_draw_string(
 #endif
     {
 #ifdef FEAT_RIGHTLEFT
-	/* If we can't use ETO_IGNORELANGUAGE, we can't tell Windows not to
-	 * mess up RL text, so we have to draw it character-by-character.
-	 * Only do this if RL is on, since it's slow. */
-	if (curwin->w_p_rl && !(foptions & ETO_IGNORELANGUAGE))
+	/* Windows will mess up RL text, so we have to draw it character by
+	 * character.  Only do this if RL is on, since it's slow. */
+	if (curwin->w_p_rl)
 	    RevOut(s_hdc, TEXT_X(col), TEXT_Y(row),
 			 foptions, pcliprect, (char *)text, len, padding);
 	else
@@ -2536,13 +2724,15 @@ gui_mch_get_screen_dimensions(int *screen_w, int *screen_h)
     get_work_area(&workarea_rect);
 
     *screen_w = workarea_rect.right - workarea_rect.left
-		- GetSystemMetrics(SM_CXFRAME) * 2;
+		- (GetSystemMetrics(SM_CXFRAME) +
+		   GetSystemMetrics(SM_CXPADDEDBORDER)) * 2;
 
     /* FIXME: dirty trick: Because the gui_get_base_height() doesn't include
      * the menubar for MSwin, we subtract it from the screen height, so that
      * the window size can be made to fit on the screen. */
     *screen_h = workarea_rect.bottom - workarea_rect.top
-		- GetSystemMetrics(SM_CYFRAME) * 2
+		- (GetSystemMetrics(SM_CYFRAME) +
+		   GetSystemMetrics(SM_CXPADDEDBORDER)) * 2
 		- GetSystemMetrics(SM_CYCAPTION)
 #ifdef FEAT_MENU
 		- gui_mswin_get_menu_height(FALSE)
@@ -3092,7 +3282,7 @@ gui_mch_dialog(
 	return -1;
 
     /*
-     * make a copy of 'buttons' to fiddle with it.  complier grizzles because
+     * make a copy of 'buttons' to fiddle with it.  compiler grizzles because
      * vim_strsave() doesn't take a const arg (why not?), so cast away the
      * const.
      */
@@ -3165,19 +3355,23 @@ gui_mch_dialog(
 	maxDialogWidth = workarea_rect.right - workarea_rect.left - 100;
 	if (maxDialogWidth > 600)
 	    maxDialogWidth = 600;
-	maxDialogHeight = workarea_rect.bottom - workarea_rect.top - 100;
+	/* Leave some room for the taskbar. */
+	maxDialogHeight = workarea_rect.bottom - workarea_rect.top - 150;
     }
     else
     {
 	/* Use our own window for the size, unless it's very small. */
 	GetWindowRect(s_hwnd, &rect);
 	maxDialogWidth = rect.right - rect.left
-					   - GetSystemMetrics(SM_CXFRAME) * 2;
+				   - (GetSystemMetrics(SM_CXFRAME) +
+				      GetSystemMetrics(SM_CXPADDEDBORDER)) * 2;
 	if (maxDialogWidth < DLG_MIN_MAX_WIDTH)
 	    maxDialogWidth = DLG_MIN_MAX_WIDTH;
 
 	maxDialogHeight = rect.bottom - rect.top
-					   - GetSystemMetrics(SM_CXFRAME) * 2;
+				   - (GetSystemMetrics(SM_CYFRAME) +
+				      GetSystemMetrics(SM_CXPADDEDBORDER)) * 4
+				   - GetSystemMetrics(SM_CYCAPTION);
 	if (maxDialogHeight < DLG_MIN_MAX_HEIGHT)
 	    maxDialogHeight = DLG_MIN_MAX_HEIGHT;
     }
@@ -3208,7 +3402,7 @@ gui_mch_dialog(
 	    if (l == 1 && vim_iswhite(*pend)
 					&& textWidth > maxDialogWidth * 3 / 4)
 		last_white = pend;
-	    textWidth += GetTextWidth(hdc, pend, l);
+	    textWidth += GetTextWidthEnc(hdc, pend, l);
 	    if (textWidth >= maxDialogWidth)
 	    {
 		/* Line will wrap. */
@@ -3244,16 +3438,9 @@ gui_mch_dialog(
 
     messageWidth += 10;		/* roundoff space */
 
-    /* Restrict the size to a maximum.  Causes a scrollbar to show up. */
-    if (msgheight > maxDialogHeight)
-    {
-	msgheight = maxDialogHeight;
-	scroll_flag = WS_VSCROLL;
-	messageWidth += GetSystemMetrics(SM_CXVSCROLL);
-    }
-
     /* Add width of icon to dlgwidth, and some space */
-    dlgwidth = messageWidth + DLG_ICON_WIDTH + 3 * dlgPaddingX;
+    dlgwidth = messageWidth + DLG_ICON_WIDTH + 3 * dlgPaddingX
+					     + GetSystemMetrics(SM_CXVSCROLL);
 
     if (msgheight < DLG_ICON_HEIGHT)
 	msgheight = DLG_ICON_HEIGHT;
@@ -3274,7 +3461,7 @@ gui_mch_dialog(
 	    pend = vim_strchr(pstart, DLG_BUTTON_SEP);
 	    if (pend == NULL)
 		pend = pstart + STRLEN(pstart);	// Last button name.
-	    textWidth = GetTextWidth(hdc, pstart, (int)(pend - pstart));
+	    textWidth = GetTextWidthEnc(hdc, pstart, (int)(pend - pstart));
 	    if (textWidth < minButtonWidth)
 		textWidth = minButtonWidth;
 	    textWidth += dlgPaddingX;	    /* Padding within button */
@@ -3299,7 +3486,7 @@ gui_mch_dialog(
 	    pend = vim_strchr(pstart, DLG_BUTTON_SEP);
 	    if (pend == NULL)
 		pend = pstart + STRLEN(pstart);	// Last button name.
-	    textWidth = GetTextWidth(hdc, pstart, (int)(pend - pstart));
+	    textWidth = GetTextWidthEnc(hdc, pstart, (int)(pend - pstart));
 	    textWidth += dlgPaddingX;		/* Padding within button */
 	    textWidth += DLG_VERT_PADDING_X * 2; /* Padding around button */
 	    if (textWidth > dlgwidth)
@@ -3327,8 +3514,8 @@ gui_mch_dialog(
 
     // Dialog height.
     if (vertical)
-	dlgheight = msgheight + 2 * dlgPaddingY +
-			      DLG_VERT_PADDING_Y + 2 * fontHeight * numButtons;
+	dlgheight = msgheight + 2 * dlgPaddingY
+			   + DLG_VERT_PADDING_Y + 2 * fontHeight * numButtons;
     else
 	dlgheight = msgheight + 3 * dlgPaddingY + 2 * fontHeight;
 
@@ -3336,6 +3523,16 @@ gui_mch_dialog(
     editboxheight = fontHeight + dlgPaddingY + 4 * DLG_VERT_PADDING_Y;
     if (textfield != NULL)
 	dlgheight += editboxheight;
+
+    /* Restrict the size to a maximum.  Causes a scrollbar to show up. */
+    if (dlgheight > maxDialogHeight)
+    {
+	msgheight = msgheight - (dlgheight - maxDialogHeight);
+	dlgheight = maxDialogHeight;
+	scroll_flag = WS_VSCROLL;
+	/* Make sure scrollbar doesn't appear in the middle of the dialog */
+	messageWidth = dlgwidth - DLG_ICON_WIDTH - 3 * dlgPaddingX;
+    }
 
     add_word(PixelToDialogY(dlgheight));
 
@@ -4119,8 +4316,20 @@ initialise_toolbar(void)
 		    TOOLBAR_BUTTON_HEIGHT,
 		    sizeof(TBBUTTON)
 		    );
+    s_toolbar_wndproc = SubclassWindow(s_toolbarhwnd, toolbar_wndproc);
 
     gui_mch_show_toolbar(vim_strchr(p_go, GO_TOOLBAR) != NULL);
+}
+
+    static LRESULT CALLBACK
+toolbar_wndproc(
+    HWND hwnd,
+    UINT uMsg,
+    WPARAM wParam,
+    LPARAM lParam)
+{
+    HandleMouseHide(uMsg, lParam);
+    return CallWindowProc(s_toolbar_wndproc, hwnd, uMsg, wParam, lParam);
 }
 
     static int
@@ -4155,7 +4364,11 @@ get_toolbar_bitmap(vimmenu_T *menu)
 	 * didn't exist or wasn't specified, try the menu name
 	 */
 	if (hbitmap == NULL
-		&& (gui_find_bitmap(menu->name, fname, "bmp") == OK))
+		&& (gui_find_bitmap(
+#ifdef FEAT_MULTI_LANG
+			    menu->en_dname != NULL ? menu->en_dname :
+#endif
+					menu->dname, fname, "bmp") == OK))
 	    hbitmap = LoadImage(
 		    NULL,
 		    fname,
@@ -4195,12 +4408,24 @@ initialise_tabline(void)
 	    WS_CHILD|TCS_FOCUSNEVER|TCS_TOOLTIPS,
 	    CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 	    CW_USEDEFAULT, s_hwnd, NULL, s_hinst, NULL);
+    s_tabline_wndproc = SubclassWindow(s_tabhwnd, tabline_wndproc);
 
     gui.tabline_height = TABLINE_HEIGHT;
 
 # ifdef USE_SYSMENU_FONT
     set_tabline_font();
 # endif
+}
+
+    static LRESULT CALLBACK
+tabline_wndproc(
+    HWND hwnd,
+    UINT uMsg,
+    WPARAM wParam,
+    LPARAM lParam)
+{
+    HandleMouseHide(uMsg, lParam);
+    return CallWindowProc(s_tabline_wndproc, hwnd, uMsg, wParam, lParam);
 }
 #endif
 
@@ -4383,7 +4608,7 @@ gui_mch_register_sign(signfile)
     }
 
     sign.hImage = NULL;
-    ext = signfile + STRLEN(signfile) - 4; /* get extention */
+    ext = signfile + STRLEN(signfile) - 4; /* get extension */
     if (ext > signfile)
     {
 	int do_load = 1;

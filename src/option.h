@@ -31,9 +31,9 @@
 #     define DFLT_EFM	"%A%p^,%C%%CC-%t-%m,%Cat line number %l in file %f,%f|%l| %m"
 #    else /* Unix, probably */
 #     ifdef EBCDIC
-#define DFLT_EFM	"%*[^ ] %*[^ ] %f:%l%*[ ]%m,%*[^\"]\"%f\"%*\\D%l: %m,\"%f\"%*\\D%l: %m,%f:%l:%c:%m,%f(%l):%m,%f:%l:%m,\"%f\"\\, line %l%*\\D%c%*[^ ] %m,%D%*\\a[%*\\d]: Entering directory `%f',%X%*\\a[%*\\d]: Leaving directory `%f',%DMaking %*\\a in %f,%f|%l| %m"
+#define DFLT_EFM	"%*[^ ] %*[^ ] %f:%l%*[ ]%m,%*[^\"]\"%f\"%*\\D%l: %m,\"%f\"%*\\D%l: %m,%f:%l:%c:%m,%f(%l):%m,%f:%l:%m,\"%f\"\\, line %l%*\\D%c%*[^ ] %m,%D%*\\a[%*\\d]: Entering directory %*[`']%f',%X%*\\a[%*\\d]: Leaving directory %*[`']%f',%DMaking %*\\a in %f,%f|%l| %m"
 #     else
-#define DFLT_EFM	"%*[^\"]\"%f\"%*\\D%l: %m,\"%f\"%*\\D%l: %m,%-G%f:%l: (Each undeclared identifier is reported only once,%-G%f:%l: for each function it appears in.),%-GIn file included from %f:%l:%c:,%-GIn file included from %f:%l:%c\\,,%-GIn file included from %f:%l:%c,%-GIn file included from %f:%l,%-G%*[ ]from %f:%l:%c,%-G%*[ ]from %f:%l:,%-G%*[ ]from %f:%l\\,,%-G%*[ ]from %f:%l,%f:%l:%c:%m,%f(%l):%m,%f:%l:%m,\"%f\"\\, line %l%*\\D%c%*[^ ] %m,%D%*\\a[%*\\d]: Entering directory `%f',%X%*\\a[%*\\d]: Leaving directory `%f',%D%*\\a: Entering directory `%f',%X%*\\a: Leaving directory `%f',%DMaking %*\\a in %f,%f|%l| %m"
+#define DFLT_EFM	"%*[^\"]\"%f\"%*\\D%l: %m,\"%f\"%*\\D%l: %m,%-G%f:%l: (Each undeclared identifier is reported only once,%-G%f:%l: for each function it appears in.),%-GIn file included from %f:%l:%c:,%-GIn file included from %f:%l:%c\\,,%-GIn file included from %f:%l:%c,%-GIn file included from %f:%l,%-G%*[ ]from %f:%l:%c,%-G%*[ ]from %f:%l:,%-G%*[ ]from %f:%l\\,,%-G%*[ ]from %f:%l,%f:%l:%c:%m,%f(%l):%m,%f:%l:%m,\"%f\"\\, line %l%*\\D%c%*[^ ] %m,%D%*\\a[%*\\d]: Entering directory %*[`']%f',%X%*\\a[%*\\d]: Leaving directory %*[`']%f',%D%*\\a: Entering directory %*[`']%f',%X%*\\a: Leaving directory %*[`']%f',%DMaking %*\\a in %f,%f|%l| %m"
 #     endif
 #    endif
 #   endif
@@ -104,10 +104,11 @@
 #define FO_ONE_LETTER	'1'
 #define FO_WHITE_PAR	'w'	/* trailing white space continues paragr. */
 #define FO_AUTO		'a'	/* automatic formatting */
+#define FO_REMOVE_COMS	'j'	/* remove comment leaders when joining lines */
 
 #define DFLT_FO_VI	"vt"
 #define DFLT_FO_VIM	"tcq"
-#define FO_ALL		"tcroq2vlb1mMBn,aw"	/* for do_set() */
+#define FO_ALL		"tcroq2vlb1mMBn,awj"	/* for do_set() */
 
 /* characters for the p_cpo option: */
 #define CPO_ALTREAD	'a'	/* ":read" sets alternate file name */
@@ -211,7 +212,8 @@
 #define SHM_SEARCH	's'		/* no search hit bottom messages */
 #define SHM_ATTENTION	'A'		/* no ATTENTION messages */
 #define SHM_INTRO	'I'		/* intro messages */
-#define SHM_ALL		"rmfixlnwaWtToOsAI" /* all possible flags for 'shm' */
+#define SHM_COMPLETIONMENU  'c'		/* completion menu messages */
+#define SHM_ALL		"rmfixlnwaWtToOsAIc" /* all possible flags for 'shm' */
 
 /* characters for p_go: */
 #define GO_ASEL		'a'		/* autoselect */
@@ -228,6 +230,7 @@
 #define GO_MENUS	'm'		/* use menu bar */
 #define GO_NOSYSMENU	'M'		/* don't source system menu */
 #define GO_POINTER	'p'		/* pointer enter/leave callbacks */
+#define GO_ASELPLUS	'P'		/* autoselectPlus */
 #define GO_RIGHT	'r'		/* use right scrollbar */
 #define GO_VRIGHT	'R'		/* right scrollbar with vert split */
 #define GO_TEAROFF	't'		/* add tear-off menu items */
@@ -324,7 +327,7 @@ EXTERN char_u	*p_bs;		/* 'backspace' */
 EXTERN char_u	*p_bg;		/* 'background' */
 EXTERN int	p_bk;		/* 'backup' */
 EXTERN char_u	*p_bkc;		/* 'backupcopy' */
-EXTERN unsigned	bkc_flags;
+EXTERN unsigned	bkc_flags;	/* flags from 'backupcopy' */
 #ifdef IN_OPTION_C
 static char *(p_bkc_values[]) = {"yes", "auto", "no", "breaksymlink", "breakhardlink", NULL};
 #endif
@@ -451,6 +454,7 @@ EXTERN int	p_exrc;		/* 'exrc' */
 EXTERN char_u	*p_fencs;	/* 'fileencodings' */
 #endif
 EXTERN char_u	*p_ffs;		/* 'fileformats' */
+EXTERN long	p_fic;		/* 'fileignorecase' */
 #ifdef FEAT_FOLDING
 EXTERN char_u	*p_fcl;		/* 'foldclose' */
 EXTERN long	p_fdls;		/* 'foldlevelstart' */
@@ -555,6 +559,8 @@ EXTERN char_u	*p_iconstring;	/* 'iconstring' */
 EXTERN int	p_ic;		/* 'ignorecase' */
 #if defined(FEAT_XIM) && defined(FEAT_GUI_GTK)
 EXTERN char_u	*p_imak;	/* 'imactivatekey' */
+EXTERN char_u	*p_imaf;	/* 'imactivatefunc' */
+EXTERN char_u	*p_imsf;	/* 'imstatusfunc' */
 #endif
 #ifdef USE_IM_CONTROL
 EXTERN int	p_imcmdline;	/* 'imcmdline' */
@@ -567,9 +573,7 @@ EXTERN char_u	*p_isi;		/* 'isident' */
 EXTERN char_u	*p_isp;		/* 'isprint' */
 EXTERN int	p_js;		/* 'joinspaces' */
 EXTERN char_u	*p_kp;		/* 'keywordprg' */
-#ifdef FEAT_VISUAL
 EXTERN char_u	*p_km;		/* 'keymodel' */
-#endif
 #ifdef FEAT_LANGMAP
 EXTERN char_u	*p_langmap;	/* 'langmap'*/
 #endif
@@ -650,6 +654,10 @@ EXTERN char_u	*p_cdpath;	/* 'cdpath' */
 EXTERN long	p_rdt;		/* 'redrawtime' */
 #endif
 EXTERN int	p_remap;	/* 'remap' */
+EXTERN long	p_re;		/* 'regexpengine' */
+#ifdef FEAT_RENDER_OPTIONS
+EXTERN char_u	*p_rop;		/* 'renderoptions' */
+#endif
 EXTERN long	p_report;	/* 'report' */
 #if defined(FEAT_WINDOWS) && defined(FEAT_QUICKFIX)
 EXTERN long	p_pvh;		/* 'previewheight' */
@@ -675,10 +683,8 @@ EXTERN char_u	*p_sbo;		/* 'scrollopt' */
 #endif
 EXTERN char_u	*p_sections;	/* 'sections' */
 EXTERN int	p_secure;	/* 'secure' */
-#ifdef FEAT_VISUAL
 EXTERN char_u	*p_sel;		/* 'selection' */
 EXTERN char_u	*p_slm;		/* 'selectmode' */
-#endif
 #ifdef FEAT_SESSION
 EXTERN char_u	*p_ssop;	/* 'sessionoptions' */
 EXTERN unsigned	ssop_flags;
@@ -712,6 +718,7 @@ EXTERN char_u	*p_sp;		/* 'shellpipe' */
 #endif
 EXTERN char_u	*p_shq;		/* 'shellquote' */
 EXTERN char_u	*p_sxq;		/* 'shellxquote' */
+EXTERN char_u	*p_sxe;		/* 'shellxescape' */
 EXTERN char_u	*p_srr;		/* 'shellredir' */
 #ifdef AMIGA
 EXTERN long	p_st;		/* 'shelltype' */
@@ -819,7 +826,7 @@ EXTERN long	p_ttyscroll;	/* 'ttyscroll' */
 EXTERN char_u	*p_ttym;	/* 'ttymouse' */
 EXTERN unsigned ttym_flags;
 # ifdef IN_OPTION_C
-static char *(p_ttym_values[]) = {"xterm", "xterm2", "dec", "netterm", "jsbterm", "pterm", "urxvt", NULL};
+static char *(p_ttym_values[]) = {"xterm", "xterm2", "dec", "netterm", "jsbterm", "pterm", "urxvt", "sgr", NULL};
 # endif
 # define TTYM_XTERM		0x01
 # define TTYM_XTERM2		0x02
@@ -828,6 +835,7 @@ static char *(p_ttym_values[]) = {"xterm", "xterm2", "dec", "netterm", "jsbterm"
 # define TTYM_JSBTERM		0x10
 # define TTYM_PTERM		0x20
 # define TTYM_URXVT		0x40
+# define TTYM_SGR		0x80
 #endif
 EXTERN char_u	*p_udir;	/* 'undodir' */
 EXTERN long	p_ul;		/* 'undolevels' */
@@ -910,6 +918,9 @@ enum
     , BV_AR
 #ifdef FEAT_QUICKFIX
     , BV_BH
+#endif
+    , BV_BKC
+#ifdef FEAT_QUICKFIX
     , BV_BT
     , BV_EFM
     , BV_GP
@@ -982,6 +993,7 @@ enum
     , BV_KP
 #ifdef FEAT_LISP
     , BV_LISP
+    , BV_LW
 #endif
     , BV_MA
     , BV_ML
@@ -1023,6 +1035,7 @@ enum
     , BV_TW
     , BV_TX
     , BV_UDF
+    , BV_UL
     , BV_WM
     , BV_COUNT	    /* must be the last one */
 };
@@ -1044,6 +1057,10 @@ enum
 #endif
 #ifdef FEAT_CURSORBIND
     , WV_CRBIND
+#endif
+#ifdef FEAT_LINEBREAK
+    , WV_BRI
+    , WV_BRIOPT
 #endif
 #ifdef FEAT_DIFF
     , WV_DIFF
@@ -1101,3 +1118,6 @@ enum
     , WV_WRAP
     , WV_COUNT	    /* must be the last one */
 };
+
+/* Value for b_p_ul indicating the global value must be used. */
+#define NO_LOCAL_UNDOLEVEL -123456

@@ -6,11 +6,9 @@ Author: James Vega <jamessan@debian.org>
 Bug-Debian: 382541
 Forwarded: 2006-08-12
 
-Index: b/runtime/scripts.vim
-===================================================================
 --- a/runtime/scripts.vim
 +++ b/runtime/scripts.vim
-@@ -322,6 +322,14 @@
+@@ -331,6 +331,14 @@
    elseif s:line1 =~ 'exec\s\+\S*scheme' || s:line2 =~ 'exec\s\+\S*scheme'
      set ft=scheme
  

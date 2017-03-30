@@ -4,7 +4,7 @@
 " URL:		 http://sites.google.com/site/khorser/opensource/vim
 " Original author:    Dorai Sitaram <ds26@gte.com>
 " Original URL:		 http://www.ccs.neu.edu/~dorai/vimplugins/vimplugins.html
-" Last Change:   Jan 9, 2012
+" Last Change:   Oct 23, 2013
 
 " Only do this when not done yet for this buffer
 if exists("b:did_ftplugin")
@@ -19,8 +19,8 @@ setl define=^\\s*(def\\k*
 setl formatoptions-=t
 setl iskeyword+=+,-,*,/,%,<,=,>,:,$,?,!,@-@,94
 setl lisp
+setl commentstring=;%s
 
-" make comments behaviour like in c.vim
-" e.g. insertion of ;;; and ;; on normal "O" or "o" when staying in comment
 setl comments^=:;;;,:;;,sr:#\|,mb:\|,ex:\|#
-setl formatoptions+=croql
+
+let b:undo_ftplugin = "setlocal comments< define< formatoptions< iskeyword< lisp< commentstring<"

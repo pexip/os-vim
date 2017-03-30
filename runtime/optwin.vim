@@ -1,7 +1,7 @@
 " These commands create the option window.
 "
 " Maintainer:	Bram Moolenaar <Bram@vim.org>
-" Last Change:	2011 Jun 13
+" Last Change:	2014 Oct 09
 
 " If there already is an option window, jump to that one.
 if bufwinnr("option-window") > 0
@@ -258,6 +258,8 @@ call append("$", "incsearch\tshow match for partly typed search command")
 call <SID>BinOptionG("is", &is)
 call append("$", "magic\tchange the way backslashes are used in search patterns")
 call <SID>BinOptionG("magic", &magic)
+call append("$", "regexpengine\tselect the default regexp engine used")
+call <SID>OptionG("re", &re)
 call append("$", "ignorecase\tignore case when using a search pattern")
 call <SID>BinOptionG("ic", &ic)
 call append("$", "smartcase\toverride 'ignorecase' when pattern has upper case characters")
@@ -322,6 +324,12 @@ call <SID>BinOptionG("wrap", &wrap)
 call append("$", "linebreak\twrap long lines at a character in 'breakat'")
 call append("$", "\t(local to window)")
 call <SID>BinOptionL("lbr")
+call append("$", "breakindent\tpreserve indentation in wrapped text")
+call append("$", "\t(local to window)")
+call <SID>BinOptionL("bri")
+call append("$", "breakindentopt\tadjust breakindent behaviour")
+call append("$", "\t(local to window)")
+call <SID>OptionL("briopt")
 call append("$", "breakat\twhich characters might cause a line break")
 call <SID>OptionG("brk", &brk)
 call append("$", "showbreak\tstring to put before wrapped screen lines")
@@ -598,6 +606,10 @@ if has("gui")
     call append("$", "guiheadroom\troom (in pixels) left above/below the window")
     call append("$", " \tset ghr=" . &ghr)
   endif
+  if has("directx")
+    call append("$", "renderoptions\toptions for text rendering")
+    call <SID>OptionG("rop", &rop)
+  endif
   call append("$", "guipty\tuse a pseudo-tty for I/O to external commands")
   call <SID>BinOptionG("guipty", &guipty)
   if has("browse")
@@ -716,6 +728,7 @@ call <SID>OptionG("km", &km)
 
 call <SID>Header("editing text")
 call append("$", "undolevels\tmaximum number of changes that can be undone")
+call append("$", "\t(global or local to buffer)")
 call append("$", " \tset ul=" . &ul)
 call append("$", "undoreload\tmaximum number lines to save for undo on a buffer reload")
 call append("$", " \tset ur=" . &ur)
@@ -853,7 +866,7 @@ if has("lispindent")
   call append("$", "\t(local to buffer)")
   call <SID>BinOptionL("lisp")
   call append("$", "lispwords\twords that change how lisp indenting works")
-  call <SID>OptionG("lw", &lw)
+  call <SID>OptionL("lw")
 endif
 
 
@@ -965,6 +978,7 @@ call <SID>BinOptionG("bk", &bk)
 call append("$", "backupskip\tpatterns that specify for which files a backup is not made")
 call append("$", " \tset bsk=" . &bsk)
 call append("$", "backupcopy\twhether to make the backup as a copy or rename the existing file")
+call append("$", "\t(global or local to buffer)")
 call append("$", " \tset bkc=" . &bkc)
 call append("$", "backupdir\tlist of directories to put backup files in")
 call <SID>OptionG("bdir", &bdir)
@@ -1035,6 +1049,8 @@ if has("wildignore")
   call append("$", "wildignore\tlist of patterns to ignore files for file name completion")
   call <SID>OptionG("wig", &wig)
 endif
+call append("$", "fileignorecase\tignore case when using file names")
+call <SID>BinOptionG("fic", &fic)
 call append("$", "wildignorecase\tignore case when completing file names")
 call <SID>BinOptionG("wic", &wic)
 if has("wildmenu")
@@ -1064,6 +1080,8 @@ call append("$", "shellquote\tcharacter(s) to enclose a shell command in")
 call <SID>OptionG("shq", &shq)
 call append("$", "shellxquote\tlike 'shellquote' but include the redirection")
 call <SID>OptionG("sxq", &sxq)
+call append("$", "shellxescape\tcharacters to escape when 'shellxquote' is (")
+call <SID>OptionG("sxe", &sxe)
 call append("$", "shellcmdflag\targument for 'shell' to execute a command")
 call <SID>OptionG("shcf", &shcf)
 call append("$", "shellredir\tused to redirect command output to a file")
@@ -1192,6 +1210,10 @@ call <SID>OptionL("ims")
 if has("xim")
   call append("$", "imcmdline\twhen set always use IM when starting to edit a command line")
   call <SID>BinOptionG("imc", &imc)
+  call append("$", "imstatusfunc\tfunction to obtain IME status")
+  call <SID>OptionG("imsf", &imsf)
+  call append("$", "imactivatefunc\tfunction to enable/disable IME")
+  call <SID>OptionG("imaf", &imaf)
 endif
 
 

@@ -6,11 +6,9 @@ Author: Stefano Zacchiroli <zack@debian.org>
 Bug-Debian: http://bugs.debian.org/384479
 Forwarded: 2006-08-26
 
-Index: vim/runtime/filetype.vim
-===================================================================
---- vim.orig/runtime/filetype.vim	2012-01-13 18:52:44.031702076 -0500
-+++ vim/runtime/filetype.vim	2012-01-13 18:53:52.601181235 -0500
-@@ -2073,7 +2073,7 @@
+--- a/runtime/filetype.vim
++++ b/runtime/filetype.vim
+@@ -2187,7 +2187,7 @@
      call cursor(1,1)
      let firstNC = search('^\s*[^[:space:]%]', 'c', 1000)
      if firstNC " Check the next thousand lines for a LaTeX or ConTeXt keyword.

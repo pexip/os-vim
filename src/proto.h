@@ -47,10 +47,12 @@
    typedef int LPBOOL;
 #  include "os_win16.pro"
 #  include "os_mswin.pro"
+#  include "winclip.pro"
 # endif
 # ifdef WIN3264
 #  include "os_win32.pro"
 #  include "os_mswin.pro"
+#  include "winclip.pro"
 #  if (defined(__GNUC__) && !defined(__MINGW32__)) \
 	|| (defined(__BORLANDC__) && __BORLANDC__ < 0x502)
 extern int _stricoll __ARGS((char *a, char *b));
@@ -68,6 +70,8 @@ extern int _stricoll __ARGS((char *a, char *b));
 
 # ifdef FEAT_CRYPT
 #  include "blowfish.pro"
+#  include "crypt.pro"
+#  include "crypt_zip.pro"
 # endif
 # include "buffer.pro"
 # include "charset.pro"

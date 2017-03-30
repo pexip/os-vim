@@ -63,15 +63,16 @@ typedef struct growarray
 
 #define GA_EMPTY    {0, 0, 0, 0, NULL}
 
-/*
- * This is here because regexp.h needs pos_T and below regprog_T is used.
- */
-#include "regexp.h"
-
 typedef struct window_S		win_T;
 typedef struct wininfo_S	wininfo_T;
 typedef struct frame_S		frame_T;
 typedef int			scid_T;		/* script ID */
+typedef struct file_buffer	buf_T;  /* forward declaration */
+
+/*
+ * This is here because regexp.h needs pos_T and below regprog_T is used.
+ */
+#include "regexp.h"
 
 /*
  * This is here because gui.h needs the pos_T and win_T, and win_T needs gui.h
@@ -133,6 +134,12 @@ typedef struct
     int		wo_arab;
 # define w_p_arab w_onebuf_opt.wo_arab	/* 'arabic' */
 #endif
+#ifdef FEAT_LINEBREAK
+    int		wo_bri;
+# define w_p_bri w_onebuf_opt.wo_bri	/* 'breakindent' */
+    char_u	*wo_briopt;
+# define w_p_briopt w_onebuf_opt.wo_briopt /* 'breakindentopt' */
+#endif
 #ifdef FEAT_DIFF
     int		wo_diff;
 # define w_p_diff w_onebuf_opt.wo_diff	/* 'diff' */
@@ -140,14 +147,22 @@ typedef struct
 #ifdef FEAT_FOLDING
     long	wo_fdc;
 # define w_p_fdc w_onebuf_opt.wo_fdc	/* 'foldcolumn' */
+    int		wo_fdc_save;
+# define w_p_fdc_save w_onebuf_opt.wo_fdc_save	/* 'foldenable' saved for diff mode */
     int		wo_fen;
 # define w_p_fen w_onebuf_opt.wo_fen	/* 'foldenable' */
+    int		wo_fen_save;
+# define w_p_fen_save w_onebuf_opt.wo_fen_save	/* 'foldenable' saved for diff mode */
     char_u	*wo_fdi;
 # define w_p_fdi w_onebuf_opt.wo_fdi	/* 'foldignore' */
     long	wo_fdl;
 # define w_p_fdl w_onebuf_opt.wo_fdl	/* 'foldlevel' */
+    int		wo_fdl_save;
+# define w_p_fdl_save w_onebuf_opt.wo_fdl_save	/* 'foldlevel' state saved for diff mode */
     char_u	*wo_fdm;
 # define w_p_fdm w_onebuf_opt.wo_fdm	/* 'foldmethod' */
+    char_u	*wo_fdm_save;
+# define w_p_fdm_save w_onebuf_opt.wo_fdm_save	/* 'fdm' saved for diff mode */
     long	wo_fml;
 # define w_p_fml w_onebuf_opt.wo_fml	/* 'foldminlines' */
     long	wo_fdn;
@@ -212,9 +227,17 @@ typedef struct
 #ifdef FEAT_SCROLLBIND
     int		wo_scb;
 # define w_p_scb w_onebuf_opt.wo_scb	/* 'scrollbind' */
+    int		wo_diff_saved; /* options were saved for starting diff mode */
+# define w_p_diff_saved w_onebuf_opt.wo_diff_saved
+    int		wo_scb_save;	/* 'scrollbind' saved for diff mode*/
+# define w_p_scb_save w_onebuf_opt.wo_scb_save
 #endif
     int		wo_wrap;
 #define w_p_wrap w_onebuf_opt.wo_wrap	/* 'wrap' */
+#ifdef FEAT_DIFF
+    int		wo_wrap_save;	/* 'wrap' state saved for diff mode*/
+# define w_p_wrap_save w_onebuf_opt.wo_wrap_save
+#endif
 #ifdef FEAT_CONCEAL
     char_u	*wo_cocu;		/* 'concealcursor' */
 # define w_p_cocu w_onebuf_opt.wo_cocu
@@ -224,6 +247,8 @@ typedef struct
 #ifdef FEAT_CURSORBIND
     int		wo_crb;
 # define w_p_crb w_onebuf_opt.wo_crb	/* 'cursorbind' */
+    int		wo_crb_save;	/* 'cursorbind' state saved for diff mode*/
+# define w_p_crb_save w_onebuf_opt.wo_crb_save
 #endif
 
 #ifdef FEAT_EVAL
@@ -327,9 +352,7 @@ struct u_header
 #endif
     int		uh_flags;	/* see below */
     pos_T	uh_namedm[NMARKS];	/* marks before undo/after redo */
-#ifdef FEAT_VISUAL
     visualinfo_T uh_visual;	/* Visual areas before undo/after redo */
-#endif
     time_t	uh_time;	/* timestamp when the change was made */
     long	uh_save_nr;	/* set when the file was saved after the
 				   changes in this block */
@@ -345,7 +368,7 @@ struct u_header
 /*
  * structures used in undo.c
  */
-#if SIZEOF_INT > 2
+#if VIM_SIZEOF_INT > 2
 # define ALIGN_LONG	/* longword alignment and use filler byte */
 # define ALIGN_SIZE (sizeof(long))
 #else
@@ -452,13 +475,17 @@ struct nr_trans
     blocknr_T	nt_new_bnum;		/* new, positive, number */
 };
 
+
+typedef struct buffblock buffblock_T;
+typedef struct buffheader buffheader_T;
+
 /*
  * structure used to store one block of the stuff/redo/recording buffers
  */
 struct buffblock
 {
-    struct buffblock	*b_next;	/* pointer to next buffblock */
-    char_u		b_str[1];	/* contents (actually longer) */
+    buffblock_T	*b_next;	/* pointer to next buffblock */
+    char_u	b_str[1];	/* contents (actually longer) */
 };
 
 /*
@@ -466,10 +493,10 @@ struct buffblock
  */
 struct buffheader
 {
-    struct buffblock	bh_first;	/* first (dummy) block of list */
-    struct buffblock	*bh_curr;	/* buffblock for appending */
-    int			bh_index;	/* index for reading */
-    int			bh_space;	/* space in bh_curr for appending */
+    buffblock_T	bh_first;	/* first (dummy) block of list */
+    buffblock_T	*bh_curr;	/* buffblock for appending */
+    int		bh_index;	/* index for reading */
+    int		bh_space;	/* space in bh_curr for appending */
 };
 
 /*
@@ -492,6 +519,8 @@ typedef struct expand
     int		xp_numfiles;		/* number of files found by
 						    file name completion */
     char_u	**xp_files;		/* list of files */
+    char_u	*xp_line;		/* text being completed */
+    int		xp_col;			/* cursor position in line */
 } expand_T;
 
 /* values for xp_backslash */
@@ -521,12 +550,12 @@ typedef struct
     int		keepmarks;		/* TRUE when ":keepmarks" was used */
     int		keepjumps;		/* TRUE when ":keepjumps" was used */
     int		lockmarks;		/* TRUE when ":lockmarks" was used */
+    int		keeppatterns;		/* TRUE when ":keeppatterns" was used */
+    int		noswapfile;		/* TRUE when ":noswapfile" was used */
 # ifdef FEAT_AUTOCMD
     char_u	*save_ei;		/* saved value of 'eventignore' */
 # endif
 } cmdmod_T;
-
-typedef struct file_buffer buf_T;  /* forward declaration */
 
 #define MF_SEED_LEN	8
 
@@ -549,7 +578,7 @@ struct memfile
     unsigned	mf_page_size;		/* number of bytes in a page */
     int		mf_dirty;		/* TRUE if there are dirty blocks */
 #ifdef FEAT_CRYPT
-    buf_T	*mf_buffer;		/* bufer this memfile is for */
+    buf_T	*mf_buffer;		/* buffer this memfile is for */
     char_u	mf_seed[MF_SEED_LEN];	/* seed for encryption */
 
     /* Values for key, method and seed used for reading data blocks when
@@ -652,6 +681,7 @@ typedef struct arglist
 {
     garray_T	al_ga;		/* growarray with the array of file names */
     int		al_refcount;	/* number of windows using this arglist */
+    int		id;		/* id of this arglist */
 } alist_T;
 
 /*
@@ -944,7 +974,8 @@ typedef struct
     int			typebuf_valid;	    /* TRUE when save_typebuf valid */
     int			old_char;
     int			old_mod_mask;
-    struct buffheader	save_stuffbuff;
+    buffheader_T	save_readbuf1;
+    buffheader_T	save_readbuf2;
 #ifdef USE_INPUT_BUF
     char_u		*save_inputbuf;
 #endif
@@ -1003,12 +1034,13 @@ struct mapblock
 {
     mapblock_T	*m_next;	/* next mapblock in list */
     char_u	*m_keys;	/* mapped from, lhs */
-    int		m_keylen;	/* strlen(m_keys) */
     char_u	*m_str;		/* mapped to, rhs */
     char_u	*m_orig_str;	/* rhs as entered by the user */
+    int		m_keylen;	/* strlen(m_keys) */
     int		m_mode;		/* valid mode */
     int		m_noremap;	/* if non-zero no re-mapping for m_str */
     char	m_silent;	/* <silent> used, don't echo commands */
+    char	m_nowait;	/* <nowait> used */
 #ifdef FEAT_EVAL
     char	m_expr;		/* <expr> used, m_str is an expression */
     scid_T	m_script_ID;	/* ID of script where map was defined */
@@ -1068,7 +1100,7 @@ typedef struct hashtable_S
 typedef long_u hash_T;		/* Type for hi_hash */
 
 
-#if SIZEOF_INT <= 3		/* use long if int is smaller than 32 bits */
+#if VIM_SIZEOF_INT <= 3		/* use long if int is smaller than 32 bits */
 typedef long	varnumber_T;
 #else
 typedef int	varnumber_T;
@@ -1105,6 +1137,11 @@ typedef struct
 #define VAR_LIST    4	/* "v_list" is used */
 #define VAR_DICT    5	/* "v_dict" is used */
 #define VAR_FLOAT   6	/* "v_float" is used */
+
+/* Values for "dv_scope". */
+#define VAR_SCOPE     1	/* a:, v:, s:, etc. scope dictionaries */
+#define VAR_DEF_SCOPE 2	/* l:, g: scope dictionaries: here funcrefs are not
+			   allowed to mask existing functions */
 
 /* Values for "v_lock". */
 #define VAR_LOCKED  1	/* locked with lock(), can use unlock() */
@@ -1176,11 +1213,12 @@ typedef struct dictitem_S dictitem_T;
  */
 struct dictvar_S
 {
-    int		dv_refcount;	/* reference count */
-    hashtab_T	dv_hashtab;	/* hashtab that refers to the items */
-    int		dv_copyID;	/* ID used by deepcopy() */
-    dict_T	*dv_copydict;	/* copied dict used by deepcopy() */
     char	dv_lock;	/* zero, VAR_LOCKED, VAR_FIXED */
+    char	dv_scope;	/* zero, VAR_SCOPE, VAR_DEF_SCOPE */
+    int		dv_refcount;	/* reference count */
+    int		dv_copyID;	/* ID used by deepcopy() */
+    hashtab_T	dv_hashtab;	/* hashtab that refers to the items */
+    dict_T	*dv_copydict;	/* copied dict used by deepcopy() */
     dict_T	*dv_used_next;	/* next dict in used dicts list */
     dict_T	*dv_used_prev;	/* previous dict in used dicts list */
 };
@@ -1201,11 +1239,45 @@ struct dictvar_S
 typedef struct qf_info_S qf_info_T;
 #endif
 
+#ifdef FEAT_PROFILE
+/*
+ * Used for :syntime: timing of executing a syntax pattern.
+ */
+typedef struct {
+    proftime_T	total;		/* total time used */
+    proftime_T	slowest;	/* time of slowest call */
+    long	count;		/* nr of times used */
+    long	match;		/* nr of times matched */
+} syn_time_T;
+#endif
+
+#ifdef FEAT_CRYPT
+/*
+ * Structure to hold the type of encryption and the state of encryption or
+ * decryption.
+ */
+typedef struct {
+    int	    method_nr;
+    void    *method_state;  /* method-specific state information */
+} cryptstate_T;
+
+/* values for method_nr */
+# define CRYPT_M_ZIP	0
+# define CRYPT_M_BF	1
+# define CRYPT_M_BF2	2
+# define CRYPT_M_COUNT	3 /* number of crypt methods */
+#endif
+
+
+/*
+ * These are items normally related to a buffer.  But when using ":ownsyntax"
+ * a window may have its own instance.
+ */
 typedef struct {
 #ifdef FEAT_SYN_HL
     hashtab_T	b_keywtab;		/* syntax keywords hash table */
     hashtab_T	b_keywtab_ic;		/* idem, ignore case */
-    int		b_syn_error;		/* TRUE when error occured in HL */
+    int		b_syn_error;		/* TRUE when error occurred in HL */
     int		b_syn_ic;		/* ignore case for :syn cmds */
     int		b_syn_spell;		/* SYNSPL_ values */
     garray_T	b_syn_patterns;		/* table for syntax patterns */
@@ -1221,6 +1293,9 @@ typedef struct {
     long	b_syn_sync_linebreaks;	/* offset for multi-line pattern */
     char_u	*b_syn_linecont_pat;	/* line continuation pattern */
     regprog_T	*b_syn_linecont_prog;	/* line continuation program */
+#ifdef FEAT_PROFILE
+    syn_time_T  b_syn_linecont_time;
+#endif
     int		b_syn_linecont_ic;	/* ignore-case flag for above */
     int		b_syn_topgrp;		/* for ":syntax include" */
 # ifdef FEAT_CONCEAL
@@ -1264,6 +1339,9 @@ typedef struct {
     regprog_T	*b_cap_prog;	/* program for 'spellcapcheck' */
     char_u	*b_p_spf;	/* 'spellfile' */
     char_u	*b_p_spl;	/* 'spelllang' */
+# ifdef FEAT_MBYTE
+    int		b_cjk;		/* all CJK letters as OK */
+# endif
 #endif
 #if !defined(FEAT_SYN_HL) && !defined(FEAT_SPELL)
     int		dummy;
@@ -1290,6 +1368,10 @@ struct file_buffer
     int		b_nwindows;	/* nr of windows open on this buffer */
 
     int		b_flags;	/* various BF_ flags */
+#ifdef FEAT_AUTOCMD
+    int		b_closing;	/* buffer is being closed, don't let
+				   autocommands close it too. */
+#endif
 
     /*
      * b_ffname has the full path of the file (NULL for no name).
@@ -1348,12 +1430,10 @@ struct file_buffer
 
     pos_T	b_namedm[NMARKS]; /* current named marks (mark.c) */
 
-#ifdef FEAT_VISUAL
     /* These variables are set when VIsual_active becomes FALSE */
     visualinfo_T b_visual;
-# ifdef FEAT_EVAL
+#ifdef FEAT_EVAL
     int		b_visual_mode_eval;  /* b_visual.vi_mode for visualmode() */
-# endif
 #endif
 
     pos_T	b_last_cursor;	/* cursor position when last unloading this
@@ -1391,6 +1471,7 @@ struct file_buffer
      * start and end of an operator, also used for '[ and ']
      */
     pos_T	b_op_start;
+    pos_T	b_op_start_orig;  /* used for Insstart_orig */
     pos_T	b_op_end;
 
 #ifdef FEAT_VIMINFO
@@ -1456,6 +1537,8 @@ struct file_buffer
 
     int		b_p_ai;		/* 'autoindent' */
     int		b_p_ai_nopaste;	/* b_p_ai saved for paste mode */
+    char_u	*b_p_bkc;	/* 'backupcopy' */
+    unsigned	b_bkc_flags;    /* flags for 'backupcopy' */
     int		b_p_ci;		/* 'copyindent' */
     int		b_p_bin;	/* 'binary' */
 #ifdef FEAT_MBYTE
@@ -1578,11 +1661,54 @@ struct file_buffer
     char_u	*b_p_dict;	/* 'dictionary' local value */
     char_u	*b_p_tsr;	/* 'thesaurus' local value */
 #endif
+    long	b_p_ul;		/* 'undolevels' local value */
 #ifdef FEAT_PERSISTENT_UNDO
     int		b_p_udf;	/* 'undofile' */
 #endif
+#ifdef FEAT_LISP
+    char_u	*b_p_lw;	/* 'lispwords' local value */
+#endif
 
     /* end of buffer options */
+
+#ifdef FEAT_CINDENT
+    /* values set from b_p_cino */
+    int		b_ind_level;
+    int		b_ind_open_imag;
+    int		b_ind_no_brace;
+    int		b_ind_first_open;
+    int		b_ind_open_extra;
+    int		b_ind_close_extra;
+    int		b_ind_open_left_imag;
+    int		b_ind_jump_label;
+    int		b_ind_case;
+    int		b_ind_case_code;
+    int		b_ind_case_break;
+    int		b_ind_param;
+    int		b_ind_func_type;
+    int		b_ind_comment;
+    int		b_ind_in_comment;
+    int		b_ind_in_comment2;
+    int		b_ind_cpp_baseclass;
+    int		b_ind_continuation;
+    int		b_ind_unclosed;
+    int		b_ind_unclosed2;
+    int		b_ind_unclosed_noignore;
+    int		b_ind_unclosed_wrapped;
+    int		b_ind_unclosed_whiteok;
+    int		b_ind_matching_paren;
+    int		b_ind_paren_prev;
+    int		b_ind_maxparen;
+    int		b_ind_maxcomment;
+    int		b_ind_scopedecl;
+    int		b_ind_scopedecl_code;
+    int		b_ind_java;
+    int		b_ind_js;
+    int		b_ind_keep_case_label;
+    int		b_ind_hash_comment;
+    int		b_ind_cpp_namespace;
+    int		b_ind_if_for_while;
+#endif
 
     linenr_T	b_no_eol_lnum;	/* non-zero lnum when last line of next binary
 				 * write should not have an end-of-line */
@@ -1597,7 +1723,7 @@ struct file_buffer
 
 #ifdef FEAT_EVAL
     dictitem_T	b_bufvar;	/* variable for "b:" Dictionary */
-    dict_T	b_vars;		/* internal variables, local to buffer */
+    dict_T	*b_vars;	/* internal variables, local to buffer */
 #endif
 
 #if defined(FEAT_BEVAL) && defined(FEAT_EVAL)
@@ -1672,7 +1798,12 @@ struct file_buffer
     int		b_was_netbeans_file;/* TRUE if b_netbeans_file was once set */
 #endif
 
-};
+#ifdef FEAT_CRYPT
+    cryptstate_T *b_cryptstate;	/* Encryption state while reading or writing
+				 * the file. NULL when not using encryption. */
+#endif
+
+}; /* file_buffer */
 
 
 #ifdef FEAT_DIFF
@@ -1743,7 +1874,15 @@ struct tabpage_S
     frame_T	    *(tp_snapshot[SNAP_COUNT]);  /* window layout snapshots */
 #ifdef FEAT_EVAL
     dictitem_T	    tp_winvar;	    /* variable for "t:" Dictionary */
-    dict_T	    tp_vars;	    /* internal variables, local to tab page */
+    dict_T	    *tp_vars;	    /* internal variables, local to tab page */
+#endif
+
+#ifdef FEAT_PYTHON
+    void	    *tp_python_ref;	/* The Python value for this tab page */
+#endif
+
+#ifdef FEAT_PYTHON3
+    void	    *tp_python3_ref;	/* The Python value for this tab page */
 #endif
 };
 
@@ -1819,6 +1958,32 @@ typedef struct
 #endif
 } match_T;
 
+/* number of positions supported by matchaddpos() */
+#define MAXPOSMATCH 8
+
+/*
+ * Same as lpos_T, but with additional field len.
+ */
+typedef struct
+{
+    linenr_T	lnum;	/* line number */
+    colnr_T	col;	/* column number */
+    int		len;	/* length: 0 - to the end of line */
+} llpos_T;
+
+/*
+ * posmatch_T provides an array for storing match items for matchaddpos()
+ * function.
+ */
+typedef struct posmatch posmatch_T;
+struct posmatch
+{
+    llpos_T	pos[MAXPOSMATCH];	/* array of positions */
+    int		cur;			/* internal position counter */
+    linenr_T	toplnum;		/* top buffer line */
+    linenr_T	botlnum;		/* bottom buffer line */
+};
+
 /*
  * matchitem_T provides a linked list for storing match items for ":match" and
  * the match functions.
@@ -1832,6 +1997,7 @@ struct matchitem
     char_u	*pattern;   /* pattern to highlight */
     int		hlg_id;	    /* highlight group ID */
     regmmatch_T	match;	    /* regexp program for pattern */
+    posmatch_T	pos;	    /* position matches */
     match_T	hl;	    /* struct for doing the actual highlighting */
 };
 
@@ -1853,6 +2019,10 @@ struct window_S
     win_T	*w_prev;	    /* link to previous window */
     win_T	*w_next;	    /* link to next window */
 #endif
+#ifdef FEAT_AUTOCMD
+    int		w_closing;	    /* window is being closed, don't let
+				       autocommands close it too. */
+#endif
 
     frame_T	*w_frame;	    /* frame containing this window */
 
@@ -1866,7 +2036,6 @@ struct window_S
 				       time through cursupdate() to the
 				       current virtual column */
 
-#ifdef FEAT_VISUAL
     /*
      * the next six are used to update the visual part
      */
@@ -1877,7 +2046,6 @@ struct window_S
     linenr_T	w_old_visual_lnum;  /* last known start of visual part */
     colnr_T	w_old_visual_col;   /* last known start of visual part */
     colnr_T	w_old_curswant;	    /* last known value of Curswant */
-#endif
 
     /*
      * "w_topline", "w_leftcol" and "w_skipcol" specify the offsets for
@@ -2052,6 +2220,11 @@ struct window_S
 #ifdef FEAT_SYN_HL
     int		*w_p_cc_cols;	    /* array of columns to highlight or NULL */
 #endif
+#ifdef FEAT_LINEBREAK
+    int		w_p_brimin;	    /* minimum width for breakindent */
+    int		w_p_brishift;	    /* additional shift for breakindent */
+    int		w_p_brisbr;	    /* sbr in 'briopt' */
+#endif
 
     /* transform a pointer to a "onebuf" option into a "allbuf" option */
 #define GLOBAL_WO(p)	((char *)p + sizeof(winopt_T))
@@ -2062,7 +2235,7 @@ struct window_S
 
 #ifdef FEAT_EVAL
     dictitem_T	w_winvar;	/* variable for "w:" Dictionary */
-    dict_T	w_vars;		/* internal variables, local to window */
+    dict_T	*w_vars;	/* internal variables, local to window */
 #endif
 
 #if defined(FEAT_RIGHTLEFT) && defined(FEAT_FKMAP)
@@ -2179,10 +2352,8 @@ typedef struct oparg_S
 				   (inclusive) */
     int		empty;		/* op_start and op_end the same (only used by
 				   do_change()) */
-#ifdef FEAT_VISUAL
     int		is_VIsual;	/* operator on Visual area */
     int		block_mode;	/* current operator is Visual block mode */
-#endif
     colnr_T	start_vcol;	/* start col for block mode operator */
     colnr_T	end_vcol;	/* end col for block mode operator */
 #ifdef FEAT_AUTOCMD

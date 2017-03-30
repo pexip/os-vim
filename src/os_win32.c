@@ -29,7 +29,11 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <limits.h>
-#include <process.h>
+
+/* cproto fails on missing include files */
+#ifndef PROTO
+# include <process.h>
+#endif
 
 #undef chdir
 #ifdef __GNUC__
@@ -40,8 +44,10 @@
 # include <direct.h>
 #endif
 
-#if defined(FEAT_TITLE) && !defined(FEAT_GUI_W32)
-# include <shellapi.h>
+#ifndef PROTO
+# if defined(FEAT_TITLE) && !defined(FEAT_GUI_W32)
+#  include <shellapi.h>
+# endif
 #endif
 
 #ifdef __MINGW32__
@@ -125,6 +131,10 @@ typedef int TRUSTEE;
 typedef int WORD;
 typedef int WCHAR;
 typedef void VOID;
+typedef int BY_HANDLE_FILE_INFORMATION;
+typedef int SE_OBJECT_TYPE;
+typedef int PSNSECINFO;
+typedef int PSNSECINFOW;
 #endif
 
 #ifndef FEAT_GUI_W32
@@ -152,13 +162,17 @@ static PFNGCKLN    s_pfnGetConsoleKeyboardLayoutName = NULL;
 # define wcsicmp(a, b) wcscmpi((a), (b))
 #endif
 
-/* Enable common dialogs input unicode from IME if posible. */
+#ifndef PROTO
+
+/* Enable common dialogs input unicode from IME if possible. */
 #ifdef FEAT_MBYTE
-LRESULT (WINAPI *pDispatchMessage)(LPMSG) = DispatchMessage;
+LRESULT (WINAPI *pDispatchMessage)(CONST MSG *) = DispatchMessage;
 BOOL (WINAPI *pGetMessage)(LPMSG, HWND, UINT, UINT) = GetMessage;
 BOOL (WINAPI *pIsDialogMessage)(HWND, LPMSG) = IsDialogMessage;
 BOOL (WINAPI *pPeekMessage)(LPMSG, HWND, UINT, UINT, UINT) = PeekMessage;
 #endif
+
+#endif /* PROTO */
 
 #ifndef FEAT_GUI_W32
 /* Win32 Console handles for input and output */
@@ -208,11 +222,103 @@ static int need_vimrun_warning = FALSE;
 static char *vimrun_path = "vimrun ";
 #endif
 
+static int win32_getattrs(char_u *name);
+static int win32_setattrs(char_u *name, int attrs);
+static int win32_set_archive(char_u *name);
+
 #ifndef FEAT_GUI_W32
 static int suppress_winsize = 1;	/* don't fiddle with console */
 #endif
 
 static char_u *exe_path = NULL;
+
+static BOOL win8_or_later = FALSE;
+
+/*
+ * Version of ReadConsoleInput() that works with IME.
+ * Works around problems on Windows 8.
+ */
+    static BOOL
+read_console_input(
+    HANDLE	    hInput,
+    INPUT_RECORD    *lpBuffer,
+    DWORD	    nLength,
+    LPDWORD	    lpEvents)
+{
+    enum
+    {
+	IRSIZE = 10
+    };
+    static INPUT_RECORD s_irCache[IRSIZE];
+    static DWORD s_dwIndex = 0;
+    static DWORD s_dwMax = 0;
+    DWORD dwEvents;
+    int head;
+    int tail;
+    int i;
+
+    if (!win8_or_later)
+    {
+	if (nLength == -1)
+	    return PeekConsoleInput(hInput, lpBuffer, 1, lpEvents);
+	return ReadConsoleInput(hInput, lpBuffer, 1, &dwEvents);
+    }
+
+    if (s_dwMax == 0)
+    {
+	if (nLength == -1)
+	    return PeekConsoleInput(hInput, lpBuffer, 1, lpEvents);
+	if (!ReadConsoleInput(hInput, s_irCache, IRSIZE, &dwEvents))
+	    return FALSE;
+	s_dwIndex = 0;
+	s_dwMax = dwEvents;
+	if (dwEvents == 0)
+	{
+	    *lpEvents = 0;
+	    return TRUE;
+	}
+
+	if (s_dwMax > 1)
+	{
+	    head = 0;
+	    tail = s_dwMax - 1;
+	    while (head != tail)
+	    {
+		if (s_irCache[head].EventType == WINDOW_BUFFER_SIZE_EVENT
+			&& s_irCache[head + 1].EventType
+						  == WINDOW_BUFFER_SIZE_EVENT)
+		{
+		    /* Remove duplicate event to avoid flicker. */
+		    for (i = head; i < tail; ++i)
+			s_irCache[i] = s_irCache[i + 1];
+		    --tail;
+		    continue;
+		}
+		head++;
+	    }
+	    s_dwMax = tail + 1;
+	}
+    }
+
+    *lpBuffer = s_irCache[s_dwIndex];
+    if (nLength != -1 && ++s_dwIndex >= s_dwMax)
+	s_dwMax = 0;
+    *lpEvents = 1;
+    return TRUE;
+}
+
+/*
+ * Version of PeekConsoleInput() that works with IME.
+ */
+    static BOOL
+peek_console_input(
+    HANDLE	    hInput,
+    INPUT_RECORD    *lpBuffer,
+    DWORD	    nLength,
+    LPDWORD	    lpEvents)
+{
+    return read_console_input(hInput, lpBuffer, -1, lpEvents);
+}
 
     static void
 get_exe_name(void)
@@ -259,24 +365,68 @@ get_exe_name(void)
 }
 
 /*
+ * Unescape characters in "p" that appear in "escaped".
+ */
+    static void
+unescape_shellxquote(char_u *p, char_u *escaped)
+{
+    int	    l = (int)STRLEN(p);
+    int	    n;
+
+    while (*p != NUL)
+    {
+	if (*p == '^' && vim_strchr(escaped, p[1]) != NULL)
+	    mch_memmove(p, p + 1, l--);
+#ifdef FEAT_MBYTE
+	n = (*mb_ptr2len)(p);
+#else
+	n = 1;
+#endif
+	p += n;
+	l -= n;
+    }
+}
+
+/*
  * Load library "name".
  */
     HINSTANCE
 vimLoadLib(char *name)
 {
-    HINSTANCE dll = NULL;
-    char old_dir[MAXPATHL];
+    HINSTANCE	dll = NULL;
+    char	old_dir[MAXPATHL];
 
+    /* NOTE: Do not use mch_dirname() and mch_chdir() here, they may call
+     * vimLoadLib() recursively, which causes a stack overflow. */
     if (exe_path == NULL)
 	get_exe_name();
-    if (exe_path != NULL && mch_dirname(old_dir, MAXPATHL) == OK)
+    if (exe_path != NULL)
     {
-	/* Change directory to where the executable is, both to make sure we
-	 * find a .dll there and to avoid looking for a .dll in the current
-	 * directory. */
-	mch_chdir(exe_path);
-	dll = LoadLibrary(name);
-	mch_chdir(old_dir);
+#ifdef FEAT_MBYTE
+	WCHAR old_dirw[MAXPATHL];
+
+	if (GetCurrentDirectoryW(MAXPATHL, old_dirw) != 0)
+	{
+	    /* Change directory to where the executable is, both to make
+	     * sure we find a .dll there and to avoid looking for a .dll
+	     * in the current directory. */
+	    SetCurrentDirectory(exe_path);
+	    dll = LoadLibrary(name);
+	    SetCurrentDirectoryW(old_dirw);
+	    return dll;
+	}
+	/* Retry with non-wide function (for Windows 98). */
+	if (GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
+#endif
+	    if (GetCurrentDirectory(MAXPATHL, old_dir) != 0)
+	    {
+		/* Change directory to where the executable is, both to make
+		 * sure we find a .dll there and to avoid looking for a .dll
+		 * in the current directory. */
+		SetCurrentDirectory(exe_path);
+		dll = LoadLibrary(name);
+		SetCurrentDirectory(old_dir);
+	    }
     }
     return dll;
 }
@@ -285,7 +435,7 @@ vimLoadLib(char *name)
 # ifndef GETTEXT_DLL
 #  define GETTEXT_DLL "libintl.dll"
 # endif
-/* Dummy funcitons */
+/* Dummy functions */
 static char *null_libintl_gettext(const char *);
 static char *null_libintl_textdomain(const char *);
 static char *null_libintl_bindtextdomain(const char *, const char *);
@@ -409,26 +559,79 @@ null_libintl_textdomain(const char *domainname)
 DWORD g_PlatformId;
 
 #ifdef HAVE_ACL
-# include <aclapi.h>
+# ifndef PROTO
+#  include <aclapi.h>
+# endif
+# ifndef PROTECTED_DACL_SECURITY_INFORMATION
+#  define PROTECTED_DACL_SECURITY_INFORMATION	0x80000000L
+# endif
+
 /*
  * These are needed to dynamically load the ADVAPI DLL, which is not
  * implemented under Windows 95 (and causes VIM to crash)
  */
-typedef DWORD (WINAPI *PSNSECINFO) (LPTSTR, enum SE_OBJECT_TYPE,
+typedef DWORD (WINAPI *PSNSECINFO) (LPSTR, SE_OBJECT_TYPE,
 	SECURITY_INFORMATION, PSID, PSID, PACL, PACL);
-typedef DWORD (WINAPI *PGNSECINFO) (LPSTR, enum SE_OBJECT_TYPE,
+typedef DWORD (WINAPI *PGNSECINFO) (LPSTR, SE_OBJECT_TYPE,
 	SECURITY_INFORMATION, PSID *, PSID *, PACL *, PACL *,
 	PSECURITY_DESCRIPTOR *);
+# ifdef FEAT_MBYTE
+typedef DWORD (WINAPI *PSNSECINFOW) (LPWSTR, SE_OBJECT_TYPE,
+	SECURITY_INFORMATION, PSID, PSID, PACL, PACL);
+typedef DWORD (WINAPI *PGNSECINFOW) (LPWSTR, SE_OBJECT_TYPE,
+	SECURITY_INFORMATION, PSID *, PSID *, PACL *, PACL *,
+	PSECURITY_DESCRIPTOR *);
+# endif
 
 static HANDLE advapi_lib = NULL;	/* Handle for ADVAPI library */
 static PSNSECINFO pSetNamedSecurityInfo;
 static PGNSECINFO pGetNamedSecurityInfo;
+# ifdef FEAT_MBYTE
+static PSNSECINFOW pSetNamedSecurityInfoW;
+static PGNSECINFOW pGetNamedSecurityInfoW;
+# endif
 #endif
 
 typedef BOOL (WINAPI *PSETHANDLEINFORMATION)(HANDLE, DWORD, DWORD);
 
 static BOOL allowPiping = FALSE;
 static PSETHANDLEINFORMATION pSetHandleInformation;
+
+#ifdef HAVE_ACL
+/*
+ * Enables or disables the specified privilege.
+ */
+    static BOOL
+win32_enable_privilege(LPTSTR lpszPrivilege, BOOL bEnable)
+{
+    BOOL		bResult;
+    LUID		luid;
+    HANDLE		hToken;
+    TOKEN_PRIVILEGES	tokenPrivileges;
+
+    if (!OpenProcessToken(GetCurrentProcess(),
+		TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
+	return FALSE;
+
+    if (!LookupPrivilegeValue(NULL, lpszPrivilege, &luid))
+    {
+	CloseHandle(hToken);
+	return FALSE;
+    }
+
+    tokenPrivileges.PrivilegeCount	     = 1;
+    tokenPrivileges.Privileges[0].Luid       = luid;
+    tokenPrivileges.Privileges[0].Attributes = bEnable ?
+						    SE_PRIVILEGE_ENABLED : 0;
+
+    bResult = AdjustTokenPrivileges(hToken, FALSE, &tokenPrivileges,
+	    sizeof(TOKEN_PRIVILEGES), NULL, NULL);
+
+    CloseHandle(hToken);
+
+    return bResult && GetLastError() == ERROR_SUCCESS;
+}
+#endif
 
 /*
  * Set g_PlatformId to VER_PLATFORM_WIN32_NT (NT) or
@@ -447,6 +650,10 @@ PlatformId(void)
 	GetVersionEx(&ovi);
 
 	g_PlatformId = ovi.dwPlatformId;
+
+	if ((ovi.dwMajorVersion == 6 && ovi.dwMinorVersion >= 2)
+		|| ovi.dwMajorVersion > 6)
+	    win8_or_later = TRUE;
 
 #ifdef HAVE_ACL
 	/*
@@ -469,14 +676,27 @@ PlatformId(void)
 						      "SetNamedSecurityInfoA");
 		pGetNamedSecurityInfo = (PGNSECINFO)GetProcAddress(advapi_lib,
 						      "GetNamedSecurityInfoA");
+# ifdef FEAT_MBYTE
+		pSetNamedSecurityInfoW = (PSNSECINFOW)GetProcAddress(advapi_lib,
+						      "SetNamedSecurityInfoW");
+		pGetNamedSecurityInfoW = (PGNSECINFOW)GetProcAddress(advapi_lib,
+						      "GetNamedSecurityInfoW");
+# endif
 		if (pSetNamedSecurityInfo == NULL
-			|| pGetNamedSecurityInfo == NULL)
+			|| pGetNamedSecurityInfo == NULL
+# ifdef FEAT_MBYTE
+			|| pSetNamedSecurityInfoW == NULL
+			|| pGetNamedSecurityInfoW == NULL
+# endif
+			)
 		{
 		    /* If we can't get the function addresses, set advapi_lib
 		     * to NULL so that we don't use them. */
 		    FreeLibrary(advapi_lib);
 		    advapi_lib = NULL;
 		}
+		/* Enable privilege for getting or setting SACLs. */
+		win32_enable_privilege(SE_SECURITY_NAME, TRUE);
 	    }
 	}
 #endif
@@ -974,7 +1194,7 @@ decode_mouse_event(
 	    DWORD dwLR = (pmer->dwButtonState & LEFT_RIGHT);
 
 	    /* if either left or right button only is pressed, see if the
-	     * the next mouse event has both of them pressed */
+	     * next mouse event has both of them pressed */
 	    if (dwLR == LEFT || dwLR == RIGHT)
 	    {
 		for (;;)
@@ -989,7 +1209,7 @@ decode_mouse_event(
 			INPUT_RECORD ir;
 			MOUSE_EVENT_RECORD* pmer2 = &ir.Event.MouseEvent;
 
-			PeekConsoleInput(g_hConIn, &ir, 1, &cRecords);
+			peek_console_input(g_hConIn, &ir, 1, &cRecords);
 
 			if (cRecords == 0 || ir.EventType != MOUSE_EVENT
 				|| !(pmer2->dwButtonState & LEFT_RIGHT))
@@ -998,7 +1218,7 @@ decode_mouse_event(
 			{
 			    if (pmer2->dwEventFlags != MOUSE_MOVED)
 			    {
-				ReadConsoleInput(g_hConIn, &ir, 1, &cRecords);
+				read_console_input(g_hConIn, &ir, 1, &cRecords);
 
 				return decode_mouse_event(pmer2);
 			    }
@@ -1006,10 +1226,10 @@ decode_mouse_event(
 				     s_yOldMouse == pmer2->dwMousePosition.Y)
 			    {
 				/* throw away spurious mouse move */
-				ReadConsoleInput(g_hConIn, &ir, 1, &cRecords);
+				read_console_input(g_hConIn, &ir, 1, &cRecords);
 
 				/* are there any more mouse events in queue? */
-				PeekConsoleInput(g_hConIn, &ir, 1, &cRecords);
+				peek_console_input(g_hConIn, &ir, 1, &cRecords);
 
 				if (cRecords==0 || ir.EventType != MOUSE_EVENT)
 				    break;
@@ -1219,9 +1439,10 @@ WaitForChar(long msec)
 
 	if (msec > 0)
 	{
-	    /* If the specified wait time has passed, return. */
+	    /* If the specified wait time has passed, return.  Beware that
+	     * GetTickCount() may wrap around (overflow). */
 	    dwNow = GetTickCount();
-	    if (dwNow >= dwEndTime)
+	    if ((int)(dwNow - dwEndTime) >= 0)
 		break;
 	}
 	if (msec != 0)
@@ -1245,7 +1466,7 @@ WaitForChar(long msec)
 	}
 
 	cRecords = 0;
-	PeekConsoleInput(g_hConIn, &ir, 1, &cRecords);
+	peek_console_input(g_hConIn, &ir, 1, &cRecords);
 
 #ifdef FEAT_MBYTE_IME
 	if (State & CMDLINE && msg_row == Rows - 1)
@@ -1276,7 +1497,7 @@ WaitForChar(long msec)
 		if (ir.Event.KeyEvent.uChar.UnicodeChar == 0
 			&& ir.Event.KeyEvent.wVirtualKeyCode == 13)
 		{
-		    ReadConsoleInput(g_hConIn, &ir, 1, &cRecords);
+		    read_console_input(g_hConIn, &ir, 1, &cRecords);
 		    continue;
 		}
 #endif
@@ -1285,7 +1506,7 @@ WaitForChar(long msec)
 		    return TRUE;
 	    }
 
-	    ReadConsoleInput(g_hConIn, &ir, 1, &cRecords);
+	    read_console_input(g_hConIn, &ir, 1, &cRecords);
 
 	    if (ir.EventType == FOCUS_EVENT)
 		handle_focus_event(ir);
@@ -1355,7 +1576,7 @@ tgetch(int *pmodifiers, char_u *pch2)
 	    return 0;
 # endif
 #endif
-	if (ReadConsoleInput(g_hConIn, &ir, 1, &cRecords) == 0)
+	if (read_console_input(g_hConIn, &ir, 1, &cRecords) == 0)
 	{
 	    if (did_create_conin)
 		read_error_exit();
@@ -1386,7 +1607,7 @@ tgetch(int *pmodifiers, char_u *pch2)
 
 
 /*
- * mch_inchar(): low-level input funcion.
+ * mch_inchar(): low-level input function.
  * Get one or more characters from the keyboard or the mouse.
  * If time == 0, do not wait for characters.
  * If time == n, wait a short time for characters.
@@ -1408,6 +1629,11 @@ mch_inchar(
 #define TYPEAHEADLEN 20
     static char_u   typeahead[TYPEAHEADLEN];	/* previously typed bytes. */
     static int	    typeaheadlen = 0;
+#ifdef FEAT_MBYTE
+    static char_u   *rest = NULL;	/* unconverted rest of previous read */
+    static int	    restlen = 0;
+    int		    unconverted;
+#endif
 
     /* First use any typeahead that was kept because "buf" was too small. */
     if (typeaheadlen > 0)
@@ -1511,6 +1737,33 @@ mch_inchar(
 
 	    c = tgetch(&modifiers, &ch2);
 
+#ifdef FEAT_MBYTE
+	    /* stolen from fill_input_buf() in ui.c */
+	    if (rest != NULL)
+	    {
+		/* Use remainder of previous call, starts with an invalid
+		 * character that may become valid when reading more. */
+		if (restlen > TYPEAHEADLEN - typeaheadlen)
+		    unconverted = TYPEAHEADLEN - typeaheadlen;
+		else
+		    unconverted = restlen;
+		mch_memmove(typeahead + typeaheadlen, rest, unconverted);
+		if (unconverted == restlen)
+		{
+		    vim_free(rest);
+		    rest = NULL;
+		}
+		else
+		{
+		    restlen -= unconverted;
+		    mch_memmove(rest, rest + unconverted, restlen);
+		}
+		typeaheadlen += unconverted;
+	    }
+	    else
+		unconverted = 0;
+#endif
+
 	    if (typebuf_changed(tb_change_cnt))
 	    {
 		/* "buf" may be invalid now if a client put something in the
@@ -1532,13 +1785,14 @@ mch_inchar(
 #endif
 	    {
 		int	n = 1;
+		int     conv = FALSE;
 
-		/* A key may have one or two bytes. */
 		typeahead[typeaheadlen] = c;
 		if (ch2 != NUL)
 		{
-		    typeahead[typeaheadlen + 1] = ch2;
-		    ++n;
+		    typeahead[typeaheadlen + 1] = 3;
+		    typeahead[typeaheadlen + 2] = ch2;
+		    n += 2;
 		}
 #ifdef FEAT_MBYTE
 		/* Only convert normal characters, not special keys.  Need to
@@ -1546,9 +1800,32 @@ mch_inchar(
 		 * when 'tenc' is set. */
 		if (input_conv.vc_type != CONV_NONE
 						&& (ch2 == NUL || c != K_NUL))
-		    n = convert_input(typeahead + typeaheadlen, n,
-						 TYPEAHEADLEN - typeaheadlen);
+		{
+		    conv = TRUE;
+		    typeaheadlen -= unconverted;
+		    n = convert_input_safe(typeahead + typeaheadlen,
+				n + unconverted, TYPEAHEADLEN - typeaheadlen,
+				rest == NULL ? &rest : NULL, &restlen);
+		}
 #endif
+
+		if (conv)
+		{
+		    char_u *p = typeahead + typeaheadlen;
+		    char_u *e = typeahead + TYPEAHEADLEN;
+
+		    while (*p && p < e)
+		    {
+			if (*p == K_NUL)
+			{
+			    ++p;
+			    mch_memmove(p + 1, p, ((size_t)(e - p)) - 1);
+			    *p = 3;
+			    ++n;
+			}
+			++p;
+		    }
+		}
 
 		/* Use the ALT key to set the 8th bit of the character
 		 * when it's one byte, the 8th bit isn't set yet and not
@@ -1614,8 +1891,10 @@ theend:
 #endif /* FEAT_GUI_W32 */
 }
 
-#ifndef __MINGW32__
-# include <shellapi.h>	/* required for FindExecutable() */
+#ifndef PROTO
+# ifndef __MINGW32__
+#  include <shellapi.h>	/* required for FindExecutable() */
+# endif
 #endif
 
 /*
@@ -1623,10 +1902,12 @@ theend:
  * TODO: Should somehow check if it's really executable.
  */
     static int
-executable_exists(char *name)
+executable_exists(char *name, char_u **path)
 {
     char	*dum;
     char	fname[_MAX_PATH];
+    char	*curpath, *newpath;
+    long	n;
 
 #ifdef FEAT_MBYTE
     if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
@@ -1634,11 +1915,19 @@ executable_exists(char *name)
 	WCHAR	*p = enc_to_utf16(name, NULL);
 	WCHAR	fnamew[_MAX_PATH];
 	WCHAR	*dumw;
-	long	n;
+	WCHAR	*wcurpath, *wnewpath;
 
 	if (p != NULL)
 	{
-	    n = (long)SearchPathW(NULL, p, NULL, _MAX_PATH, fnamew, &dumw);
+	    wcurpath = _wgetenv(L"PATH");
+	    wnewpath = (WCHAR*)alloc((unsigned)(wcslen(wcurpath) + 3)
+							    * sizeof(WCHAR));
+	    if (wnewpath == NULL)
+		return FALSE;
+	    wcscpy(wnewpath, L".;");
+	    wcscat(wnewpath, wcurpath);
+	    n = (long)SearchPathW(wnewpath, p, NULL, _MAX_PATH, fnamew, &dumw);
+	    vim_free(wnewpath);
 	    vim_free(p);
 	    if (n > 0 || GetLastError() != ERROR_CALL_NOT_IMPLEMENTED)
 	    {
@@ -1646,16 +1935,29 @@ executable_exists(char *name)
 		    return FALSE;
 		if (GetFileAttributesW(fnamew) & FILE_ATTRIBUTE_DIRECTORY)
 		    return FALSE;
+		if (path != NULL)
+		    *path = utf16_to_enc(fnamew, NULL);
 		return TRUE;
 	    }
 	    /* Retry with non-wide function (for Windows 98). */
 	}
     }
 #endif
-    if (SearchPath(NULL, name, NULL, _MAX_PATH, fname, &dum) == 0)
+
+    curpath = getenv("PATH");
+    newpath = (char*)alloc((unsigned)(STRLEN(curpath) + 3));
+    if (newpath == NULL)
+	return FALSE;
+    STRCPY(newpath, ".;");
+    STRCAT(newpath, curpath);
+    n = (long)SearchPath(newpath, name, NULL, _MAX_PATH, fname, &dum);
+    vim_free(newpath);
+    if (n == 0)
 	return FALSE;
     if (mch_isdir(fname))
 	return FALSE;
+    if (path != NULL)
+	*path = vim_strsave(fname);
     return TRUE;
 }
 
@@ -1737,7 +2039,7 @@ mch_init(void)
 	    vimrun_path = (char *)vim_strsave(vimrun_location);
 	    s_dont_use_vimrun = FALSE;
 	}
-	else if (executable_exists("vimrun.exe"))
+	else if (executable_exists("vimrun.exe", NULL))
 	    s_dont_use_vimrun = FALSE;
 
 	/* Don't give the warning for a missing vimrun.exe right now, but only
@@ -1751,20 +2053,11 @@ mch_init(void)
      * If "finstr.exe" doesn't exist, use "grep -n" for 'grepprg'.
      * Otherwise the default "findstr /n" is used.
      */
-    if (!executable_exists("findstr.exe"))
+    if (!executable_exists("findstr.exe", NULL))
 	set_option_value((char_u *)"grepprg", 0, (char_u *)"grep -n", 0);
 
 #ifdef FEAT_CLIPBOARD
-    clip_init(TRUE);
-
-    /*
-     * Vim's own clipboard format recognises whether the text is char, line,
-     * or rectangular block.  Only useful for copying between two Vims.
-     * "VimClipboard" was used for previous versions, using the first
-     * character to specify MCHAR, MLINE or MBLOCK.
-     */
-    clip_star.format = RegisterClipboardFormat("VimClipboard2");
-    clip_star.format_raw = RegisterClipboardFormat("VimRawBytes");
+    win_clip_init();
 #endif
 }
 
@@ -2153,7 +2446,8 @@ SaveConsoleTitleAndIcon(void)
 	return;
 
     /* Extract the first icon contained in the Vim executable. */
-    g_hVimIcon = ExtractIcon(NULL, exe_name, 0);
+    if (mch_icon_load((HANDLE *)&g_hVimIcon) == FAIL || g_hVimIcon == NULL)
+	g_hVimIcon = ExtractIcon(NULL, exe_name, 0);
     if (g_hVimIcon != NULL)
 	g_fCanChangeIcon = TRUE;
 }
@@ -2249,16 +2543,7 @@ mch_init(void)
 #endif
 
 #ifdef FEAT_CLIPBOARD
-    clip_init(TRUE);
-
-    /*
-     * Vim's own clipboard format recognises whether the text is char, line, or
-     * rectangular block.  Only useful for copying between two Vims.
-     * "VimClipboard" was used for previous versions, using the first
-     * character to specify MCHAR, MLINE or MBLOCK.
-     */
-    clip_star.format = RegisterClipboardFormat("VimClipboard2");
-    clip_star.format_raw = RegisterClipboardFormat("VimRawBytes");
+    win_clip_init();
 #endif
 
     /* This will be NULL on anything but NT 4.0 */
@@ -2341,9 +2626,125 @@ mch_check_win(
 }
 
 
+#ifdef FEAT_MBYTE
+/*
+ * fname_casew(): Wide version of fname_case().  Set the case of the file name,
+ * if it already exists.  When "len" is > 0, also expand short to long
+ * filenames.
+ * Return FAIL if wide functions are not available, OK otherwise.
+ * NOTE: much of this is identical to fname_case(), keep in sync!
+ */
+    static int
+fname_casew(
+    WCHAR	*name,
+    int		len)
+{
+    WCHAR		szTrueName[_MAX_PATH + 2];
+    WCHAR		szTrueNameTemp[_MAX_PATH + 2];
+    WCHAR		*ptrue, *ptruePrev;
+    WCHAR		*porig, *porigPrev;
+    int			flen;
+    WIN32_FIND_DATAW	fb;
+    HANDLE		hFind = INVALID_HANDLE_VALUE;
+    int			c;
+    int			slen;
+
+    flen = (int)wcslen(name);
+    if (flen > _MAX_PATH)
+	return OK;
+
+    /* slash_adjust(name) not needed, already adjusted by fname_case(). */
+
+    /* Build the new name in szTrueName[] one component at a time. */
+    porig = name;
+    ptrue = szTrueName;
+
+    if (iswalpha(porig[0]) && porig[1] == L':')
+    {
+	/* copy leading drive letter */
+	*ptrue++ = *porig++;
+	*ptrue++ = *porig++;
+    }
+    *ptrue = NUL;	    /* in case nothing follows */
+
+    while (*porig != NUL)
+    {
+	/* copy \ characters */
+	while (*porig == psepc)
+	    *ptrue++ = *porig++;
+
+	ptruePrev = ptrue;
+	porigPrev = porig;
+	while (*porig != NUL && *porig != psepc)
+	{
+	    *ptrue++ = *porig++;
+	}
+	*ptrue = NUL;
+
+	/* To avoid a slow failure append "\*" when searching a directory,
+	 * server or network share. */
+	wcscpy(szTrueNameTemp, szTrueName);
+	slen = (int)wcslen(szTrueNameTemp);
+	if (*porig == psepc && slen + 2 < _MAX_PATH)
+	    wcscpy(szTrueNameTemp + slen, L"\\*");
+
+	/* Skip "", "." and "..". */
+	if (ptrue > ptruePrev
+		&& (ptruePrev[0] != L'.'
+		    || (ptruePrev[1] != NUL
+			&& (ptruePrev[1] != L'.' || ptruePrev[2] != NUL)))
+		&& (hFind = FindFirstFileW(szTrueNameTemp, &fb))
+						      != INVALID_HANDLE_VALUE)
+	{
+	    c = *porig;
+	    *porig = NUL;
+
+	    /* Only use the match when it's the same name (ignoring case) or
+	     * expansion is allowed and there is a match with the short name
+	     * and there is enough room. */
+	    if (_wcsicoll(porigPrev, fb.cFileName) == 0
+		    || (len > 0
+			&& (_wcsicoll(porigPrev, fb.cAlternateFileName) == 0
+			    && (int)(ptruePrev - szTrueName)
+					   + (int)wcslen(fb.cFileName) < len)))
+	    {
+		wcscpy(ptruePrev, fb.cFileName);
+
+		/* Look for exact match and prefer it if found.  Must be a
+		 * long name, otherwise there would be only one match. */
+		while (FindNextFileW(hFind, &fb))
+		{
+		    if (*fb.cAlternateFileName != NUL
+			    && (wcscoll(porigPrev, fb.cFileName) == 0
+				|| (len > 0
+				    && (_wcsicoll(porigPrev,
+						   fb.cAlternateFileName) == 0
+				    && (int)(ptruePrev - szTrueName)
+					 + (int)wcslen(fb.cFileName) < len))))
+		    {
+			wcscpy(ptruePrev, fb.cFileName);
+			break;
+		    }
+		}
+	    }
+	    FindClose(hFind);
+	    *porig = c;
+	    ptrue = ptruePrev + wcslen(ptruePrev);
+	}
+	else if (hFind == INVALID_HANDLE_VALUE
+		&& GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
+	    return FAIL;
+    }
+
+    wcscpy(name, szTrueName);
+    return OK;
+}
+#endif
+
 /*
  * fname_case(): Set the case of the file name, if it already exists.
  * When "len" is > 0, also expand short to long filenames.
+ * NOTE: much of this is identical to fname_casew(), keep in sync!
  */
     void
 fname_case(
@@ -2361,10 +2762,44 @@ fname_case(
     int			slen;
 
     flen = (int)STRLEN(name);
-    if (flen == 0 || flen > _MAX_PATH)
+    if (flen == 0)
 	return;
 
     slash_adjust(name);
+
+#ifdef FEAT_MBYTE
+    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
+    {
+	WCHAR	*p = enc_to_utf16(name, NULL);
+
+	if (p != NULL)
+	{
+	    char_u	*q;
+	    WCHAR	buf[_MAX_PATH + 1];
+
+	    wcsncpy(buf, p, _MAX_PATH);
+	    buf[_MAX_PATH] = L'\0';
+	    vim_free(p);
+
+	    if (fname_casew(buf, (len > 0) ? _MAX_PATH : 0) == OK)
+	    {
+		q = utf16_to_enc(buf, NULL);
+		if (q != NULL)
+		{
+		    vim_strncpy(name, q, (len > 0) ? len - 1 : flen);
+		    vim_free(q);
+		    return;
+		}
+	    }
+	}
+	/* Retry with non-wide function (for Windows 98). */
+    }
+#endif
+
+    /* If 'enc' is utf-8, flen can be larger than _MAX_PATH.
+     * So we should check this after calling wide function. */
+    if (flen > _MAX_PATH)
+	return;
 
     /* Build the new name in szTrueName[] one component at a time. */
     porig = name;
@@ -2375,8 +2810,8 @@ fname_case(
 	/* copy leading drive letter */
 	*ptrue++ = *porig++;
 	*ptrue++ = *porig++;
-	*ptrue = NUL;	    /* in case nothing follows */
     }
+    *ptrue = NUL;	    /* in case nothing follows */
 
     while (*porig != NUL)
     {
@@ -2470,6 +2905,28 @@ mch_get_user_name(
     char szUserName[256 + 1];	/* UNLEN is 256 */
     DWORD cch = sizeof szUserName;
 
+#ifdef FEAT_MBYTE
+    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
+    {
+	WCHAR wszUserName[256 + 1];	/* UNLEN is 256 */
+	DWORD wcch = sizeof(wszUserName) / sizeof(WCHAR);
+
+	if (GetUserNameW(wszUserName, &wcch))
+	{
+	    char_u  *p = utf16_to_enc(wszUserName, NULL);
+
+	    if (p != NULL)
+	    {
+		vim_strncpy(s, p, len - 1);
+		vim_free(p);
+		return OK;
+	    }
+	}
+	else if (GetLastError() != ERROR_CALL_NOT_IMPLEMENTED)
+	    return FAIL;
+	/* Retry with non-wide function (for Windows 98). */
+    }
+#endif
     if (GetUserName(szUserName, &cch))
     {
 	vim_strncpy(s, szUserName, len - 1);
@@ -2490,6 +2947,28 @@ mch_get_host_name(
 {
     DWORD cch = len;
 
+#ifdef FEAT_MBYTE
+    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
+    {
+	WCHAR wszHostName[256 + 1];
+	DWORD wcch = sizeof(wszHostName) / sizeof(WCHAR);
+
+	if (GetComputerNameW(wszHostName, &wcch))
+	{
+	    char_u  *p = utf16_to_enc(wszHostName, NULL);
+
+	    if (p != NULL)
+	    {
+		vim_strncpy(s, p, len - 1);
+		vim_free(p);
+		return;
+	    }
+	}
+	else if (GetLastError() != ERROR_CALL_NOT_IMPLEMENTED)
+	    return;
+	/* Retry with non-wide function (for Windows 98). */
+    }
+#endif
     if (!GetComputerName(s, &cch))
 	vim_strncpy(s, "PC (Win32 Vim)", len - 1);
 }
@@ -2536,6 +3015,8 @@ mch_dirname(
 		return OK;
 	    }
 	}
+	else if (GetLastError() != ERROR_CALL_NOT_IMPLEMENTED)
+	    return FAIL;
 	/* Retry with non-wide function (for Windows 98). */
     }
 #endif
@@ -2543,59 +3024,53 @@ mch_dirname(
 }
 
 /*
- * get file permissions for `name'
- * -1 : error
- * else FILE_ATTRIBUTE_* defined in winnt.h
+ * Get file permissions for "name".
+ * Return mode_t or -1 for error.
  */
     long
 mch_getperm(char_u *name)
 {
-#ifdef FEAT_MBYTE
-    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
-    {
-	WCHAR	*p = enc_to_utf16(name, NULL);
-	long	n;
+    struct stat st;
+    int		n;
 
-	if (p != NULL)
-	{
-	    n = (long)GetFileAttributesW(p);
-	    vim_free(p);
-	    if (n >= 0 || GetLastError() != ERROR_CALL_NOT_IMPLEMENTED)
-		return n;
-	    /* Retry with non-wide function (for Windows 98). */
-	}
-    }
-#endif
-    return (long)GetFileAttributes((char *)name);
+    n = mch_stat(name, &st);
+    return n == 0 ? (long)(unsigned short)st.st_mode : -1L;
 }
 
 
 /*
- * set file permission for `name' to `perm'
+ * Set file permission for "name" to "perm".
+ *
+ * Return FAIL for failure, OK otherwise.
  */
     int
-mch_setperm(
-    char_u  *name,
-    long    perm)
+mch_setperm(char_u *name, long perm)
 {
-    perm |= FILE_ATTRIBUTE_ARCHIVE;	/* file has changed, set archive bit */
+    long	n = -1;
+
 #ifdef FEAT_MBYTE
     if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
     {
-	WCHAR	*p = enc_to_utf16(name, NULL);
-	long	n;
+	WCHAR *p = enc_to_utf16(name, NULL);
 
 	if (p != NULL)
 	{
-	    n = (long)SetFileAttributesW(p, perm);
+	    n = _wchmod(p, perm);
 	    vim_free(p);
-	    if (n || GetLastError() != ERROR_CALL_NOT_IMPLEMENTED)
-		return n ? OK : FAIL;
+	    if (n == -1 && g_PlatformId == VER_PLATFORM_WIN32_NT)
+		return FAIL;
 	    /* Retry with non-wide function (for Windows 98). */
 	}
     }
+    if (n == -1)
 #endif
-    return SetFileAttributes((char *)name, perm) ? OK : FAIL;
+	n = _chmod(name, perm);
+    if (n == -1)
+	return FAIL;
+
+    win32_set_archive(name);
+
+    return OK;
 }
 
 /*
@@ -2604,49 +3079,12 @@ mch_setperm(
     void
 mch_hide(char_u *name)
 {
-    int		perm;
-#ifdef FEAT_MBYTE
-    WCHAR	*p = NULL;
+    int attrs = win32_getattrs(name);
+    if (attrs == -1)
+	return;
 
-    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
-	p = enc_to_utf16(name, NULL);
-#endif
-
-#ifdef FEAT_MBYTE
-    if (p != NULL)
-    {
-	perm = GetFileAttributesW(p);
-	if (perm < 0 && GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
-	{
-	    /* Retry with non-wide function (for Windows 98). */
-	    vim_free(p);
-	    p = NULL;
-	}
-    }
-    if (p == NULL)
-#endif
-	perm = GetFileAttributes((char *)name);
-    if (perm >= 0)
-    {
-	perm |= FILE_ATTRIBUTE_HIDDEN;
-#ifdef FEAT_MBYTE
-	if (p != NULL)
-	{
-	    if (SetFileAttributesW(p, perm) == 0
-		    && GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
-	    {
-		/* Retry with non-wide function (for Windows 98). */
-		vim_free(p);
-		p = NULL;
-	    }
-	}
-	if (p == NULL)
-#endif
-	    SetFileAttributes((char *)name, perm);
-    }
-#ifdef FEAT_MBYTE
-    vim_free(p);
-#endif
+    attrs |= FILE_ATTRIBUTE_HIDDEN;
+    win32_setattrs(name, attrs);
 }
 
 /*
@@ -2656,7 +3094,7 @@ mch_hide(char_u *name)
     int
 mch_isdir(char_u *name)
 {
-    int f = mch_getperm(name);
+    int f = win32_getattrs(name);
 
     if (f == -1)
 	return FALSE;		    /* file does not exist at all */
@@ -2692,12 +3130,82 @@ mch_mkdir(char_u *name)
  * Return TRUE if file "fname" has more than one link.
  */
     int
-mch_is_linked(char_u *fname)
+mch_is_hard_link(char_u *fname)
 {
     BY_HANDLE_FILE_INFORMATION info;
 
     return win32_fileinfo(fname, &info) == FILEINFO_OK
 						   && info.nNumberOfLinks > 1;
+}
+
+/*
+ * Return TRUE if file "fname" is a symbolic link.
+ */
+    int
+mch_is_symbolic_link(char_u *fname)
+{
+    HANDLE		hFind;
+    int			res = FALSE;
+    WIN32_FIND_DATAA	findDataA;
+    DWORD		fileFlags = 0, reparseTag = 0;
+#ifdef FEAT_MBYTE
+    WCHAR		*wn = NULL;
+    WIN32_FIND_DATAW	findDataW;
+
+    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
+	wn = enc_to_utf16(fname, NULL);
+    if (wn != NULL)
+    {
+	hFind = FindFirstFileW(wn, &findDataW);
+	vim_free(wn);
+	if (hFind == INVALID_HANDLE_VALUE
+		&& GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
+	{
+	    /* Retry with non-wide function (for Windows 98). */
+	    hFind = FindFirstFile(fname, &findDataA);
+	    if (hFind != INVALID_HANDLE_VALUE)
+	    {
+		fileFlags = findDataA.dwFileAttributes;
+		reparseTag = findDataA.dwReserved0;
+	    }
+	}
+	else
+	{
+	    fileFlags = findDataW.dwFileAttributes;
+	    reparseTag = findDataW.dwReserved0;
+	}
+    }
+    else
+#endif
+    {
+	hFind = FindFirstFile(fname, &findDataA);
+	if (hFind != INVALID_HANDLE_VALUE)
+	{
+	    fileFlags = findDataA.dwFileAttributes;
+	    reparseTag = findDataA.dwReserved0;
+	}
+    }
+
+    if (hFind != INVALID_HANDLE_VALUE)
+	FindClose(hFind);
+
+    if ((fileFlags & FILE_ATTRIBUTE_REPARSE_POINT)
+	    && reparseTag == IO_REPARSE_TAG_SYMLINK)
+	res = TRUE;
+
+    return res;
+}
+
+/*
+ * Return TRUE if file "fname" has more than one link or if it is a symbolic
+ * link.
+ */
+    int
+mch_is_linked(char_u *fname)
+{
+    if (mch_is_hard_link(fname) || mch_is_symbolic_link(fname))
+	return TRUE;
+    return FALSE;
 }
 
 /*
@@ -2764,6 +3272,91 @@ win32_fileinfo(char_u *fname, BY_HANDLE_FILE_INFORMATION *info)
 }
 
 /*
+ * get file attributes for `name'
+ * -1 : error
+ * else FILE_ATTRIBUTE_* defined in winnt.h
+ */
+    static int
+win32_getattrs(char_u *name)
+{
+    int		attr;
+#ifdef FEAT_MBYTE
+    WCHAR	*p = NULL;
+
+    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
+	p = enc_to_utf16(name, NULL);
+
+    if (p != NULL)
+    {
+	attr = GetFileAttributesW(p);
+	if (attr < 0 && GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
+	{
+	    /* Retry with non-wide function (for Windows 98). */
+	    vim_free(p);
+	    p = NULL;
+	}
+    }
+    if (p == NULL)
+#endif
+	attr = GetFileAttributes((char *)name);
+#ifdef FEAT_MBYTE
+    vim_free(p);
+#endif
+    return attr;
+}
+
+/*
+ * set file attributes for `name' to `attrs'
+ *
+ * return -1 for failure, 0 otherwise
+ */
+    static
+    int
+win32_setattrs(char_u *name, int attrs)
+{
+    int res;
+#ifdef FEAT_MBYTE
+    WCHAR	*p = NULL;
+
+    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
+	p = enc_to_utf16(name, NULL);
+
+    if (p != NULL)
+    {
+	res = SetFileAttributesW(p, attrs);
+	if (res == FALSE
+	    && GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
+	{
+	    /* Retry with non-wide function (for Windows 98). */
+	    vim_free(p);
+	    p = NULL;
+	}
+    }
+    if (p == NULL)
+#endif
+	res = SetFileAttributes((char *)name, attrs);
+#ifdef FEAT_MBYTE
+    vim_free(p);
+#endif
+    return res ? 0 : -1;
+}
+
+/*
+ * Set archive flag for "name".
+ */
+    static
+    int
+win32_set_archive(char_u *name)
+{
+    int attrs = win32_getattrs(name);
+    if (attrs == -1)
+	return -1;
+
+    attrs |= FILE_ATTRIBUTE_ARCHIVE;
+    return win32_setattrs(name, attrs);
+}
+
+/*
  * Return TRUE if file or directory "name" is writable (not readonly).
  * Strange semantics of Win32: a readonly directory is writable, but you can't
  * delete a file.  Let's say this means it is writable.
@@ -2771,10 +3364,10 @@ win32_fileinfo(char_u *fname, BY_HANDLE_FILE_INFORMATION *info)
     int
 mch_writable(char_u *name)
 {
-    int perm = mch_getperm(name);
+    int attrs = win32_getattrs(name);
 
-    return (perm != -1 && (!(perm & FILE_ATTRIBUTE_READONLY)
-				       || (perm & FILE_ATTRIBUTE_DIRECTORY)));
+    return (attrs != -1 && (!(attrs & FILE_ATTRIBUTE_READONLY)
+			  || (attrs & FILE_ATTRIBUTE_DIRECTORY)));
 }
 
 /*
@@ -2782,7 +3375,7 @@ mch_writable(char_u *name)
  * Return -1 if unknown.
  */
     int
-mch_can_exe(char_u *name)
+mch_can_exe(char_u *name, char_u **path)
 {
     char_u	buf[_MAX_PATH];
     int		len = (int)STRLEN(name);
@@ -2795,7 +3388,7 @@ mch_can_exe(char_u *name)
      * this with a Unix-shell like 'shell'. */
     if (vim_strchr(gettail(name), '.') != NULL
 			       || strstr((char *)gettail(p_sh), "sh") != NULL)
-	if (executable_exists((char *)name))
+	if (executable_exists((char *)name, path))
 	    return TRUE;
 
     /*
@@ -2817,7 +3410,7 @@ mch_can_exe(char_u *name)
 	}
 	else
 	    copy_option_part(&p, buf + len, _MAX_PATH - len, ";");
-	if (executable_exists((char *)buf))
+	if (executable_exists((char *)buf, path))
 	    return TRUE;
     }
     return FALSE;
@@ -2834,6 +3427,9 @@ mch_nodetype(char_u *name)
 {
     HANDLE	hFile;
     int		type;
+#ifdef FEAT_MBYTE
+    WCHAR	*wn = NULL;
+#endif
 
     /* We can't open a file with a name "\\.\con" or "\\.\prn" and trying to
      * read from it later will cause Vim to hang.  Thus return NODE_WRITABLE
@@ -2841,14 +3437,41 @@ mch_nodetype(char_u *name)
     if (STRNCMP(name, "\\\\.\\", 4) == 0)
 	return NODE_WRITABLE;
 
-    hFile = CreateFile(name,		/* file name */
-		GENERIC_WRITE,		/* access mode */
-		0,			/* share mode */
-		NULL,			/* security descriptor */
-		OPEN_EXISTING,		/* creation disposition */
-		0,			/* file attributes */
-		NULL);			/* handle to template file */
+#ifdef FEAT_MBYTE
+    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
+    {
+	wn = enc_to_utf16(name, NULL);
+	if (wn != NULL)
+	{
+	    hFile = CreateFileW(wn,	/* file name */
+			GENERIC_WRITE,	/* access mode */
+			0,		/* share mode */
+			NULL,		/* security descriptor */
+			OPEN_EXISTING,	/* creation disposition */
+			0,		/* file attributes */
+			NULL);		/* handle to template file */
+	    if (hFile == INVALID_HANDLE_VALUE
+			      && GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
+	    {
+		/* Retry with non-wide function (for Windows 98). */
+		vim_free(wn);
+		wn = NULL;
+	    }
+	}
+    }
+    if (wn == NULL)
+#endif
+	hFile = CreateFile(name,	/* file name */
+		    GENERIC_WRITE,	/* access mode */
+		    0,			/* share mode */
+		    NULL,		/* security descriptor */
+		    OPEN_EXISTING,	/* creation disposition */
+		    0,			/* file attributes */
+		    NULL);		/* handle to template file */
 
+#ifdef FEAT_MBYTE
+    vim_free(wn);
+#endif
     if (hFile == INVALID_HANDLE_VALUE)
 	return NODE_NORMAL;
 
@@ -2883,6 +3506,7 @@ mch_get_acl(char_u *fname)
     return (vim_acl_T)NULL;
 #else
     struct my_acl   *p = NULL;
+    DWORD   err;
 
     /* This only works on Windows NT and 2000. */
     if (g_PlatformId == VER_PLATFORM_WIN32_NT && advapi_lib != NULL)
@@ -2890,23 +3514,82 @@ mch_get_acl(char_u *fname)
 	p = (struct my_acl *)alloc_clear((unsigned)sizeof(struct my_acl));
 	if (p != NULL)
 	{
-	    if (pGetNamedSecurityInfo(
-			(LPTSTR)fname,		// Abstract filename
-			SE_FILE_OBJECT,		// File Object
-			// Retrieve the entire security descriptor.
-			OWNER_SECURITY_INFORMATION |
-			GROUP_SECURITY_INFORMATION |
-			DACL_SECURITY_INFORMATION |
-			SACL_SECURITY_INFORMATION,
-			&p->pSidOwner,		// Ownership information.
-			&p->pSidGroup,		// Group membership.
-			&p->pDacl,		// Discretionary information.
-			&p->pSacl,		// For auditing purposes.
-			&p->pSecurityDescriptor
-				    ) != ERROR_SUCCESS)
+# ifdef FEAT_MBYTE
+	    WCHAR	*wn = NULL;
+
+	    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
+		wn = enc_to_utf16(fname, NULL);
+	    if (wn != NULL)
 	    {
-		mch_free_acl((vim_acl_T)p);
-		p = NULL;
+		/* Try to retrieve the entire security descriptor. */
+		err = pGetNamedSecurityInfoW(
+			    wn,			// Abstract filename
+			    SE_FILE_OBJECT,	// File Object
+			    OWNER_SECURITY_INFORMATION |
+			    GROUP_SECURITY_INFORMATION |
+			    DACL_SECURITY_INFORMATION |
+			    SACL_SECURITY_INFORMATION,
+			    &p->pSidOwner,	// Ownership information.
+			    &p->pSidGroup,	// Group membership.
+			    &p->pDacl,		// Discretionary information.
+			    &p->pSacl,		// For auditing purposes.
+			    &p->pSecurityDescriptor);
+		if (err == ERROR_ACCESS_DENIED ||
+			err == ERROR_PRIVILEGE_NOT_HELD)
+		{
+		    /* Retrieve only DACL. */
+		    (void)pGetNamedSecurityInfoW(
+			    wn,
+			    SE_FILE_OBJECT,
+			    DACL_SECURITY_INFORMATION,
+			    NULL,
+			    NULL,
+			    &p->pDacl,
+			    NULL,
+			    &p->pSecurityDescriptor);
+		}
+		if (p->pSecurityDescriptor == NULL)
+		{
+		    mch_free_acl((vim_acl_T)p);
+		    p = NULL;
+		}
+		vim_free(wn);
+	    }
+	    else
+# endif
+	    {
+		/* Try to retrieve the entire security descriptor. */
+		err = pGetNamedSecurityInfo(
+			    (LPSTR)fname,	// Abstract filename
+			    SE_FILE_OBJECT,	// File Object
+			    OWNER_SECURITY_INFORMATION |
+			    GROUP_SECURITY_INFORMATION |
+			    DACL_SECURITY_INFORMATION |
+			    SACL_SECURITY_INFORMATION,
+			    &p->pSidOwner,	// Ownership information.
+			    &p->pSidGroup,	// Group membership.
+			    &p->pDacl,		// Discretionary information.
+			    &p->pSacl,		// For auditing purposes.
+			    &p->pSecurityDescriptor);
+		if (err == ERROR_ACCESS_DENIED ||
+			err == ERROR_PRIVILEGE_NOT_HELD)
+		{
+		    /* Retrieve only DACL. */
+		    (void)pGetNamedSecurityInfo(
+			    (LPSTR)fname,
+			    SE_FILE_OBJECT,
+			    DACL_SECURITY_INFORMATION,
+			    NULL,
+			    NULL,
+			    &p->pDacl,
+			    NULL,
+			    &p->pSecurityDescriptor);
+		}
+		if (p->pSecurityDescriptor == NULL)
+		{
+		    mch_free_acl((vim_acl_T)p);
+		    p = NULL;
+		}
 	    }
 	}
     }
@@ -2914,6 +3597,29 @@ mch_get_acl(char_u *fname)
     return (vim_acl_T)p;
 #endif
 }
+
+#ifdef HAVE_ACL
+/*
+ * Check if "acl" contains inherited ACE.
+ */
+    static BOOL
+is_acl_inherited(PACL acl)
+{
+    DWORD   i;
+    ACL_SIZE_INFORMATION    acl_info;
+    PACCESS_ALLOWED_ACE	    ace;
+
+    acl_info.AceCount = 0;
+    GetAclInformation(acl, &acl_info, sizeof(acl_info), AclSizeInformation);
+    for (i = 0; i < acl_info.AceCount; i++)
+    {
+	GetAce(acl, i, (LPVOID *)&ace);
+	if (ace->Header.AceFlags & INHERITED_ACE)
+	    return TRUE;
+    }
+    return FALSE;
+}
+#endif
 
 /*
  * Set the ACL of file "fname" to "acl" (unless it's NULL).
@@ -2925,21 +3631,61 @@ mch_set_acl(char_u *fname, vim_acl_T acl)
 {
 #ifdef HAVE_ACL
     struct my_acl   *p = (struct my_acl *)acl;
+    SECURITY_INFORMATION    sec_info = 0;
 
     if (p != NULL && advapi_lib != NULL)
-	(void)pSetNamedSecurityInfo(
-		    (LPTSTR)fname,		// Abstract filename
-		    SE_FILE_OBJECT,		// File Object
-		    // Retrieve the entire security descriptor.
-		    OWNER_SECURITY_INFORMATION |
-			GROUP_SECURITY_INFORMATION |
-			DACL_SECURITY_INFORMATION |
-			SACL_SECURITY_INFORMATION,
-		    p->pSidOwner,		// Ownership information.
-		    p->pSidGroup,		// Group membership.
-		    p->pDacl,			// Discretionary information.
-		    p->pSacl			// For auditing purposes.
-		    );
+    {
+# ifdef FEAT_MBYTE
+	WCHAR	*wn = NULL;
+# endif
+
+	/* Set security flags */
+	if (p->pSidOwner)
+	    sec_info |= OWNER_SECURITY_INFORMATION;
+	if (p->pSidGroup)
+	    sec_info |= GROUP_SECURITY_INFORMATION;
+	if (p->pDacl)
+	{
+	    sec_info |= DACL_SECURITY_INFORMATION;
+	    /* Do not inherit its parent's DACL.
+	     * If the DACL is inherited, Cygwin permissions would be changed.
+	     */
+	    if (!is_acl_inherited(p->pDacl))
+		sec_info |= PROTECTED_DACL_SECURITY_INFORMATION;
+	}
+	if (p->pSacl)
+	    sec_info |= SACL_SECURITY_INFORMATION;
+
+# ifdef FEAT_MBYTE
+	if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
+	    wn = enc_to_utf16(fname, NULL);
+	if (wn != NULL)
+	{
+	    (void)pSetNamedSecurityInfoW(
+			wn,			// Abstract filename
+			SE_FILE_OBJECT,		// File Object
+			sec_info,
+			p->pSidOwner,		// Ownership information.
+			p->pSidGroup,		// Group membership.
+			p->pDacl,		// Discretionary information.
+			p->pSacl		// For auditing purposes.
+			);
+	    vim_free(wn);
+	}
+	else
+# endif
+	{
+	    (void)pSetNamedSecurityInfo(
+			(LPSTR)fname,		// Abstract filename
+			SE_FILE_OBJECT,		// File Object
+			sec_info,
+			p->pSidOwner,		// Ownership information.
+			p->pSidGroup,		// Group membership.
+			p->pDacl,		// Discretionary information.
+			p->pSacl		// For auditing purposes.
+			);
+	}
+    }
 #endif
 }
 
@@ -3222,6 +3968,50 @@ mch_set_winsize_now(void)
 }
 #endif /* FEAT_GUI_W32 */
 
+    static BOOL
+vim_create_process(
+    char		*cmd,
+    BOOL		inherit_handles,
+    DWORD		flags,
+    STARTUPINFO		*si,
+    PROCESS_INFORMATION *pi)
+{
+#  ifdef FEAT_MBYTE
+    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
+    {
+	WCHAR	*wcmd = enc_to_utf16(cmd, NULL);
+
+	if (wcmd != NULL)
+	{
+	    BOOL ret;
+	    ret = CreateProcessW(
+		NULL,			/* Executable name */
+		wcmd,			/* Command to execute */
+		NULL,			/* Process security attributes */
+		NULL,			/* Thread security attributes */
+		inherit_handles,	/* Inherit handles */
+		flags,			/* Creation flags */
+		NULL,			/* Environment */
+		NULL,			/* Current directory */
+		(LPSTARTUPINFOW)si,	/* Startup information */
+		pi);			/* Process information */
+	    vim_free(wcmd);
+	    return ret;
+	}
+    }
+#endif
+    return CreateProcess(
+	NULL,			/* Executable name */
+	cmd,			/* Command to execute */
+	NULL,			/* Process security attributes */
+	NULL,			/* Thread security attributes */
+	inherit_handles,	/* Inherit handles */
+	flags,			/* Creation flags */
+	NULL,			/* Environment */
+	NULL,			/* Current directory */
+	si,			/* Startup information */
+	pi);			/* Process information */
+}
 
 
 #if defined(FEAT_GUI_W32) || defined(PROTO)
@@ -3268,18 +4058,8 @@ mch_system_classic(char *cmd, int options)
 	cmd += 3;
 
     /* Now, run the command */
-    CreateProcess(NULL,			/* Executable name */
-		  cmd,			/* Command to execute */
-		  NULL,			/* Process security attributes */
-		  NULL,			/* Thread security attributes */
-		  FALSE,		/* Inherit handles */
-		  CREATE_DEFAULT_ERROR_MODE |	/* Creation flags */
-			CREATE_NEW_CONSOLE,
-		  NULL,			/* Environment */
-		  NULL,			/* Current directory */
-		  &si,			/* Startup information */
-		  &pi);			/* Process information */
-
+    vim_create_process(cmd, FALSE,
+	    CREATE_DEFAULT_ERROR_MODE |	CREATE_NEW_CONSOLE, &si, &pi);
 
     /* Wait for the command to terminate before continuing */
     if (g_PlatformId != VER_PLATFORM_WIN32s)
@@ -3296,6 +4076,8 @@ mch_system_classic(char *cmd, int options)
 	    {
 		TranslateMessage(&msg);
 		pDispatchMessage(&msg);
+		delay = 1;
+		continue;
 	    }
 	    if (WaitForSingleObject(pi.hProcess, delay) != WAIT_TIMEOUT)
 		break;
@@ -3384,7 +4166,7 @@ sub_process_writer(LPVOID param)
 		    && (lnum != curbuf->b_ml.ml_line_count
 			|| curbuf->b_p_eol)))
 	    {
-		WriteFile(g_hChildStd_IN_Wr, "\n", 1, &ignored, NULL);
+		WriteFile(g_hChildStd_IN_Wr, "\n", 1, (LPDWORD)&ignored, NULL);
 	    }
 
 	    ++lnum;
@@ -3428,14 +4210,14 @@ dump_pipe(int	    options,
      * to avoid to perform a blocking read */
     ret = PeekNamedPipe(g_hChildStd_OUT_Rd, /* pipe to query */
 			NULL,		    /* optional buffer */
-			0,		    /* buffe size */
+			0,		    /* buffer size */
 			NULL,		    /* number of read bytes */
 			&availableBytes,    /* available bytes total */
 			NULL);		    /* byteLeft */
 
     repeatCount = 0;
     /* We got real data in the pipe, read it */
-    while (ret != 0 && availableBytes > 0 && availableBytes > 0)
+    while (ret != 0 && availableBytes > 0)
     {
 	repeatCount++;
 	toRead =
@@ -3559,6 +4341,7 @@ mch_system_piped(char *cmd, int options)
     garray_T	ga;
     int	    delay = 1;
     DWORD	buffer_off = 0;	/* valid bytes in buffer[] */
+    char	*p = NULL;
 
     SECURITY_ATTRIBUTES saAttr;
 
@@ -3599,23 +4382,23 @@ mch_system_piped(char *cmd, int options)
     if (options & SHELL_READ)
 	ga_init2(&ga, 1, BUFLEN);
 
-    /* Now, run the command */
-    CreateProcess(NULL,			/* Executable name */
-		  cmd,			/* Command to execute */
-		  NULL,			/* Process security attributes */
-		  NULL,			/* Thread security attributes */
+    if (cmd != NULL)
+    {
+	p = (char *)vim_strsave((char_u *)cmd);
+	if (p != NULL)
+	    unescape_shellxquote((char_u *)p, p_sxe);
+	else
+	    p = cmd;
+    }
 
-		  // this command can be litigeous, handle inheritence was
-		  // deactivated for pending temp file, but, if we deactivate
-		  // it, the pipes don't work for some reason.
-		  TRUE,			/* Inherit handles, first deactivated,
-					 * but needed */
-		  CREATE_DEFAULT_ERROR_MODE, /* Creation flags */
-		  NULL,			/* Environment */
-		  NULL,			/* Current directory */
-		  &si,			/* Startup information */
-		  &pi);			/* Process information */
+    /* Now, run the command.
+     * About "Inherit handles" being TRUE: this command can be litigious,
+     * handle inheritance was deactivated for pending temp file, but, if we
+     * deactivate it, the pipes don't work for some reason. */
+     vim_create_process(p, TRUE, CREATE_DEFAULT_ERROR_MODE, &si, &pi);
 
+    if (p != cmd)
+	vim_free(p);
 
     /* Close our unused side of the pipes */
     CloseHandle(g_hChildStd_IN_Rd);
@@ -3639,10 +4422,10 @@ mch_system_piped(char *cmd, int options)
     {
 	MSG	msg;
 
-	if (PeekMessage(&msg, (HWND)NULL, 0, 0, PM_REMOVE))
+	if (pPeekMessage(&msg, (HWND)NULL, 0, 0, PM_REMOVE))
 	{
 	    TranslateMessage(&msg);
-	    DispatchMessage(&msg);
+	    pDispatchMessage(&msg);
 	}
 
 	/* write pipe information in the window */
@@ -3830,7 +4613,25 @@ mch_system(char *cmd, int options)
 }
 #else
 
-# define mch_system(c, o) system(c)
+# ifdef FEAT_MBYTE
+    static int
+mch_system(char *cmd, int options)
+{
+    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
+    {
+	WCHAR	*wcmd = enc_to_utf16(cmd, NULL);
+	if (wcmd != NULL)
+	{
+	    int ret = _wsystem(wcmd);
+	    vim_free(wcmd);
+	    return ret;
+	}
+    }
+    return system(cmd);
+}
+# else
+#  define mch_system(c, o) system(c)
+# endif
 
 #endif
 
@@ -3845,21 +4646,52 @@ mch_call_shell(
     int		x = 0;
     int		tmode = cur_tmode;
 #ifdef FEAT_TITLE
-    char szShellTitle[512];
+    char	szShellTitle[512];
+# ifdef FEAT_MBYTE
+    int		did_set_title = FALSE;
 
     /* Change the title to reflect that we are in a subshell. */
-    if (GetConsoleTitle(szShellTitle, sizeof(szShellTitle) - 4) > 0)
+    if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
     {
-	if (cmd == NULL)
-	    strcat(szShellTitle, " :sh");
-	else
+	WCHAR szShellTitle[512];
+
+	if (GetConsoleTitleW(szShellTitle,
+				  sizeof(szShellTitle)/sizeof(WCHAR) - 4) > 0)
 	{
-	    strcat(szShellTitle, " - !");
-	    if ((strlen(szShellTitle) + strlen(cmd) < sizeof(szShellTitle)))
-		strcat(szShellTitle, cmd);
+	    if (cmd == NULL)
+		wcscat(szShellTitle, L" :sh");
+	    else
+	    {
+		WCHAR *wn = enc_to_utf16(cmd, NULL);
+
+		if (wn != NULL)
+		{
+		    wcscat(szShellTitle, L" - !");
+		    if ((wcslen(szShellTitle) + wcslen(wn) <
+					  sizeof(szShellTitle)/sizeof(WCHAR)))
+			wcscat(szShellTitle, wn);
+		    SetConsoleTitleW(szShellTitle);
+		    vim_free(wn);
+		    did_set_title = TRUE;
+		}
+	    }
 	}
-	mch_settitle(szShellTitle, NULL);
     }
+    if (!did_set_title)
+# endif
+	/* Change the title to reflect that we are in a subshell. */
+	if (GetConsoleTitle(szShellTitle, sizeof(szShellTitle) - 4) > 0)
+	{
+	    if (cmd == NULL)
+		strcat(szShellTitle, " :sh");
+	    else
+	    {
+		strcat(szShellTitle, " - !");
+		if ((strlen(szShellTitle) + strlen(cmd) < sizeof(szShellTitle)))
+		    strcat(szShellTitle, cmd);
+	    }
+	    SetConsoleTitle(szShellTitle);
+	}
 #endif
 
     out_flush();
@@ -3898,106 +4730,139 @@ mch_call_shell(
     else
     {
 	/* we use "command" or "cmd" to start the shell; slow but easy */
-	char_u *newcmd;
-	long_u cmdlen =  (
+	char_u	*newcmd = NULL;
+	char_u	*cmdbase = cmd;
+	long_u	cmdlen;
+
+	/* Skip a leading ", ( and "(. */
+	if (*cmdbase == '"' )
+	    ++cmdbase;
+	if (*cmdbase == '(')
+	    ++cmdbase;
+
+	if ((STRNICMP(cmdbase, "start", 5) == 0) && vim_iswhite(cmdbase[5]))
+	{
+	    STARTUPINFO		si;
+	    PROCESS_INFORMATION	pi;
+	    DWORD		flags = CREATE_NEW_CONSOLE;
+	    char_u		*p;
+
+	    ZeroMemory(&si, sizeof(si));
+	    si.cb = sizeof(si);
+	    si.lpReserved = NULL;
+	    si.lpDesktop = NULL;
+	    si.lpTitle = NULL;
+	    si.dwFlags = 0;
+	    si.cbReserved2 = 0;
+	    si.lpReserved2 = NULL;
+
+	    cmdbase = skipwhite(cmdbase + 5);
+	    if ((STRNICMP(cmdbase, "/min", 4) == 0)
+		    && vim_iswhite(cmdbase[4]))
+	    {
+		cmdbase = skipwhite(cmdbase + 4);
+		si.dwFlags = STARTF_USESHOWWINDOW;
+		si.wShowWindow = SW_SHOWMINNOACTIVE;
+	    }
+	    else if ((STRNICMP(cmdbase, "/b", 2) == 0)
+		    && vim_iswhite(cmdbase[2]))
+	    {
+		cmdbase = skipwhite(cmdbase + 2);
+		flags = CREATE_NO_WINDOW;
+		si.dwFlags = STARTF_USESTDHANDLES;
+		si.hStdInput = CreateFile("\\\\.\\NUL",	// File name
+		    GENERIC_READ,			// Access flags
+		    0,					// Share flags
+		    NULL,				// Security att.
+		    OPEN_EXISTING,			// Open flags
+		    FILE_ATTRIBUTE_NORMAL,		// File att.
+		    NULL);				// Temp file
+		si.hStdOutput = si.hStdInput;
+		si.hStdError = si.hStdInput;
+	    }
+
+	    /* Remove a trailing ", ) and )" if they have a match
+	     * at the start of the command. */
+	    if (cmdbase > cmd)
+	    {
+		p = cmdbase + STRLEN(cmdbase);
+		if (p > cmdbase && p[-1] == '"' && *cmd == '"')
+		    *--p = NUL;
+		if (p > cmdbase && p[-1] == ')'
+			&& (*cmd =='(' || cmd[1] == '('))
+		    *--p = NUL;
+	    }
+
+	    newcmd = cmdbase;
+	    unescape_shellxquote(cmdbase, p_sxe);
+
+	    /*
+	     * If creating new console, arguments are passed to the
+	     * 'cmd.exe' as-is. If it's not, arguments are not treated
+	     * correctly for current 'cmd.exe'. So unescape characters in
+	     * shellxescape except '|' for avoiding to be treated as
+	     * argument to them. Pass the arguments to sub-shell.
+	     */
+	    if (flags != CREATE_NEW_CONSOLE)
+	    {
+		char_u	*subcmd;
+		char_u	*cmd_shell = mch_getenv("COMSPEC");
+
+		if (cmd_shell == NULL || *cmd_shell == NUL)
+		    cmd_shell = default_shell();
+
+		subcmd = vim_strsave_escaped_ext(cmdbase, "|", '^', FALSE);
+		if (subcmd != NULL)
+		{
+		    /* make "cmd.exe /c arguments" */
+		    cmdlen = STRLEN(cmd_shell) + STRLEN(subcmd) + 5;
+		    newcmd = lalloc(cmdlen, TRUE);
+		    if (newcmd != NULL)
+			vim_snprintf((char *)newcmd, cmdlen, "%s /c %s",
+						       cmd_shell, subcmd);
+		    else
+			newcmd = cmdbase;
+		    vim_free(subcmd);
+		}
+	    }
+
+	    /*
+	     * Now, start the command as a process, so that it doesn't
+	     * inherit our handles which causes unpleasant dangling swap
+	     * files if we exit before the spawned process
+	     */
+	    if (vim_create_process(newcmd, FALSE, flags, &si, &pi))
+		x = 0;
+	    else
+	    {
+		x = -1;
+#ifdef FEAT_GUI_W32
+		EMSG(_("E371: Command not found"));
+#endif
+	    }
+
+	    if (newcmd != cmdbase)
+		vim_free(newcmd);
+
+	    if (si.dwFlags == STARTF_USESTDHANDLES && si.hStdInput != NULL)
+	    {
+		/* Close the handle to \\.\NUL created above. */
+		CloseHandle(si.hStdInput);
+	    }
+	    /* Close the handles to the subprocess, so that it goes away */
+	    CloseHandle(pi.hThread);
+	    CloseHandle(pi.hProcess);
+	}
+	else
+	{
+	    cmdlen = (
 #ifdef FEAT_GUI_W32
 		(allowPiping && !p_stmp ? 0 : STRLEN(vimrun_path)) +
 #endif
 		STRLEN(p_sh) + STRLEN(p_shcf) + STRLEN(cmd) + 10);
 
-	newcmd = lalloc(cmdlen, TRUE);
-	if (newcmd != NULL)
-	{
-	    char_u *cmdbase = (*cmd == '"' ? cmd + 1 : cmd);
-
-	    if ((STRNICMP(cmdbase, "start", 5) == 0) && vim_iswhite(cmdbase[5]))
-	    {
-		STARTUPINFO		si;
-		PROCESS_INFORMATION	pi;
-		DWORD			flags = CREATE_NEW_CONSOLE;
-
-		si.cb = sizeof(si);
-		si.lpReserved = NULL;
-		si.lpDesktop = NULL;
-		si.lpTitle = NULL;
-		si.dwFlags = 0;
-		si.cbReserved2 = 0;
-		si.lpReserved2 = NULL;
-
-		cmdbase = skipwhite(cmdbase + 5);
-		if ((STRNICMP(cmdbase, "/min", 4) == 0)
-			&& vim_iswhite(cmdbase[4]))
-		{
-		    cmdbase = skipwhite(cmdbase + 4);
-		    si.dwFlags = STARTF_USESHOWWINDOW;
-		    si.wShowWindow = SW_SHOWMINNOACTIVE;
-		}
-		else if ((STRNICMP(cmdbase, "/b", 2) == 0)
-			&& vim_iswhite(cmdbase[2]))
-		{
-		    cmdbase = skipwhite(cmdbase + 2);
-		    flags = CREATE_NO_WINDOW;
-		    si.dwFlags = STARTF_USESTDHANDLES;
-		    si.hStdInput = CreateFile("\\\\.\\NUL",	// File name
-			GENERIC_READ,				// Access flags
-			0,					// Share flags
-			NULL,					// Security att.
-			OPEN_EXISTING,				// Open flags
-			FILE_ATTRIBUTE_NORMAL,			// File att.
-			NULL);					// Temp file
-		    si.hStdOutput = si.hStdInput;
-		    si.hStdError = si.hStdInput;
-		}
-
-		/* When the command is in double quotes, but 'shellxquote' is
-		 * empty, keep the double quotes around the command.
-		 * Otherwise remove the double quotes, they aren't needed
-		 * here, because we don't use a shell to run the command. */
-		if (*cmd == '"' && *p_sxq == NUL)
-		{
-		    newcmd[0] = '"';
-		    STRCPY(newcmd + 1, cmdbase);
-		}
-		else
-		{
-		    STRCPY(newcmd, cmdbase);
-		    if (*cmd == '"' && *newcmd != NUL)
-			newcmd[STRLEN(newcmd) - 1] = NUL;
-		}
-
-		/*
-		 * Now, start the command as a process, so that it doesn't
-		 * inherit our handles which causes unpleasant dangling swap
-		 * files if we exit before the spawned process
-		 */
-		if (CreateProcess (NULL,	// Executable name
-			newcmd,			// Command to execute
-			NULL,			// Process security attributes
-			NULL,			// Thread security attributes
-			FALSE,			// Inherit handles
-			flags,			// Creation flags
-			NULL,			// Environment
-			NULL,			// Current directory
-			&si,			// Startup information
-			&pi))			// Process information
-		    x = 0;
-		else
-		{
-		    x = -1;
-#ifdef FEAT_GUI_W32
-		    EMSG(_("E371: Command not found"));
-#endif
-		}
-		if (si.hStdInput != NULL)
-		{
-		    /* Close the handle to \\.\NUL */
-		    CloseHandle(si.hStdInput);
-		}
-		/* Close the handles to the subprocess, so that it goes away */
-		CloseHandle(pi.hThread);
-		CloseHandle(pi.hProcess);
-	    }
-	    else
+	    newcmd = lalloc(cmdlen, TRUE);
+	    if (newcmd != NULL)
 	    {
 #if defined(FEAT_GUI_W32)
 		if (need_vimrun_warning)
@@ -4023,8 +4888,8 @@ mch_call_shell(
 		    vim_snprintf((char *)newcmd, cmdlen, "%s %s %s",
 							   p_sh, p_shcf, cmd);
 		x = mch_system((char *)newcmd, options);
+		vim_free(newcmd);
 	    }
-	    vim_free(newcmd);
 	}
     }
 
@@ -4879,13 +5744,16 @@ mch_remove(char_u *name)
 #ifdef FEAT_MBYTE
     WCHAR	*wn = NULL;
     int		n;
+#endif
 
+    win32_setattrs(name, FILE_ATTRIBUTE_NORMAL);
+
+#ifdef FEAT_MBYTE
     if (enc_codepage >= 0 && (int)GetACP() != enc_codepage)
     {
 	wn = enc_to_utf16(name, NULL);
 	if (wn != NULL)
 	{
-	    SetFileAttributesW(wn, FILE_ATTRIBUTE_NORMAL);
 	    n = DeleteFileW(wn) ? 0 : -1;
 	    vim_free(wn);
 	    if (n == 0 || GetLastError() != ERROR_CALL_NOT_IMPLEMENTED)
@@ -4894,7 +5762,6 @@ mch_remove(char_u *name)
 	}
     }
 #endif
-    SetFileAttributes(name, FILE_ATTRIBUTE_NORMAL);
     return DeleteFile(name) ? 0 : -1;
 }
 
@@ -4914,21 +5781,6 @@ mch_breakcheck(void)
 #endif
 }
 
-
-/*
- * How much memory is available?
- * Return sum of available physical and page file memory.
- */
-/*ARGSUSED*/
-    long_u
-mch_avail_mem(int special)
-{
-    MEMORYSTATUS	ms;
-
-    ms.dwLength = sizeof(MEMORYSTATUS);
-    GlobalMemoryStatus(&ms);
-    return (long_u) (ms.dwAvailPhys + ms.dwAvailPageFile);
-}
 
 #ifdef FEAT_MBYTE
 /*
@@ -5278,7 +6130,7 @@ mch_open(char *name, int flags, int mode)
 	{
 	    f = _wopen(wn, flags, mode);
 	    vim_free(wn);
-	    if (f >= 0)
+	    if (f >= 0 || g_PlatformId == VER_PLATFORM_WIN32_NT)
 		return f;
 	    /* Retry with non-wide function (for Windows 98). Can't use
 	     * GetLastError() here and it's unclear what errno gets set to if
@@ -5329,7 +6181,7 @@ mch_fopen(char *name, char *mode)
 	_set_fmode(oldMode);
 # endif
 
-	if (f != NULL)
+	if (f != NULL || g_PlatformId == VER_PLATFORM_WIN32_NT)
 	    return f;
 	/* Retry with non-wide function (for Windows 98). Can't use
 	 * GetLastError() here and it's unclear what errno gets set to if
@@ -5642,6 +6494,7 @@ get_cmd_argsW(char ***argvp)
     int		argc = 0;
     int		i;
 
+    free_cmd_argsW();
     ArglistW = CommandLineToArgvW(GetCommandLineW(), &nArgsW);
     if (ArglistW != NULL)
     {
@@ -5664,6 +6517,7 @@ get_cmd_argsW(char ***argvp)
 		    while (i > 0)
 			free(argv[--i]);
 		    free(argv);
+		    argv = NULL;
 		    argc = 0;
 		}
 	    }
@@ -5673,7 +6527,11 @@ get_cmd_argsW(char ***argvp)
     global_argc = argc;
     global_argv = argv;
     if (argc > 0)
+    {
+	if (used_file_indexes != NULL)
+	    free(used_file_indexes);
 	used_file_indexes = malloc(argc * sizeof(int));
+    }
 
     if (argvp != NULL)
 	*argvp = argv;

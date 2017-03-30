@@ -25,7 +25,7 @@ struct cmdline_info
     int		cmdlen;		/* number of chars in command line */
     int		cmdpos;		/* current cursor position */
     int		cmdspos;	/* cursor column on screen */
-    int		cmdfirstc;	/* ':', '/', '?', '=' or NUL */
+    int		cmdfirstc;	/* ':', '/', '?', '=', '>' or NUL */
     int		cmdindent;	/* number of spaces before cmdline */
     char_u	*cmdprompt;	/* message in front of cmdline */
     int		cmdattr;	/* attributes for prompt */
@@ -56,6 +56,7 @@ static int	new_cmdpos;	/* position set by set_cmdline_pos() */
 typedef struct hist_entry
 {
     int		hisnum;		/* identifying number */
+    int		viminfo;	/* when TRUE hisstr comes from viminfo */
     char_u	*hisstr;	/* actual entry, separator char after the NUL */
 } histentry_T;
 
@@ -67,7 +68,7 @@ static int	hislen = 0;		/* actual length of history tables */
 
 static int	hist_char2type __ARGS((int c));
 
-static int	in_history __ARGS((int, char_u *, int, int));
+static int	in_history __ARGS((int, char_u *, int, int, int));
 # ifdef FEAT_EVAL
 static int	calc_hist_idx __ARGS((int histype, int num));
 # endif
@@ -102,7 +103,7 @@ static void	cmdline_del __ARGS((int from));
 static void	redrawcmdprompt __ARGS((void));
 static void	cursorcmd __ARGS((void));
 static int	ccheck_abbr __ARGS((int));
-static int	nextwild __ARGS((expand_T *xp, int type, int options));
+static int	nextwild __ARGS((expand_T *xp, int type, int options, int escape));
 static void	escape_fname __ARGS((char_u **pp));
 static int	showmatches __ARGS((expand_T *xp, int wildmenu));
 static void	set_expand_context __ARGS((expand_T *xp));
@@ -111,10 +112,16 @@ static int	expand_showtail __ARGS((expand_T *xp));
 #ifdef FEAT_CMDL_COMPL
 static int	expand_shellcmd __ARGS((char_u *filepat, int *num_file, char_u ***file, int flagsarg));
 static int	ExpandRTDir __ARGS((char_u *pat, int *num_file, char_u ***file, char *dirname[]));
+# ifdef FEAT_CMDHIST
+static char_u	*get_history_arg __ARGS((expand_T *xp, int idx));
+# endif
 # if defined(FEAT_USR_CMDS) && defined(FEAT_EVAL)
 static int	ExpandUserDefined __ARGS((expand_T *xp, regmatch_T *regmatch, int *num_file, char_u ***file));
 static int	ExpandUserList __ARGS((expand_T *xp, int *num_file, char_u ***file));
 # endif
+#endif
+#ifdef FEAT_CMDHIST
+static void	clear_hist_entry __ARGS((histentry_T *hisptr));
 #endif
 
 #ifdef FEAT_CMDWIN
@@ -334,6 +341,13 @@ getcmdline(firstc, count, indent)
 #ifdef FEAT_DIGRAPHS
     do_digraph(-1);		/* init digraph typeahead */
 #endif
+
+    /* If something above caused an error, reset the flags, we do want to type
+     * and execute commands. Display may be messed up a bit. */
+    if (did_emsg)
+	redrawcmd();
+    did_emsg = FALSE;
+    got_int = FALSE;
 
     /*
      * Collect the command string, handling editing keys.
@@ -664,9 +678,10 @@ getcmdline(firstc, count, indent)
 	    c = plain_vgetc();
 	    --no_mapping;
 	    --allow_keys;
-	    /* CTRL-\ e doesn't work when obtaining an expression. */
-	    if (c != Ctrl_N && c != Ctrl_G
-				     && (c != 'e' || ccline.cmdfirstc == '='))
+	    /* CTRL-\ e doesn't work when obtaining an expression, unless it
+	     * is in a mapping. */
+	    if (c != Ctrl_N && c != Ctrl_G && (c != 'e'
+				    || (ccline.cmdfirstc == '=' && KeyTyped)))
 	    {
 		vungetc(c);
 		c = Ctrl_BSL;
@@ -744,11 +759,14 @@ getcmdline(firstc, count, indent)
 #ifdef FEAT_CMDWIN
 	if (c == cedit_key || c == K_CMDWIN)
 	{
-	    /*
-	     * Open a window to edit the command line (and history).
-	     */
-	    c = ex_window();
-	    some_key_typed = TRUE;
+	    if (ex_normal_busy == 0 && got_int == FALSE)
+	    {
+		/*
+		 * Open a window to edit the command line (and history).
+		 */
+		c = ex_window();
+		some_key_typed = TRUE;
+	    }
 	}
 # ifdef FEAT_DIGRAPHS
 	else
@@ -806,9 +824,11 @@ getcmdline(firstc, count, indent)
 		    did_wild_list = TRUE;
 		}
 		if (wim_flags[wim_index] & WIM_LONGEST)
-		    res = nextwild(&xpc, WILD_LONGEST, WILD_NO_BEEP);
+		    res = nextwild(&xpc, WILD_LONGEST, WILD_NO_BEEP,
+							       firstc != '@');
 		else if (wim_flags[wim_index] & WIM_FULL)
-		    res = nextwild(&xpc, WILD_NEXT, WILD_NO_BEEP);
+		    res = nextwild(&xpc, WILD_NEXT, WILD_NO_BEEP,
+							       firstc != '@');
 		else
 		    res = OK;	    /* don't insert 'wildchar' now */
 	    }
@@ -819,9 +839,11 @@ getcmdline(firstc, count, indent)
 		/* if 'wildmode' first contains "longest", get longest
 		 * common part */
 		if (wim_flags[0] & WIM_LONGEST)
-		    res = nextwild(&xpc, WILD_LONGEST, WILD_NO_BEEP);
+		    res = nextwild(&xpc, WILD_LONGEST, WILD_NO_BEEP,
+							       firstc != '@');
 		else
-		    res = nextwild(&xpc, WILD_EXPAND_KEEP, WILD_NO_BEEP);
+		    res = nextwild(&xpc, WILD_EXPAND_KEEP, WILD_NO_BEEP,
+							       firstc != '@');
 
 		/* if interrupted while completing, behave like it failed */
 		if (got_int)
@@ -856,7 +878,8 @@ getcmdline(firstc, count, indent)
 			    int p_wmnu_save = p_wmnu;
 			    p_wmnu = 0;
 #endif
-			    nextwild(&xpc, WILD_PREV, 0); /* remove match */
+			    /* remove match */
+			    nextwild(&xpc, WILD_PREV, 0, firstc != '@');
 #ifdef FEAT_WILDMENU
 			    p_wmnu = p_wmnu_save;
 #endif
@@ -870,9 +893,11 @@ getcmdline(firstc, count, indent)
 			redrawcmd();
 			did_wild_list = TRUE;
 			if (wim_flags[wim_index] & WIM_LONGEST)
-			    nextwild(&xpc, WILD_LONGEST, WILD_NO_BEEP);
+			    nextwild(&xpc, WILD_LONGEST, WILD_NO_BEEP,
+							       firstc != '@');
 			else if (wim_flags[wim_index] & WIM_FULL)
-			    nextwild(&xpc, WILD_NEXT, WILD_NO_BEEP);
+			    nextwild(&xpc, WILD_NEXT, WILD_NO_BEEP,
+							       firstc != '@');
 		    }
 		    else
 			vim_beep();
@@ -895,9 +920,9 @@ getcmdline(firstc, count, indent)
 	/* <S-Tab> goes to last match, in a clumsy way */
 	if (c == K_S_TAB && KeyTyped)
 	{
-	    if (nextwild(&xpc, WILD_EXPAND_KEEP, 0) == OK
-		    && nextwild(&xpc, WILD_PREV, 0) == OK
-		    && nextwild(&xpc, WILD_PREV, 0) == OK)
+	    if (nextwild(&xpc, WILD_EXPAND_KEEP, 0, firstc != '@') == OK
+		    && nextwild(&xpc, WILD_PREV, 0, firstc != '@') == OK
+		    && nextwild(&xpc, WILD_PREV, 0, firstc != '@') == OK)
 		goto cmdline_changed;
 	}
 
@@ -1414,7 +1439,7 @@ getcmdline(firstc, count, indent)
 		goto cmdline_not_changed;
 
 	case Ctrl_A:	    /* all matches */
-		if (nextwild(&xpc, WILD_ALL, 0) == FAIL)
+		if (nextwild(&xpc, WILD_ALL, 0, firstc != '@') == FAIL)
 		    break;
 		goto cmdline_changed;
 
@@ -1450,7 +1475,7 @@ getcmdline(firstc, count, indent)
 #endif
 
 		/* completion: longest common part */
-		if (nextwild(&xpc, WILD_LONGEST, 0) == FAIL)
+		if (nextwild(&xpc, WILD_LONGEST, 0, firstc != '@') == FAIL)
 		    break;
 		goto cmdline_changed;
 
@@ -1458,8 +1483,8 @@ getcmdline(firstc, count, indent)
 	case Ctrl_P:	    /* previous match */
 		if (xpc.xp_numfiles > 0)
 		{
-		    if (nextwild(&xpc, (c == Ctrl_P) ? WILD_PREV : WILD_NEXT, 0)
-								      == FAIL)
+		    if (nextwild(&xpc, (c == Ctrl_P) ? WILD_PREV : WILD_NEXT,
+						    0, firstc != '@') == FAIL)
 			break;
 		    goto cmdline_changed;
 		}
@@ -1685,13 +1710,13 @@ getcmdline(firstc, count, indent)
 	 * We come here if we have a normal character.
 	 */
 
-	if (do_abbr && (IS_SPECIAL(c) || !vim_iswordc(c)) && ccheck_abbr(
+	if (do_abbr && (IS_SPECIAL(c) || !vim_iswordc(c)) && (ccheck_abbr(
 #ifdef FEAT_MBYTE
 			/* Add ABBR_OFF for characters above 0x100, this is
 			 * what check_abbr() expects. */
 			(has_mbyte && c >= 0x100) ? (c + ABBR_OFF) :
 #endif
-									c))
+							 c) || c == Ctrl_RSB))
 	    goto cmdline_changed;
 
 	/*
@@ -1852,8 +1877,11 @@ cmdline_changed:
 # endif
 		)
 	    /* Always redraw the whole command line to fix shaping and
-	     * right-left typing.  Not efficient, but it works. */
-	    redrawcmd();
+	     * right-left typing.  Not efficient, but it works.
+	     * Do it only when there are no characters left to read
+	     * to avoid useless intermediate redraws. */
+	    if (vpeekc() == NUL)
+		redrawcmd();
 #endif
     }
 
@@ -2170,6 +2198,7 @@ getexmodeline(promptc, cookie, indent)
     int		vcol = 0;
     char_u	*p;
     int		prev_char;
+    int		len;
 
     /* Switch cursor on now.  This avoids that it happens after the "\n", which
      * confuses the system function that computes tabstops. */
@@ -2246,7 +2275,17 @@ getexmodeline(promptc, cookie, indent)
 	    {
 		if (line_ga.ga_len > 0)
 		{
-		    --line_ga.ga_len;
+#ifdef FEAT_MBYTE
+		    if (has_mbyte)
+		    {
+			p = (char_u *)line_ga.ga_data;
+			p[line_ga.ga_len] = NUL;
+			len = (*mb_head_off)(p, p + line_ga.ga_len - 1) + 1;
+			line_ga.ga_len -= len;
+		    }
+		    else
+#endif
+			--line_ga.ga_len;
 		    goto redraw;
 		}
 		continue;
@@ -2262,12 +2301,14 @@ getexmodeline(promptc, cookie, indent)
 
 	    if (c1 == Ctrl_T)
 	    {
+		long	    sw = get_sw_value(curbuf);
+
 		p = (char_u *)line_ga.ga_data;
 		p[line_ga.ga_len] = NUL;
-		indent = get_indent_str(p, 8);
-		indent += curbuf->b_p_sw - indent % curbuf->b_p_sw;
+		indent = get_indent_str(p, 8, FALSE);
+		indent += sw - indent % sw;
 add_indent:
-		while (get_indent_str(p, 8) < indent)
+		while (get_indent_str(p, 8, FALSE) < indent)
 		{
 		    char_u *s = skipwhite(p);
 
@@ -2280,8 +2321,9 @@ redraw:
 		/* redraw the line */
 		msg_col = startcol;
 		vcol = 0;
-		for (p = (char_u *)line_ga.ga_data;
-			  p < (char_u *)line_ga.ga_data + line_ga.ga_len; ++p)
+		p = (char_u *)line_ga.ga_data;
+		p[line_ga.ga_len] = NUL;
+		while (p < (char_u *)line_ga.ga_data + line_ga.ga_len)
 		{
 		    if (*p == TAB)
 		    {
@@ -2289,11 +2331,14 @@ redraw:
 			{
 			    msg_putchar(' ');
 			} while (++vcol % 8);
+			++p;
 		    }
 		    else
 		    {
-			msg_outtrans_len(p, 1);
-			vcol += char2cells(*p);
+			len = MB_PTR2LEN(p);
+			msg_outtrans_len(p, len);
+			vcol += ptr2cells(p);
+			p += len;
 		    }
 		}
 		msg_clr_eos();
@@ -2315,11 +2360,11 @@ redraw:
 		else
 		{
 		    p[line_ga.ga_len] = NUL;
-		    indent = get_indent_str(p, 8);
+		    indent = get_indent_str(p, 8, FALSE);
 		    --indent;
-		    indent -= indent % curbuf->b_p_sw;
+		    indent -= indent % get_sw_value(curbuf);
 		}
-		while (get_indent_str(p, 8) > indent)
+		while (get_indent_str(p, 8, FALSE) > indent)
 		{
 		    char_u *s = skipwhite(p);
 
@@ -2342,7 +2387,16 @@ redraw:
 
 	if (IS_SPECIAL(c1))
 	    c1 = '?';
-	((char_u *)line_ga.ga_data)[line_ga.ga_len] = c1;
+#ifdef FEAT_MBYTE
+	if (has_mbyte)
+	    len = (*mb_char2bytes)(c1,
+				  (char_u *)line_ga.ga_data + line_ga.ga_len);
+	else
+#endif
+	{
+	    len = 1;
+	    ((char_u *)line_ga.ga_data)[line_ga.ga_len] = c1;
+	}
 	if (c1 == '\n')
 	    msg_putchar('\n');
 	else if (c1 == TAB)
@@ -2356,10 +2410,10 @@ redraw:
 	else
 	{
 	    msg_outtrans_len(
-		     ((char_u *)line_ga.ga_data) + line_ga.ga_len, 1);
+		     ((char_u *)line_ga.ga_data) + line_ga.ga_len, len);
 	    vcol += char2cells(c1);
 	}
-	++line_ga.ga_len;
+	line_ga.ga_len += len;
 	escaped = FALSE;
 
 	windgoto(msg_row, msg_col);
@@ -2758,6 +2812,11 @@ unputcmdline()
     msg_no_more = TRUE;
     if (ccline.cmdlen == ccline.cmdpos)
 	msg_putchar(' ');
+#ifdef FEAT_MBYTE
+    else if (has_mbyte)
+	draw_cmdline(ccline.cmdpos,
+			       (*mb_ptr2len)(ccline.cmdbuff + ccline.cmdpos));
+#endif
     else
 	draw_cmdline(ccline.cmdpos, 1);
     msg_no_more = FALSE;
@@ -3122,7 +3181,8 @@ cmdline_paste_str(s, literally)
 	    else
 #endif
 		c = *s++;
-	    if (cv == Ctrl_V || c == ESC || c == Ctrl_C || c == CAR || c == NL
+	    if (cv == Ctrl_V || c == ESC || c == Ctrl_C
+		    || c == CAR || c == NL || c == Ctrl_L
 #ifdef UNIX
 		    || c == intr_char
 #endif
@@ -3323,10 +3383,11 @@ sort_func_compare(s1, s2)
  * normal character (instead of being expanded).  This allows :s/^I^D etc.
  */
     static int
-nextwild(xp, type, options)
+nextwild(xp, type, options, escape)
     expand_T	*xp;
     int		type;
     int		options;	/* extra options for ExpandOne() */
+    int		escape;		/* if TRUE, escape the returned matches */
 {
     int		i, j;
     char_u	*p1;
@@ -3375,7 +3436,9 @@ nextwild(xp, type, options)
 	else
 	{
 	    int use_options = options |
-		    WILD_HOME_REPLACE|WILD_ADD_SLASH|WILD_SILENT|WILD_ESCAPE;
+		    WILD_HOME_REPLACE|WILD_ADD_SLASH|WILD_SILENT;
+	    if (escape)
+		use_options |= WILD_ESCAPE;
 
 	    if (p_wic)
 		use_options += WILD_ICASE;
@@ -3458,6 +3521,7 @@ nextwild(xp, type, options)
  * mode = WILD_PREV:	    use previous match in multiple match, wrap to first
  * mode = WILD_ALL:	    return all matches concatenated
  * mode = WILD_LONGEST:	    return longest matched part
+ * mode = WILD_ALL_KEEP:    get all matches, keep matches
  *
  * options = WILD_LIST_NOTFOUND:    list entries without a match
  * options = WILD_HOME_REPLACE:	    do home_replace() for buffer names
@@ -3581,7 +3645,8 @@ ExpandOne(xp, str, orig, options, mode)
 	    /*
 	     * Check for matching suffixes in file names.
 	     */
-	    if (mode != WILD_ALL && mode != WILD_LONGEST)
+	    if (mode != WILD_ALL && mode != WILD_ALL_KEEP
+						      && mode != WILD_LONGEST)
 	    {
 		if (xp->xp_numfiles)
 		    non_suf_match = xp->xp_numfiles;
@@ -3626,19 +3691,16 @@ ExpandOne(xp, str, orig, options, mode)
 	{
 	    for (i = 0; i < xp->xp_numfiles; ++i)
 	    {
-#ifdef CASE_INSENSITIVE_FILENAME
-		if (xp->xp_context == EXPAND_DIRECTORIES
+		if (p_fic && (xp->xp_context == EXPAND_DIRECTORIES
 			|| xp->xp_context == EXPAND_FILES
 			|| xp->xp_context == EXPAND_SHELLCMD
-			|| xp->xp_context == EXPAND_BUFFERS)
+			|| xp->xp_context == EXPAND_BUFFERS))
 		{
 		    if (TOLOWER_LOC(xp->xp_files[i][len]) !=
 					    TOLOWER_LOC(xp->xp_files[0][len]))
 			break;
 		}
-		else
-#endif
-		     if (xp->xp_files[i][len] != xp->xp_files[0][len])
+		else if (xp->xp_files[i][len] != xp->xp_files[0][len])
 		    break;
 	    }
 	    if (i < xp->xp_numfiles)
@@ -3701,6 +3763,7 @@ ExpandInit(xp)
 #if defined(FEAT_USR_CMDS) && defined(FEAT_EVAL) && defined(FEAT_CMDL_COMPL)
     xp->xp_arg = NULL;
 #endif
+    xp->xp_line = NULL;
 }
 
 /*
@@ -3823,9 +3886,9 @@ vim_strsave_fnameescape(fname, shell)
     char_u	buf[20];
     int		j = 0;
 
-    /* Don't escape '[' and '{' if they are in 'isfname'. */
+    /* Don't escape '[', '{' and '!' if they are in 'isfname'. */
     for (p = PATH_ESC_CHARS; *p != NUL; ++p)
-	if ((*p != '[' && *p != '{') || !vim_isfilec(*p))
+	if ((*p != '[' && *p != '{' && *p != '!') || !vim_isfilec(*p))
 	    buf[j++] = *p;
     buf[j] = NUL;
     p = vim_strsave_escaped(fname, buf);
@@ -4149,7 +4212,7 @@ expand_showtail(xp)
 /*
  * Prepare a string for expansion.
  * When expanding file names: The string will be used with expand_wildcards().
- * Copy the file name into allocated memory and add a '*' at the end.
+ * Copy "fname[len]" into allocated memory and add a '*' at the end.
  * When expanding other names: The string will be used with regcomp().  Copy
  * the name into allocated memory and prepend "^".
  */
@@ -4320,6 +4383,7 @@ addstar(fname, len, context)
  *  EXPAND_EXPRESSION	    Complete internal or user defined function/variable
  *			    names in expressions, eg :while s^I
  *  EXPAND_ENV_VARS	    Complete environment variable names
+ *  EXPAND_USER		    Complete user names
  */
     static void
 set_expand_context(xp)
@@ -4378,6 +4442,11 @@ set_cmd_context(xp, str, len, col)
 #endif
 	while (nextcomm != NULL)
 	    nextcomm = set_one_cmd_context(xp, nextcomm);
+
+    /* Store the string here so that call_user_expand_func() can get to them
+     * easily. */
+    xp->xp_line = str;
+    xp->xp_col = col;
 
     str[col] = old_char;
 }
@@ -4623,6 +4692,9 @@ ExpandFromContext(xp, pat, num_file, file, options)
 	{
 	    {EXPAND_COMMANDS, get_command_name, FALSE, TRUE},
 	    {EXPAND_BEHAVE, get_behave_arg, TRUE, TRUE},
+#ifdef FEAT_CMDHIST
+	    {EXPAND_HISTORY, get_history_arg, TRUE, TRUE},
+#endif
 #ifdef FEAT_USR_CMDS
 	    {EXPAND_USER_COMMANDS, get_user_commands, FALSE, TRUE},
 	    {EXPAND_USER_CMD_FLAGS, get_user_cmd_flags, FALSE, TRUE},
@@ -4641,6 +4713,9 @@ ExpandFromContext(xp, pat, num_file, file, options)
 #endif
 #ifdef FEAT_SYN_HL
 	    {EXPAND_SYNTAX, get_syntax_name, TRUE, TRUE},
+#endif
+#ifdef FEAT_PROFILE
+	    {EXPAND_SYNTIME, get_syntime_arg, TRUE, TRUE},
 #endif
 	    {EXPAND_HIGHLIGHT, get_highlight_name, TRUE, TRUE},
 #ifdef FEAT_AUTOCMD
@@ -4662,6 +4737,7 @@ ExpandFromContext(xp, pat, num_file, file, options)
 	    {EXPAND_LOCALES, get_locales, TRUE, FALSE},
 #endif
 	    {EXPAND_ENV_VARS, get_env_name, TRUE, TRUE},
+	    {EXPAND_USER, get_users, TRUE, FALSE},
 	};
 	int	i;
 
@@ -4676,12 +4752,12 @@ ExpandFromContext(xp, pat, num_file, file, options)
 		if (tab[i].ic)
 		    regmatch.rm_ic = TRUE;
 		ret = ExpandGeneric(xp, &regmatch, num_file, file,
-                                                tab[i].func, tab[i].escaped);
+						tab[i].func, tab[i].escaped);
 		break;
 	    }
     }
 
-    vim_free(regmatch.regprog);
+    vim_regfree(regmatch.regprog);
 
     return ret;
 #endif /* FEAT_CMDL_COMPL */
@@ -4909,34 +4985,27 @@ call_user_expand_func(user_expand_func, xp, num_file, file)
     int		*num_file;
     char_u	***file;
 {
-    char_u	keep;
+    int		keep = 0;
     char_u	num[50];
     char_u	*args[3];
     int		save_current_SID = current_SID;
     void	*ret;
     struct cmdline_info	    save_ccline;
 
-    if (xp->xp_arg == NULL || xp->xp_arg[0] == '\0')
+    if (xp->xp_arg == NULL || xp->xp_arg[0] == '\0' || xp->xp_line == NULL)
 	return NULL;
     *num_file = 0;
     *file = NULL;
 
-    if (ccline.cmdbuff == NULL)
+    if (ccline.cmdbuff != NULL)
     {
-	/* Completion from Insert mode, pass fake arguments. */
-	keep = 0;
-	sprintf((char *)num, "%d", (int)STRLEN(xp->xp_pattern));
-	args[1] = xp->xp_pattern;
-    }
-    else
-    {
-	/* Completion on the command line, pass real arguments. */
 	keep = ccline.cmdbuff[ccline.cmdlen];
 	ccline.cmdbuff[ccline.cmdlen] = 0;
-	sprintf((char *)num, "%d", ccline.cmdpos);
-	args[1] = ccline.cmdbuff;
     }
+
     args[0] = vim_strnsave(xp->xp_pattern, xp->xp_pattern_len);
+    args[1] = xp->xp_line;
+    sprintf((char *)num, "%d", xp->xp_col);
     args[2] = num;
 
     /* Save the cmdline, we don't know what the function may do. */
@@ -5060,9 +5129,9 @@ ExpandRTDir(pat, num_file, file, dirnames)
     char_u	***file;
     char	*dirnames[];
 {
-    char_u	*matches;
     char_u	*s;
     char_u	*e;
+    char_u	*match;
     garray_T	ga;
     int		i;
     int		pat_len;
@@ -5081,35 +5150,29 @@ ExpandRTDir(pat, num_file, file, dirnames)
 	    return FAIL;
 	}
 	sprintf((char *)s, "%s/%s*.vim", dirnames[i], pat);
-	matches = globpath(p_rtp, s, 0);
+	globpath(p_rtp, s, &ga, 0);
 	vim_free(s);
-	if (matches == NULL)
-	    continue;
-
-	for (s = matches; *s != NUL; s = e)
-	{
-	    e = vim_strchr(s, '\n');
-	    if (e == NULL)
-		e = s + STRLEN(s);
-	    if (ga_grow(&ga, 1) == FAIL)
-		break;
-	    if (e - 4 > s && STRNICMP(e - 4, ".vim", 4) == 0)
-	    {
-		for (s = e - 4; s > matches; mb_ptr_back(matches, s))
-		    if (*s == '\n' || vim_ispathsep(*s))
-			break;
-		++s;
-		((char_u **)ga.ga_data)[ga.ga_len] =
-					    vim_strnsave(s, (int)(e - s - 4));
-		++ga.ga_len;
-	    }
-	    if (*e != NUL)
-		++e;
-	}
-	vim_free(matches);
     }
+
+    for (i = 0; i < ga.ga_len; ++i)
+    {
+	match = ((char_u **)ga.ga_data)[i];
+	s = match;
+	e = s + STRLEN(s);
+	if (e - 4 > s && STRNICMP(e - 4, ".vim", 4) == 0)
+	{
+	    e -= 4;
+	    for (s = e; s > match; mb_ptr_back(match, s))
+		if (s < match || vim_ispathsep(*s))
+		    break;
+	    ++s;
+	    *e = NUL;
+	    mch_memmove(match, s, e - s + 1);
+	}
+    }
+
     if (ga.ga_len == 0)
-        return FAIL;
+	return FAIL;
 
     /* Sort and remove duplicates which can happen when specifying multiple
      * directories in dirnames. */
@@ -5125,32 +5188,27 @@ ExpandRTDir(pat, num_file, file, dirnames)
 #if defined(FEAT_CMDL_COMPL) || defined(FEAT_EVAL) || defined(PROTO)
 /*
  * Expand "file" for all comma-separated directories in "path".
- * Returns an allocated string with all matches concatenated, separated by
- * newlines.  Returns NULL for an error or no matches.
+ * Adds the matches to "ga".  Caller must init "ga".
  */
-    char_u *
-globpath(path, file, expand_options)
+    void
+globpath(path, file, ga, expand_options)
     char_u	*path;
     char_u	*file;
+    garray_T	*ga;
     int		expand_options;
 {
     expand_T	xpc;
     char_u	*buf;
-    garray_T	ga;
     int		i;
-    int		len;
     int		num_p;
     char_u	**p;
-    char_u	*cur = NULL;
 
     buf = alloc(MAXPATHL);
     if (buf == NULL)
-	return NULL;
+	return;
 
     ExpandInit(&xpc);
     xpc.xp_context = EXPAND_FILES;
-
-    ga_init2(&ga, 1, 100);
 
     /* Loop over all entries in {path}. */
     while (*path != NUL)
@@ -5172,30 +5230,23 @@ globpath(path, file, expand_options)
 			     WILD_SILENT|expand_options) != FAIL && num_p > 0)
 	    {
 		ExpandEscape(&xpc, buf, num_p, p, WILD_SILENT|expand_options);
-		for (len = 0, i = 0; i < num_p; ++i)
-		    len += (int)STRLEN(p[i]) + 1;
 
-		/* Concatenate new results to previous ones. */
-		if (ga_grow(&ga, len) == OK)
+		if (ga_grow(ga, num_p) == OK)
 		{
-		    cur = (char_u *)ga.ga_data + ga.ga_len;
 		    for (i = 0; i < num_p; ++i)
 		    {
-			STRCPY(cur, p[i]);
-			cur += STRLEN(p[i]);
-			*cur++ = '\n';
+			((char_u **)ga->ga_data)[ga->ga_len] =
+					vim_strnsave(p[i], (int)STRLEN(p[i]));
+			++ga->ga_len;
 		    }
-		    ga.ga_len += len;
 		}
+
 		FreeWild(num_p, p);
 	    }
 	}
     }
-    if (cur != NULL)
-	*--cur = 0; /* Replace trailing newline with NUL */
 
     vim_free(buf);
-    return (char_u *)ga.ga_data;
 }
 
 #endif
@@ -5239,6 +5290,34 @@ static char *(history_names[]) =
     "debug",
     NULL
 };
+
+#if defined(FEAT_CMDL_COMPL) || defined(PROTO)
+/*
+ * Function given to ExpandGeneric() to obtain the possible first
+ * arguments of the ":history command.
+ */
+    static char_u *
+get_history_arg(xp, idx)
+    expand_T	*xp UNUSED;
+    int		idx;
+{
+    static char_u compl[2] = { NUL, NUL };
+    char *short_names = ":=@>?/";
+    int short_names_count = (int)STRLEN(short_names);
+    int history_name_count = sizeof(history_names) / sizeof(char *) - 1;
+
+    if (idx < short_names_count)
+    {
+	compl[0] = (char_u)short_names[idx];
+	return compl;
+    }
+    if (idx < short_names_count + history_name_count)
+	return (char_u *)history_names[idx - short_names_count];
+    if (idx == short_names_count + history_name_count)
+	return (char_u *)"all";
+    return NULL;
+}
+#endif
 
 /*
  * init_history() - Initialize the command line history.
@@ -5286,10 +5365,7 @@ init_history()
 		if (hisidx[type] < 0)		/* there are no entries yet */
 		{
 		    for (i = 0; i < newlen; ++i)
-		    {
-			temp[i].hisnum = 0;
-			temp[i].hisstr = NULL;
-		    }
+			clear_hist_entry(&temp[i]);
 		}
 		else if (newlen > hislen)	/* array becomes bigger */
 		{
@@ -5297,10 +5373,7 @@ init_history()
 			temp[i] = history[type][i];
 		    j = i;
 		    for ( ; i <= newlen - (hislen - hisidx[type]); ++i)
-		    {
-			temp[i].hisnum = 0;
-			temp[i].hisstr = NULL;
-		    }
+			clear_hist_entry(&temp[i]);
 		    for ( ; j < hislen; ++i, ++j)
 			temp[i] = history[type][j];
 		}
@@ -5328,16 +5401,26 @@ init_history()
     }
 }
 
+    static void
+clear_hist_entry(hisptr)
+    histentry_T	*hisptr;
+{
+    hisptr->hisnum = 0;
+    hisptr->viminfo = FALSE;
+    hisptr->hisstr = NULL;
+}
+
 /*
  * Check if command line 'str' is already in history.
  * If 'move_to_front' is TRUE, matching entry is moved to end of history.
  */
     static int
-in_history(type, str, move_to_front, sep)
+in_history(type, str, move_to_front, sep, writing)
     int	    type;
     char_u  *str;
     int	    move_to_front;	/* Move the entry to the front if it exists */
     int	    sep;
+    int	    writing;		/* ignore entries read from viminfo */
 {
     int	    i;
     int	    last_i = -1;
@@ -5355,6 +5438,7 @@ in_history(type, str, move_to_front, sep)
 	 * well. */
 	p = history[type][i].hisstr;
 	if (STRCMP(str, p) == 0
+		&& !(writing && history[type][i].viminfo)
 		&& (type != HIST_SEARCH || sep == p[STRLEN(p) + 1]))
 	{
 	    if (!move_to_front)
@@ -5376,8 +5460,9 @@ in_history(type, str, move_to_front, sep)
 	    history[type][last_i] = history[type][i];
 	    last_i = i;
 	}
-	history[type][i].hisstr = str;
 	history[type][i].hisnum = ++hisnum[type];
+	history[type][i].viminfo = FALSE;
+	history[type][i].hisstr = str;
 	return TRUE;
     }
     return FALSE;
@@ -5429,6 +5514,9 @@ add_to_history(histype, new_entry, in_map, sep)
     if (hislen == 0)		/* no history */
 	return;
 
+    if (cmdmod.keeppatterns && histype == HIST_SEARCH)
+	return;
+
     /*
      * Searches inside the same mapping overwrite each other, so that only
      * the last line is kept.  Be careful not to remove a line that was moved
@@ -5441,15 +5529,14 @@ add_to_history(histype, new_entry, in_map, sep)
 	    /* Current line is from the same mapping, remove it */
 	    hisptr = &history[HIST_SEARCH][hisidx[HIST_SEARCH]];
 	    vim_free(hisptr->hisstr);
-	    hisptr->hisstr = NULL;
-	    hisptr->hisnum = 0;
+	    clear_hist_entry(hisptr);
 	    --hisnum[histype];
 	    if (--hisidx[HIST_SEARCH] < 0)
 		hisidx[HIST_SEARCH] = hislen - 1;
 	}
 	last_maptick = -1;
     }
-    if (!in_history(histype, new_entry, TRUE, sep))
+    if (!in_history(histype, new_entry, TRUE, sep, FALSE))
     {
 	if (++hisidx[histype] == hislen)
 	    hisidx[histype] = 0;
@@ -5463,6 +5550,7 @@ add_to_history(histype, new_entry, in_map, sep)
 	    hisptr->hisstr[len + 1] = sep;
 
 	hisptr->hisnum = ++hisnum[histype];
+	hisptr->viminfo = FALSE;
 	if (histype == HIST_SEARCH && in_map)
 	    last_maptick = maptick;
     }
@@ -5652,8 +5740,7 @@ clr_history(histype)
 	for (i = hislen; i--;)
 	{
 	    vim_free(hisptr->hisstr);
-	    hisptr->hisnum = 0;
-	    hisptr++->hisstr = NULL;
+	    clear_hist_entry(hisptr);
 	}
 	hisidx[histype] = -1;	/* mark history as cleared */
 	hisnum[histype] = 0;	/* reset identifier counter */
@@ -5698,16 +5785,14 @@ del_history_entry(histype, str)
 	    {
 		found = TRUE;
 		vim_free(hisptr->hisstr);
-		hisptr->hisstr = NULL;
-		hisptr->hisnum = 0;
+		clear_hist_entry(hisptr);
 	    }
 	    else
 	    {
 		if (i != last)
 		{
 		    history[histype][last] = *hisptr;
-		    hisptr->hisstr = NULL;
-		    hisptr->hisnum = 0;
+		    clear_hist_entry(hisptr);
 		}
 		if (--last < 0)
 		    last += hislen;
@@ -5718,7 +5803,7 @@ del_history_entry(histype, str)
 	if (history[histype][idx].hisstr == NULL)
 	    hisidx[histype] = -1;
     }
-    vim_free(regmatch.regprog);
+    vim_regfree(regmatch.regprog);
     return found;
 }
 
@@ -5751,8 +5836,7 @@ del_history_idx(histype, idx)
 	history[histype][i] = history[histype][j];
 	i = j;
     }
-    history[histype][i].hisstr = NULL;
-    history[histype][i].hisnum = 0;
+    clear_hist_entry(&history[histype][i]);
     if (--i < 0)
 	i += hislen;
     hisidx[histype] = i;
@@ -5937,6 +6021,9 @@ ex_history(eap)
 #endif
 
 #if (defined(FEAT_VIMINFO) && defined(FEAT_CMDHIST)) || defined(PROTO)
+/*
+ * Buffers for history read from a viminfo file.  Only valid while reading.
+ */
 static char_u **viminfo_history[HIST_COUNT] = {NULL, NULL, NULL, NULL};
 static int	viminfo_hisidx[HIST_COUNT] = {0, 0, 0, 0};
 static int	viminfo_hislen[HIST_COUNT] = {0, 0, 0, 0};
@@ -5971,8 +6058,9 @@ hist_type2char(type, use_question)
  * This allocates history arrays to store the read history lines.
  */
     void
-prepare_viminfo_history(asklen)
+prepare_viminfo_history(asklen, writing)
     int	    asklen;
+    int	    writing;
 {
     int	    i;
     int	    num;
@@ -5980,18 +6068,17 @@ prepare_viminfo_history(asklen)
     int	    len;
 
     init_history();
-    viminfo_add_at_front = (asklen != 0);
+    viminfo_add_at_front = (asklen != 0 && !writing);
     if (asklen > hislen)
 	asklen = hislen;
 
     for (type = 0; type < HIST_COUNT; ++type)
     {
-	/*
-	 * Count the number of empty spaces in the history list.  If there are
-	 * more spaces available than we request, then fill them up.
-	 */
+	/* Count the number of empty spaces in the history list.  Entries read
+	 * from viminfo previously are also considered empty.  If there are
+	 * more spaces available than we request, then fill them up. */
 	for (i = 0, num = 0; i < hislen; i++)
-	    if (history[type][i].hisstr == NULL)
+	    if (history[type][i].hisstr == NULL || history[type][i].viminfo)
 		num++;
 	len = asklen;
 	if (num > len)
@@ -6013,8 +6100,9 @@ prepare_viminfo_history(asklen)
  * new.
  */
     int
-read_viminfo_history(virp)
+read_viminfo_history(virp, writing)
     vir_T	*virp;
+    int		writing;
 {
     int		type;
     long_u	len;
@@ -6030,7 +6118,7 @@ read_viminfo_history(virp)
 	    int sep = (*val == ' ' ? NUL : *val);
 
 	    if (!in_history(type, val + (type == HIST_SEARCH),
-						   viminfo_add_at_front, sep))
+					  viminfo_add_at_front, sep, writing))
 	    {
 		/* Need to re-allocate to append the separator byte. */
 		len = STRLEN(val);
@@ -6060,6 +6148,9 @@ read_viminfo_history(virp)
     return viminfo_readline(virp);
 }
 
+/*
+ * Finish reading history lines from viminfo.  Not used when writing viminfo.
+ */
     void
 finish_viminfo_history()
 {
@@ -6070,7 +6161,7 @@ finish_viminfo_history()
     for (type = 0; type < HIST_COUNT; ++type)
     {
 	if (history[type] == NULL)
-	    return;
+	    continue;
 	idx = hisidx[type] + viminfo_hisidx[type];
 	if (idx >= hislen)
 	    idx -= hislen;
@@ -6084,7 +6175,8 @@ finish_viminfo_history()
 		hisidx[type] = hislen - 1;
 	    do
 	    {
-		if (history[type][idx].hisstr != NULL)
+		if (history[type][idx].hisstr != NULL
+						|| history[type][idx].viminfo)
 		    break;
 		if (++idx == hislen)
 		    idx = 0;
@@ -6096,6 +6188,7 @@ finish_viminfo_history()
 	{
 	    vim_free(history[type][idx].hisstr);
 	    history[type][idx].hisstr = viminfo_history[type][i];
+	    history[type][idx].viminfo = TRUE;
 	    if (--idx < 0)
 		idx = hislen - 1;
 	}
@@ -6108,18 +6201,27 @@ finish_viminfo_history()
 	}
 	vim_free(viminfo_history[type]);
 	viminfo_history[type] = NULL;
+	viminfo_hisidx[type] = 0;
     }
 }
 
+/*
+ * Write history to viminfo file in "fp".
+ * When "merge" is TRUE merge history lines with a previously read viminfo
+ * file, data is in viminfo_history[].
+ * When "merge" is FALSE just write all history lines.  Used for ":wviminfo!".
+ */
     void
-write_viminfo_history(fp)
+write_viminfo_history(fp, merge)
     FILE    *fp;
+    int	    merge;
 {
     int	    i;
     int	    type;
     int	    num_saved;
     char_u  *p;
     int	    c;
+    int     round;
 
     init_history();
     if (hislen == 0)
@@ -6138,26 +6240,67 @@ write_viminfo_history(fp)
 					_("Input Line"));
 	if (num_saved > hislen)
 	    num_saved = hislen;
-	i = hisidx[type];
-	if (i >= 0)
-	    while (num_saved--)
-	    {
-		p = history[type][i].hisstr;
-		if (p != NULL)
+
+	/*
+	 * Merge typed and viminfo history:
+	 * round 1: history of typed commands.
+	 * round 2: history from recently read viminfo.
+	 */
+	for (round = 1; round <= 2; ++round)
+	{
+	    if (round == 1)
+		/* start at newest entry, somewhere in the list */
+		i = hisidx[type];
+	    else if (viminfo_hisidx[type] > 0)
+		/* start at newest entry, first in the list */
+		i = 0;
+	    else
+		/* empty list */
+		i = -1;
+	    if (i >= 0)
+		while (num_saved > 0
+			&& !(round == 2 && i >= viminfo_hisidx[type]))
 		{
-		    fputc(hist_type2char(type, TRUE), fp);
-		    /* For the search history: put the separator in the second
-		     * column; use a space if there isn't one. */
-		    if (type == HIST_SEARCH)
+		    p = round == 1 ? history[type][i].hisstr
+				   : viminfo_history[type] == NULL ? NULL
+						   : viminfo_history[type][i];
+		    if (p != NULL && (round == 2
+				       || !merge
+				       || !history[type][i].viminfo))
 		    {
-			c = p[STRLEN(p) + 1];
-			putc(c == NUL ? ' ' : c, fp);
+			--num_saved;
+			fputc(hist_type2char(type, TRUE), fp);
+			/* For the search history: put the separator in the
+			 * second column; use a space if there isn't one. */
+			if (type == HIST_SEARCH)
+			{
+			    c = p[STRLEN(p) + 1];
+			    putc(c == NUL ? ' ' : c, fp);
+			}
+			viminfo_writestring(fp, p);
 		    }
-		    viminfo_writestring(fp, p);
+		    if (round == 1)
+		    {
+			/* Decrement index, loop around and stop when back at
+			 * the start. */
+			if (--i < 0)
+			    i = hislen - 1;
+			if (i == hisidx[type])
+			    break;
+		    }
+		    else
+		    {
+			/* Increment index. Stop at the end in the while. */
+			++i;
+		    }
 		}
-		if (--i < 0)
-		    i = hislen - 1;
-	    }
+	}
+	for (i = 0; i < viminfo_hisidx[type]; ++i)
+	    if (viminfo_history[type] != NULL)
+		vim_free(viminfo_history[type][i]);
+	vim_free(viminfo_history[type]);
+	viminfo_history[type] = NULL;
+	viminfo_hisidx[type] = 0;
     }
 }
 #endif /* FEAT_VIMINFO */
@@ -6222,6 +6365,9 @@ ex_window()
     int			save_exmode = exmode_active;
 #ifdef FEAT_RIGHTLEFT
     int			save_cmdmsg_rl = cmdmsg_rl;
+#endif
+#ifdef FEAT_FOLDING
+    int			save_KeyTyped;
 #endif
 
     /* Can't do this recursively.  Can't do it when typing a password. */
@@ -6357,8 +6503,19 @@ ex_window()
     RedrawingDisabled = i;
 
 # ifdef FEAT_AUTOCMD
+
+#  ifdef FEAT_FOLDING
+    save_KeyTyped = KeyTyped;
+#  endif
+
     /* Trigger CmdwinLeave autocommands. */
     apply_autocmds(EVENT_CMDWINLEAVE, typestr, typestr, FALSE, curbuf);
+
+#  ifdef FEAT_FOLDING
+    /* Restore KeyTyped in case it is modified by autocommands */
+    KeyTyped = save_KeyTyped;
+#  endif
+
 # endif
 
     /* Restore the command line info. */
@@ -6443,7 +6600,7 @@ ex_window()
 	/* win_close() may have already wiped the buffer when 'bh' is
 	 * set to 'wipe' */
 	if (buf_valid(bp))
-	    close_buffer(NULL, bp, DOBUF_WIPE);
+	    close_buffer(NULL, bp, DOBUF_WIPE, FALSE);
 
 	/* Restore window sizes. */
 	win_size_restore(&winsizes);

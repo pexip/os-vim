@@ -107,6 +107,7 @@ struct efm_S
 };
 
 static int	qf_init_ext __ARGS((qf_info_T *qi, char_u *efile, buf_T *buf, typval_T *tv, char_u *errorformat, int newlist, linenr_T lnumfirst, linenr_T lnumlast, char_u *qf_title));
+static void	qf_store_title __ARGS((qf_info_T *qi, char_u *title));
 static void	qf_new_list __ARGS((qf_info_T *qi, char_u *qf_title));
 static void	ll_free_all __ARGS((qf_info_T **pqi));
 static int	qf_add_entry __ARGS((qf_info_T *qi, qfline_T **prevp, char_u *dir, char_u *fname, int bufnum, char_u *mesg, long lnum, int col, int vis_col, char_u *pattern, int nr, int type, int valid));
@@ -126,13 +127,14 @@ static int	is_qf_win __ARGS((win_T *win, qf_info_T *qi));
 static win_T	*qf_find_win __ARGS((qf_info_T *qi));
 static buf_T	*qf_find_buf __ARGS((qf_info_T *qi));
 static void	qf_update_buffer __ARGS((qf_info_T *qi));
-static void	qf_set_title __ARGS((qf_info_T *qi));
+static void	qf_set_title_var __ARGS((qf_info_T *qi));
 static void	qf_fill_buffer __ARGS((qf_info_T *qi));
 #endif
 static char_u	*get_mef_name __ARGS((void));
-static buf_T	*load_dummy_buffer __ARGS((char_u *fname));
-static void	wipe_dummy_buffer __ARGS((buf_T *buf));
-static void	unload_dummy_buffer __ARGS((buf_T *buf));
+static void	restore_start_dir __ARGS((char_u *dirname_start));
+static buf_T	*load_dummy_buffer __ARGS((char_u *fname, char_u *dirname_start, char_u *resulting_dir));
+static void	wipe_dummy_buffer __ARGS((buf_T *buf, char_u *dirname_start));
+static void	unload_dummy_buffer __ARGS((buf_T *buf, char_u *dirname_start));
 static qf_info_T *ll_get_or_alloc_list __ARGS((win_T *));
 
 /* Quickfix window check helper macro */
@@ -246,7 +248,7 @@ qf_init_ext(qi, efile, buf, tv, errorformat, newlist, lnumfirst, lnumlast,
 			{'t', "."},
 			{'m', ".\\+"},
 			{'r', ".*"},
-			{'p', "[- .]*"},
+			{'p', "[- 	.]*"},
 			{'v', "\\d\\+"},
 			{'s', ".\\+"}
 		    };
@@ -676,11 +678,23 @@ restofline:
 		}
 		if ((i = (int)fmt_ptr->addr[7]) > 0)		/* %p */
 		{
+		    char_u	*match_ptr;
+
 		    if (regmatch.startp[i] == NULL || regmatch.endp[i] == NULL)
 			continue;
-		    col = (int)(regmatch.endp[i] - regmatch.startp[i] + 1);
-		    if (*((char_u *)regmatch.startp[i]) != TAB)
-			use_viscol = TRUE;
+		    col = 0;
+		    for (match_ptr = regmatch.startp[i];
+				   match_ptr != regmatch.endp[i]; ++match_ptr)
+		    {
+			++col;
+			if (*match_ptr == TAB)
+			{
+			    col += 7;
+			    col -= col % 8;
+			}
+		    }
+		    ++col;
+		    use_viscol = TRUE;
 		}
 		if ((i = (int)fmt_ptr->addr[8]) > 0)		/* %v */
 		{
@@ -738,7 +752,10 @@ restofline:
 		fmt_start = fmt_ptr;
 
 	    if (vim_strchr((char_u *)"AEWI", idx) != NULL)
+	    {
 		multiline = TRUE;	/* start of a multi-line message */
+		multiignore = FALSE;	/* reset continuation */
+	    }
 	    else if (vim_strchr((char_u *)"CZ", idx) != NULL)
 	    {				/* continuation of multi-line msg */
 		if (qfprev == NULL)
@@ -850,7 +867,7 @@ qf_init_ok:
     for (fmt_ptr = fmt_first; fmt_ptr != NULL; fmt_ptr = fmt_first)
     {
 	fmt_first = fmt_ptr->next;
-	vim_free(fmt_ptr->prog);
+	vim_regfree(fmt_ptr->prog);
 	vim_free(fmt_ptr);
     }
     qf_clean_dir_stack(&dir_stack);
@@ -868,6 +885,21 @@ qf_init_end:
     return retval;
 }
 
+    static void
+qf_store_title(qi, title)
+    qf_info_T	*qi;
+    char_u	*title;
+{
+    if (title != NULL)
+    {
+	char_u *p = alloc((int)STRLEN(title) + 2);
+
+	qi->qf_lists[qi->qf_curlist].qf_title = p;
+	if (p != NULL)
+	    sprintf((char *)p, ":%s", (char *)title);
+    }
+}
+
 /*
  * Prepare for adding a new quickfix list.
  */
@@ -879,7 +911,7 @@ qf_new_list(qi, qf_title)
     int		i;
 
     /*
-     * If the current entry is not the last entry, delete entries below
+     * If the current entry is not the last entry, delete entries beyond
      * the current entry.  This makes it possible to browse in a tree-like
      * way with ":grep'.
      */
@@ -900,14 +932,7 @@ qf_new_list(qi, qf_title)
     else
 	qi->qf_curlist = qi->qf_listcount++;
     vim_memset(&qi->qf_lists[qi->qf_curlist], 0, (size_t)(sizeof(qf_list_T)));
-    if (qf_title != NULL)
-    {
-	char_u *p = alloc((int)STRLEN(qf_title) + 2);
-
-	qi->qf_lists[qi->qf_curlist].qf_title = p;
-	if (p != NULL)
-	    sprintf((char *)p, ":%s", (char *)qf_title);
-    }
+    qf_store_title(qi, qf_title);
 }
 
 /*
@@ -1167,7 +1192,10 @@ copy_loclist(from, to)
 	/* When no valid entries are present in the list, qf_ptr points to
 	 * the first item in the list */
 	if (to_qfl->qf_nonevalid)
+	{
 	    to_qfl->qf_ptr = to_qfl->qf_start;
+	    to_qfl->qf_index = 1;
+	}
     }
 
     to->w_llist->qf_curlist = qi->qf_curlist;	/* current list */
@@ -1600,6 +1628,8 @@ qf_jump(qi, dir, errornr, forceit)
      */
     if (bt_quickfix(curbuf) && !opened_window)
     {
+	win_T *usable_win_ptr = NULL;
+
 	/*
 	 * If there is no file specified, we don't know where to go.
 	 * But do advance, otherwise ":cn" gets stuck.
@@ -1607,14 +1637,32 @@ qf_jump(qi, dir, errornr, forceit)
 	if (qf_ptr->qf_fnum == 0)
 	    goto theend;
 
-	/* Locate a window showing a normal buffer */
 	usable_win = 0;
-	FOR_ALL_WINDOWS(win)
-	    if (win->w_buffer->b_p_bt[0] == NUL)
-	    {
-		usable_win = 1;
-		break;
-	    }
+
+	ll_ref = curwin->w_llist_ref;
+	if (ll_ref != NULL)
+	{
+	    /* Find a window using the same location list that is not a
+	     * quickfix window. */
+	    FOR_ALL_WINDOWS(usable_win_ptr)
+		if (usable_win_ptr->w_llist == ll_ref
+			&& usable_win_ptr->w_buffer->b_p_bt[0] != 'q')
+		{
+		    usable_win = 1;
+		    break;
+		}
+	}
+
+	if (!usable_win)
+	{
+	    /* Locate a window showing a normal buffer */
+	    FOR_ALL_WINDOWS(win)
+		if (win->w_buffer->b_p_bt[0] == NUL)
+		{
+		    usable_win = 1;
+		    break;
+		}
+	}
 
 	/*
 	 * If no usable window is found and 'switchbuf' contains "usetab"
@@ -1643,8 +1691,6 @@ win_found:
 	 */
 	if (((firstwin == lastwin) && bt_quickfix(curbuf)) || !usable_win)
 	{
-	    ll_ref = curwin->w_llist_ref;
-
 	    flags = WSP_ABOVE;
 	    if (ll_ref != NULL)
 		flags |= WSP_NEWLOC;
@@ -1667,12 +1713,7 @@ win_found:
 	    if (curwin->w_llist_ref != NULL)
 	    {
 		/* In a location window */
-		ll_ref = curwin->w_llist_ref;
-
-		/* Find the window with the same location list */
-		FOR_ALL_WINDOWS(win)
-		    if (win->w_llist == ll_ref)
-			break;
+		win = usable_win_ptr;
 		if (win == NULL)
 		{
 		    /* Find the window showing the selected file */
@@ -2072,7 +2113,7 @@ qf_age(eap)
 	    if (qi->qf_curlist == 0)
 	    {
 		EMSG(_("E380: At bottom of quickfix stack"));
-		return;
+		break;
 	    }
 	    --qi->qf_curlist;
 	}
@@ -2081,13 +2122,12 @@ qf_age(eap)
 	    if (qi->qf_curlist >= qi->qf_listcount - 1)
 	    {
 		EMSG(_("E381: At top of quickfix stack"));
-		return;
+		break;
 	    }
 	    ++qi->qf_curlist;
 	}
     }
     qf_msg(qi);
-
 }
 
     static void
@@ -2111,18 +2151,29 @@ qf_free(qi, idx)
     int		idx;
 {
     qfline_T	*qfp;
+    int		stop = FALSE;
 
     while (qi->qf_lists[idx].qf_count)
     {
 	qfp = qi->qf_lists[idx].qf_start->qf_next;
-	vim_free(qi->qf_lists[idx].qf_start->qf_text);
-	vim_free(qi->qf_lists[idx].qf_start->qf_pattern);
-	vim_free(qi->qf_lists[idx].qf_start);
+	if (qi->qf_lists[idx].qf_title != NULL && !stop)
+	{
+	    vim_free(qi->qf_lists[idx].qf_start->qf_text);
+	    stop = (qi->qf_lists[idx].qf_start == qfp);
+	    vim_free(qi->qf_lists[idx].qf_start->qf_pattern);
+	    vim_free(qi->qf_lists[idx].qf_start);
+	    if (stop)
+		/* Somehow qf_count may have an incorrect value, set it to 1
+		 * to avoid crashing when it's wrong.
+		 * TODO: Avoid qf_count being incorrect. */
+		qi->qf_lists[idx].qf_count = 1;
+	}
 	qi->qf_lists[idx].qf_start = qfp;
 	--qi->qf_lists[idx].qf_count;
     }
     vim_free(qi->qf_lists[idx].qf_title);
     qi->qf_lists[idx].qf_title = NULL;
+    qi->qf_lists[idx].qf_index = 0;
 }
 
 /*
@@ -2306,9 +2357,7 @@ ex_copen(eap)
     else
 	height = QF_WINHEIGHT;
 
-#ifdef FEAT_VISUAL
     reset_VIsual_and_resel();			/* stop Visual mode */
-#endif
 #ifdef FEAT_GUI
     need_mouse_correct = TRUE;
 #endif
@@ -2319,7 +2368,22 @@ ex_copen(eap)
     win = qf_find_win(qi);
 
     if (win != NULL && cmdmod.tab == 0)
+    {
 	win_goto(win);
+	if (eap->addr_count != 0)
+	{
+#ifdef FEAT_VERTSPLIT
+	    if (cmdmod.split & WSP_VERT)
+	    {
+		if (height != W_WIDTH(win))
+		    win_setwidth(height);
+	    }
+	    else
+#endif
+	    if (height != win->w_height)
+		win_setheight(height);
+	}
+    }
     else
     {
 	qf_buf = qf_find_buf(qi);
@@ -2327,8 +2391,10 @@ ex_copen(eap)
 	/* The current window becomes the previous window afterwards. */
 	win = curwin;
 
-	if (eap->cmdidx == CMD_copen || eap->cmdidx == CMD_cwindow)
-	    /* Create the new window at the very bottom. */
+	if ((eap->cmdidx == CMD_copen || eap->cmdidx == CMD_cwindow)
+		&& cmdmod.split == 0)
+	    /* Create the new window at the very bottom, except when
+	     * :belowright or :aboveleft is used. */
 	    win_goto(lastwin);
 	if (win_split(height, WSP_BELOW | WSP_NEWLOC) == FAIL)
 	    return;		/* not enough room for window */
@@ -2388,7 +2454,7 @@ ex_copen(eap)
     qf_fill_buffer(qi);
 
     if (qi->qf_lists[qi->qf_curlist].qf_title != NULL)
-	qf_set_title(qi);
+	qf_set_title_var(qi);
 
     curwin->w_cursor.lnum = qi->qf_lists[qi->qf_curlist].qf_index;
     curwin->w_cursor.col = 0;
@@ -2543,7 +2609,7 @@ qf_update_buffer(qi)
 	{
 	    curwin_save = curwin;
 	    curwin = win;
-	    qf_set_title(qi);
+	    qf_set_title_var(qi);
 	    curwin = curwin_save;
 
 	}
@@ -2556,7 +2622,7 @@ qf_update_buffer(qi)
 }
 
     static void
-qf_set_title(qi)
+qf_set_title_var(qi)
     qf_info_T	*qi;
 {
     set_internal_string_var((char_u *)"w:quickfix_title",
@@ -2995,11 +3061,28 @@ ex_cfile(eap)
 {
     win_T	*wp = NULL;
     qf_info_T	*qi = &ql_info;
+#ifdef FEAT_AUTOCMD
+    char_u	*au_name = NULL;
+#endif
 
     if (eap->cmdidx == CMD_lfile || eap->cmdidx == CMD_lgetfile
-	|| eap->cmdidx == CMD_laddfile)
+					       || eap->cmdidx == CMD_laddfile)
 	wp = curwin;
 
+#ifdef FEAT_AUTOCMD
+    switch (eap->cmdidx)
+    {
+	case CMD_cfile:	    au_name = (char_u *)"cfile"; break;
+	case CMD_cgetfile:  au_name = (char_u *)"cgetfile"; break;
+	case CMD_caddfile:  au_name = (char_u *)"caddfile"; break;
+	case CMD_lfile:	    au_name = (char_u *)"lfile"; break;
+	case CMD_lgetfile:  au_name = (char_u *)"lgetfile"; break;
+	case CMD_laddfile:  au_name = (char_u *)"laddfile"; break;
+	default: break;
+    }
+    if (au_name != NULL)
+	apply_autocmds(EVENT_QUICKFIXCMDPRE, au_name, NULL, FALSE, curbuf);
+#endif
 #ifdef FEAT_BROWSE
     if (cmdmod.browse)
     {
@@ -3031,9 +3114,21 @@ ex_cfile(eap)
 				  && (eap->cmdidx == CMD_cfile
 					     || eap->cmdidx == CMD_lfile))
     {
+#ifdef FEAT_AUTOCMD
+	if (au_name != NULL)
+	    apply_autocmds(EVENT_QUICKFIXCMDPOST, au_name, NULL, FALSE, curbuf);
+#endif
 	if (wp != NULL)
 	    qi = GET_LOC_LIST(wp);
 	qf_jump(qi, 0, 0, eap->forceit);	/* display first error */
+    }
+
+    else
+    {
+#ifdef FEAT_AUTOCMD
+	if (au_name != NULL)
+	    apply_autocmds(EVENT_QUICKFIXCMDPOST, au_name, NULL, FALSE, curbuf);
+#endif
     }
 }
 
@@ -3055,6 +3150,9 @@ ex_vimgrep(eap)
     char_u	*p;
     int		fi;
     qf_info_T	*qi = &ql_info;
+#ifdef FEAT_AUTOCMD
+    qfline_T	*cur_qf_start;
+#endif
     qfline_T	*prevp = NULL;
     long	lnum;
     buf_T	*buf;
@@ -3122,7 +3220,20 @@ ex_vimgrep(eap)
 	EMSG(_(e_invalpat));
 	goto theend;
     }
-    regmatch.regprog = vim_regcomp(s, RE_MAGIC);
+
+    if (s != NULL && *s == NUL)
+    {
+	/* Pattern is empty, use last search pattern. */
+	if (last_search_pat() == NULL)
+	{
+	    EMSG(_(e_noprevre));
+	    goto theend;
+	}
+	regmatch.regprog = vim_regcomp(last_search_pat(), RE_MAGIC);
+    }
+    else
+	regmatch.regprog = vim_regcomp(s, RE_MAGIC);
+
     if (regmatch.regprog == NULL)
 	goto theend;
     regmatch.rmm_ic = p_ic;
@@ -3147,7 +3258,7 @@ ex_vimgrep(eap)
 	    ;
 
     /* parse the list of arguments */
-    if (get_arglist_exp(p, &fcount, &fnames) == FAIL)
+    if (get_arglist_exp(p, &fcount, &fnames, TRUE) == FAIL)
 	goto theend;
     if (fcount == 0)
     {
@@ -3163,6 +3274,12 @@ ex_vimgrep(eap)
     /* Remember the current directory, because a BufRead autocommand that does
      * ":lcd %:p:h" changes the meaning of short path names. */
     mch_dirname(dirname_start, MAXPATHL);
+
+#ifdef FEAT_AUTOCMD
+     /* Remember the value of qf_start, so that we can check for autocommands
+      * changing the current quickfix list. */
+    cur_qf_start = qi->qf_lists[qi->qf_curlist].qf_start;
+#endif
 
     seconds = (time_t)0;
     for (fi = 0; fi < fcount && !got_int && tomatch > 0; ++fi)
@@ -3208,19 +3325,7 @@ ex_vimgrep(eap)
 
 	    /* Load file into a buffer, so that 'fileencoding' is detected,
 	     * autocommands applied, etc. */
-	    buf = load_dummy_buffer(fname);
-
-	    /* When autocommands changed directory: go back.  We assume it was
-	     * ":lcd %:p:h". */
-	    mch_dirname(dirname_now, MAXPATHL);
-	    if (STRCMP(dirname_start, dirname_now) != 0)
-	    {
-		exarg_T ea;
-
-		ea.arg = dirname_start;
-		ea.cmdidx = CMD_lcd;
-		ex_cd(&ea);
-	    }
+	    buf = load_dummy_buffer(fname, dirname_start, dirname_now);
 
 	    p_mls = save_mls;
 #if defined(FEAT_AUTOCMD) && defined(FEAT_SYN_HL)
@@ -3230,6 +3335,28 @@ ex_vimgrep(eap)
 	else
 	    /* Use existing, loaded buffer. */
 	    using_dummy = FALSE;
+
+#ifdef FEAT_AUTOCMD
+	if (cur_qf_start != qi->qf_lists[qi->qf_curlist].qf_start)
+	{
+	    int idx;
+
+	    /* Autocommands changed the quickfix list.  Find the one we were
+	     * using and restore it. */
+	    for (idx = 0; idx < LISTCOUNT; ++idx)
+		if (cur_qf_start == qi->qf_lists[idx].qf_start)
+		{
+		    qi->qf_curlist = idx;
+		    break;
+		}
+	    if (idx == LISTCOUNT)
+	    {
+		/* List cannot be found, create a new one. */
+		qf_new_list(qi, *eap->cmdlinep);
+		cur_qf_start = qi->qf_lists[qi->qf_curlist].qf_start;
+	    }
+	}
+#endif
 
 	if (buf == NULL)
 	{
@@ -3282,6 +3409,9 @@ ex_vimgrep(eap)
 		if (got_int)
 		    break;
 	    }
+#ifdef FEAT_AUTOCMD
+	    cur_qf_start = qi->qf_lists[qi->qf_curlist].qf_start;
+#endif
 
 	    if (using_dummy)
 	    {
@@ -3291,7 +3421,7 @@ ex_vimgrep(eap)
 		{
 		    /* Never keep a dummy buffer if there is another buffer
 		     * with the same name. */
-		    wipe_dummy_buffer(buf);
+		    wipe_dummy_buffer(buf, dirname_start);
 		    buf = NULL;
 		}
 		else if (!cmdmod.hide
@@ -3307,12 +3437,12 @@ ex_vimgrep(eap)
 		     * many swap files. */
 		    if (!found_match)
 		    {
-			wipe_dummy_buffer(buf);
+			wipe_dummy_buffer(buf, dirname_start);
 			buf = NULL;
 		    }
 		    else if (buf != first_match_buf || (flags & VGR_NOJUMP))
 		    {
-			unload_dummy_buffer(buf);
+			unload_dummy_buffer(buf, dirname_start);
 			buf = NULL;
 		    }
 		}
@@ -3399,7 +3529,7 @@ theend:
     vim_free(dirname_now);
     vim_free(dirname_start);
     vim_free(target_dir);
-    vim_free(regmatch.regprog);
+    vim_regfree(regmatch.regprog);
 }
 
 /*
@@ -3458,13 +3588,49 @@ skip_vimgrep_pat(p, s, flags)
 }
 
 /*
- * Load file "fname" into a dummy buffer and return the buffer pointer.
+ * Restore current working directory to "dirname_start" if they differ, taking
+ * into account whether it is set locally or globally.
+ */
+    static void
+restore_start_dir(dirname_start)
+    char_u	*dirname_start;
+{
+    char_u *dirname_now = alloc(MAXPATHL);
+
+    if (NULL != dirname_now)
+    {
+	mch_dirname(dirname_now, MAXPATHL);
+	if (STRCMP(dirname_start, dirname_now) != 0)
+	{
+	    /* If the directory has changed, change it back by building up an
+	     * appropriate ex command and executing it. */
+	    exarg_T ea;
+
+	    ea.arg = dirname_start;
+	    ea.cmdidx = (curwin->w_localdir == NULL) ? CMD_cd : CMD_lcd;
+	    ex_cd(&ea);
+	}
+	vim_free(dirname_now);
+    }
+}
+
+/*
+ * Load file "fname" into a dummy buffer and return the buffer pointer,
+ * placing the directory resulting from the buffer load into the
+ * "resulting_dir" pointer. "resulting_dir" must be allocated by the caller
+ * prior to calling this function. Restores directory to "dirname_start" prior
+ * to returning, if autocmds or the 'autochdir' option have changed it.
+ *
+ * If creating the dummy buffer does not fail, must call unload_dummy_buffer()
+ * or wipe_dummy_buffer() later!
+ *
  * Returns NULL if it fails.
- * Must call unload_dummy_buffer() or wipe_dummy_buffer() later!
  */
     static buf_T *
-load_dummy_buffer(fname)
+load_dummy_buffer(fname, dirname_start, resulting_dir)
     char_u	*fname;
+    char_u	*dirname_start;  /* in: old directory */
+    char_u	*resulting_dir;  /* out: new directory */
 {
     buf_T	*newbuf;
     buf_T	*newbuf_to_wipe = NULL;
@@ -3519,22 +3685,33 @@ load_dummy_buffer(fname)
 	    wipe_buffer(newbuf_to_wipe, FALSE);
     }
 
+    /*
+     * When autocommands/'autochdir' option changed directory: go back.
+     * Let the caller know what the resulting dir was first, in case it is
+     * important.
+     */
+    mch_dirname(resulting_dir, MAXPATHL);
+    restore_start_dir(dirname_start);
+
     if (!buf_valid(newbuf))
 	return NULL;
     if (failed)
     {
-	wipe_dummy_buffer(newbuf);
+	wipe_dummy_buffer(newbuf, dirname_start);
 	return NULL;
     }
     return newbuf;
 }
 
 /*
- * Wipe out the dummy buffer that load_dummy_buffer() created.
+ * Wipe out the dummy buffer that load_dummy_buffer() created. Restores
+ * directory to "dirname_start" prior to returning, if autocmds or the
+ * 'autochdir' option have changed it.
  */
     static void
-wipe_dummy_buffer(buf)
+wipe_dummy_buffer(buf, dirname_start)
     buf_T	*buf;
+    char_u	*dirname_start;
 {
     if (curbuf != buf)		/* safety check */
     {
@@ -3554,18 +3731,28 @@ wipe_dummy_buffer(buf)
 	 * new aborting error, interrupt, or uncaught exception. */
 	leave_cleanup(&cs);
 #endif
+	/* When autocommands/'autochdir' option changed directory: go back. */
+	restore_start_dir(dirname_start);
     }
 }
 
 /*
- * Unload the dummy buffer that load_dummy_buffer() created.
+ * Unload the dummy buffer that load_dummy_buffer() created. Restores
+ * directory to "dirname_start" prior to returning, if autocmds or the
+ * 'autochdir' option have changed it.
  */
     static void
-unload_dummy_buffer(buf)
+unload_dummy_buffer(buf, dirname_start)
     buf_T	*buf;
+    char_u	*dirname_start;
 {
     if (curbuf != buf)		/* safety check */
-	close_buffer(NULL, buf, DOBUF_UNLOAD);
+    {
+	close_buffer(NULL, buf, DOBUF_UNLOAD, FALSE);
+
+	/* When autocommands/'autochdir' option changed directory: go back. */
+	restore_start_dir(dirname_start);
+    }
 }
 
 #if defined(FEAT_EVAL) || defined(PROTO)
@@ -3668,7 +3855,10 @@ set_errorlist(wp, list, action, title)
 	     prevp->qf_next != prevp; prevp = prevp->qf_next)
 	    ;
     else if (action == 'r')
+    {
 	qf_free(qi, qi->qf_curlist);
+	qf_store_title(qi, title);
+    }
 
     for (li = list->lv_first; li != NULL; li = li->li_next)
     {
@@ -4033,7 +4223,7 @@ ex_helpgrep(eap)
 	    }
 	}
 
-	vim_free(regmatch.regprog);
+	vim_regfree(regmatch.regprog);
 #ifdef FEAT_MBYTE
 	if (vc.vc_type != CONV_NONE)
 	    convert_setup(&vc, NULL, NULL);

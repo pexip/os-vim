@@ -741,8 +741,10 @@ do_tag(tag, type, count, forceit, verbose)
 			    break;
 			msg_advance(15);
 
-			/* skip backslash used for escaping command char */
-			if (*p == '\\' && *(p + 1) == *tagp.command)
+			/* skip backslash used for escaping a command char or
+			 * a backslash */
+			if (*p == '\\' && (*(p + 1) == *tagp.command
+				        || *(p + 1) == '\\'))
 			    ++p;
 
 			if (*p == TAB)
@@ -1326,6 +1328,7 @@ find_tags(pat, num_matches, matchesp, flags, mincount, buf_ffname)
     int		match_no_ic = 0;/* matches with rm_ic == FALSE */
     int		match_re;	/* match with regexp */
     int		matchoff = 0;
+    int		save_emsg_off;
 
 #ifdef FEAT_EMACS_TAGS
     /*
@@ -1442,7 +1445,12 @@ find_tags(pat, num_matches, matchesp, flags, mincount, buf_ffname)
     if (p_tl != 0 && orgpat.len > p_tl)		/* adjust for 'taglength' */
 	orgpat.len = p_tl;
 
+    save_emsg_off = emsg_off;
+    emsg_off = TRUE;  /* don't want error for invalid RE here */
     prepare_pats(&orgpat, has_re);
+    emsg_off = save_emsg_off;
+    if (has_re && orgpat.regmatch.regprog == NULL)
+	goto findtag_end;
 
 #ifdef FEAT_TAG_BINS
     /* This is only to avoid a compiler warning for using search_info
@@ -1795,8 +1803,16 @@ line_read_in:
 	     */
 	    if (state == TS_START)
 	    {
-		if (STRNCMP(lbuf, "!_TAG_", 6) <= 0)
+		/* The header ends when the line sorts below "!_TAG_".  When
+		 * case is folded lower case letters sort before "_". */
+		if (STRNCMP(lbuf, "!_TAG_", 6) <= 0
+				|| (lbuf[0] == '!' && ASCII_ISLOWER(lbuf[1])))
 		{
+		    if (STRNCMP(lbuf, "!_TAG_", 6) != 0)
+			/* Non-header item before the header, e.g. "!" itself.
+			 */
+			goto parse_line;
+
 		    /*
 		     * Read header line.
 		     */
@@ -1891,6 +1907,7 @@ line_read_in:
 #endif
 	    }
 
+parse_line:
 	    /*
 	     * Figure out where the different strings are in this line.
 	     * For "normal" tags: Do a quick check if the tag matches.
@@ -2489,7 +2506,7 @@ line_read_in:
 
 findtag_end:
     vim_free(lbuf);
-    vim_free(orgpat.regmatch.regprog);
+    vim_regfree(orgpat.regmatch.regprog);
     vim_free(tag_fname);
 #ifdef FEAT_EMACS_TAGS
     vim_free(ebuf);
@@ -3319,7 +3336,9 @@ jumpto_tag(lbuf, forceit, keep_help)
 #ifdef FEAT_SEARCH_EXTRA
 	/* restore no_hlsearch when keeping the old search pattern */
 	if (search_options)
-	    no_hlsearch = save_no_hlsearch;
+	{
+	    SET_NO_HLSEARCH(save_no_hlsearch);
+	}
 #endif
 
 	/* Return OK if jumped to another file (at least we found the file!). */

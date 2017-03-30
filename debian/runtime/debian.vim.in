@@ -47,15 +47,3 @@ if has('gui_running')
   map <S-Insert> <MiddleMouse>
   map! <S-Insert> <MiddleMouse>
 endif
-
-if executable("launchpad-integration")
-  " Launchpad integration
-  an 9999.76 &Help.Get\ Help\ Online\.\.\.             :call <SID>LPI("--info")<CR>
-  an 9999.77 &Help.Translate\ This\ Application\.\.\.  :call <SID>LPI("--translate")<CR>
-  an 9999.78 &Help.Report\ a\ Problem\.\.\.            :call <SID>LPI("--bugs")<CR>
-  an 9999.79 &Help.-lpisep-                            <Nop>
-
-  fun! s:LPI(opt)
-    call system("launchpad-integration --pid " . getpid() . " " . a:opt)
-  endfun
-endif

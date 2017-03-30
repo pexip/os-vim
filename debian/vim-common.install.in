@@ -1,5 +1,6 @@
 debian/tmp/usr/bin/xxd                           usr/bin/
 debian/helpztags                                 usr/bin/
+debian/vim.desktop                               usr/share/applications/
 debian/runtime/vimrc                             etc/vim/
 debian/runtime/debian.vim                        usr/share/vim/@VIMCUR@/
 debian/tmp/usr/share/man/man1/xxd.1              usr/share/man/man1/

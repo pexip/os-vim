@@ -1,4 +1,4 @@
-*editing.txt*   For Vim version 7.3.  Last change: 2011 Feb 26
+*editing.txt*   For Vim version 7.4.  Last change: 2014 Sep 19
 
 
 		  VIM REFERENCE MANUAL    by Bram Moolenaar
@@ -38,6 +38,7 @@ If there already was a current file name, then that one becomes the alternate
 file name.  It can be used with "#" on the command line |:_#| and you can use
 the |CTRL-^| command to toggle between the current and the alternate file.
 However, the alternate file name is not changed when |:keepalt| is used.
+An alternate file name is remembered for each window.
 
 							*:keepalt* *:keepa*
 :keepalt {cmd}		Execute {cmd} while keeping the current alternate file
@@ -185,12 +186,13 @@ If you want to automatically save the changes without asking, switch on the
 that does not work for all commands.
 
 If you want to keep the changed buffer without saving it, switch on the
-'hidden' option.  See |hidden-buffer|.
+'hidden' option.  See |hidden-buffer|.  Some commands work like this even when
+'hidden' is not set, check the help for the command.
 
 ==============================================================================
 2. Editing a file					*edit-a-file*
 
-							*:e* *:edit*
+							*:e* *:edit* *reload*
 :e[dit] [++opt] [+cmd]	Edit the current file.  This is useful to re-edit the
 			current file, when it has been changed outside of Vim.
 			This fails when changes have been made to the current
@@ -199,7 +201,7 @@ If you want to keep the changed buffer without saving it, switch on the
 			Also see |++opt| and |+cmd|.
 			{Vi: no ++opt}
 
-							*:edit!*
+							*:edit!* *discard*
 :e[dit]! [++opt] [+cmd]
 			Edit the current file always.  Discard any changes to
 			the current buffer.  This is useful if you want to
@@ -377,8 +379,9 @@ command that accepts more than one file name (like ":next file1 file2")
 embedded spaces must be escaped with a backslash.
 
 						*wildcard* *wildcards*
-Wildcards in {file} are expanded.  Which wildcards are supported depends on
-the system.  These are the common ones:
+Wildcards in {file} are expanded, but as with file completion, 'wildignore'
+and 'suffixes' apply.  Which wildcards are supported depends on the system.
+These are the common ones:
 	?	matches one character
 	*	matches anything, including nothing
 	**	matches anything, including nothing, recurses into directories
@@ -392,7 +395,7 @@ is to use "path\[[]abc]".  Then the file "path[abc]" literally.
 					*starstar-wildcard*
 Expanding "**" is possible on Unix, Win32, Mac OS/X and a few other systems.
 This allows searching a directory tree.  This goes up to 100 directories deep.
-Note there are some commands where this works slightly different, see
+Note there are some commands where this works slightly differently, see
 |file-searching|.
 Example: >
 	:n **/*.txt
@@ -422,9 +425,11 @@ You can have the backticks expanded as a Vim expression, instead of an
 external command, by using the syntax `={expr}` e.g.: >
 	:e `=tempname()`
 The expression can contain just about anything, thus this can also be used to
-avoid the special meaning of '"', '|', '%' and '#'.  Names are to be separated
-with line breaks.  When the result is a |List| then each item is used as a
-name.  Line breaks also separate names.
+avoid the special meaning of '"', '|', '%' and '#'.  However, 'wildignore'
+does apply like to other wildcards.
+If the expression returns a string then names are to be separated with line
+breaks.  When the result is a |List| then each item is used as a name.  Line
+breaks also separate names.
 
 							*++opt* *[++opt]*
 The [++opt] argument can be used to force the value of 'fileformat',
@@ -604,7 +609,10 @@ list of the current window.
 			{not in Vi}
 
 :[count]arga[dd] {name} ..			*:arga* *:argadd* *E479*
-			Add the {name}s to the argument list.
+:[count]arga[dd]
+			Add the {name}s to the argument list.  When {name} is
+			omitted at the current buffer name to the argument
+			list.
 			If [count] is omitted, the {name}s are added just
 			after the current entry in the argument list.
 			Otherwise they are added after the [count]'th file.
@@ -1066,6 +1074,7 @@ The names can be in upper- or lowercase.
 			If there are other tab pages and quitting the last
 			window in the current tab page the current tab page is
 			closed |tab-page|.
+			Triggers the |QuitPre| autocommand event.
 
 :conf[irm] q[uit]	Quit, but give prompt when changes have been made, or
 			the last file in the argument list has not been
@@ -1159,8 +1168,10 @@ MULTIPLE WINDOWS AND BUFFERS				*window-exit*
 							*:confirm* *:conf*
 :conf[irm] {command}	Execute {command}, and use a dialog when an
 			operation has to be confirmed.  Can be used on the
-			":q", ":qa" and ":w" commands (the latter to over-ride
-			a read-only setting).
+			|:q|, |:qa| and |:w| commands (the latter to override
+			a read-only setting), and any other command that can
+			fail in such a way, such as |:only|, |:buffer|,
+			|:bdelete|, etc.
 
 Examples: >
   :confirm w foo
@@ -1213,13 +1224,13 @@ For versions of Vim where browsing is not supported, the command is executed
 unmodified.
 
 							*browsefilter*
-For MS Windows, you can modify the filters that are used in the browse dialog.
-By setting the g:browsefilter or b:browsefilter variables, you can change the
-filters globally or locally to the buffer.  The variable is set to a string in
-the format "{filter label}\t{pattern};{pattern}\n" where {filter label} is the
-text that appears in the "Files of Type" comboBox, and {pattern} is the
-pattern which filters the filenames.  Several patterns can be given, separated
-by ';'.
+For MS Windows and GTK, you can modify the filters that are used in the browse
+dialog.  By setting the g:browsefilter or b:browsefilter variables, you can
+change the filters globally or locally to the buffer.  The variable is set to
+a string in the format "{filter label}\t{pattern};{pattern}\n" where {filter
+label} is the text that appears in the "Files of Type" comboBox, and {pattern}
+is the pattern which filters the filenames.  Several patterns can be given,
+separated by ';'.
 
 For Motif the same format is used, but only the very first pattern is actually
 used (Motif only offers one pattern, but you can edit it).
@@ -1227,7 +1238,7 @@ used (Motif only offers one pattern, but you can edit it).
 For example, to have only Vim files in the dialog, you could use the following
 command: >
 
-     let g:browsefilter="Vim Scripts\t*.vim\nVim Startup Files\t*vimrc\n"
+     let g:browsefilter = "Vim Scripts\t*.vim\nVim Startup Files\t*vimrc\n"
 
 You can override the filter setting on a per-buffer basis by setting the
 b:browsefilter variable.  You would most likely set b:browsefilter in a
@@ -1236,6 +1247,13 @@ the type of file you are currently editing.  Disadvantage: This makes it
 difficult to start editing a file of a different type.  To overcome this, you
 may want to add "All Files\t*.*\n" as the final filter, so that the user can
 still access any desired file.
+
+To avoid setting browsefilter when Vim does not actually support it, you can
+use has("browsefilter"): >
+
+	if has("browsefilter")
+	   let g:browsefilter = "whatever"
+	endif
 
 ==============================================================================
 7. The current directory				*current-directory*
@@ -1347,11 +1365,21 @@ cannot be read without the right key.
 {only available when compiled with the |+cryptv| feature}  *E833*
 
 The text in the swap file and the undo file is also encrypted.  *E843*
+However, this is done block-by-block and may reduce the time needed to crack a
+password.  You can disable the swap file, but then a crash will cause you to
+lose your work.  The undo file can be disabled without much disadvantage. >
+	:set noundofile
+	:noswapfile edit secrets
 
 Note: The text in memory is not encrypted.  A system administrator may be able
 to see your text while you are editing it.  When filtering text with
-":!filter" or using ":w !command" the text is not encrypted, this may reveal
-it to others.  The 'viminfo' file is not encrypted.
+":!filter" or using ":w !command" the text is also not encrypted, this may
+reveal it to others.  The 'viminfo' file is not encrypted.
+
+You could do this to edit very secret text: >
+	:set noundofile viminfo=
+	:noswapfile edit secrets.txt
+Keep in mind that without a swap file you risk loosing your work in a crash.
 
 WARNING: If you make a typo when entering the key and then write the file and
 exit, the text will be lost!
@@ -1378,18 +1406,25 @@ To disable the encryption, reset the 'key' option to an empty value: >
 	:set key=
 
 You can use the 'cryptmethod' option to select the type of encryption, use one
-of these two: >
-	:setlocal cm=zip       " weak method, backwards compatible
-	:setlocal cm=blowfish  " strong method
+of these: >
+	:setlocal cm=zip        " weak method, backwards compatible
+	:setlocal cm=blowfish   " method with flaws
+	:setlocal cm=blowfish2  " medium strong method
+
 Do this before writing the file.  When reading an encrypted file it will be
 set automatically to the method used when that file was written.  You can
 change 'cryptmethod' before writing that file to change the method.
+
 To set the default method, used for new files, use one of these in your
 |vimrc| file: >
 	set cm=zip
-	set cm=blowfish
+	set cm=blowfish2
+Use the first one if you need to be compatible with Vim 7.2 and older.  Using
+"blowfish2" is highly recommended if you can use a Vim version that supports
+it.
+
 The message given for reading and writing a file will show "[crypted]" when
-using zip, "[blowfish]" when using blowfish.
+using zip, "[blowfish]" when using blowfish, etc.
 
 When writing an undo file, the same key and method will be used for the text
 in the undo file. |persistent-undo|.
@@ -1424,7 +1459,7 @@ lines to "/etc/magic", "/usr/share/misc/magic" or wherever your system has the
      0	string	VimCrypt~	Vim encrypted file
      >9	string	01	- "zip" cryptmethod
      >9	string	02	- "blowfish" cryptmethod
-
+     >9	string	03	- "blowfish2" cryptmethod
 
 Notes:
 - Encryption is not possible when doing conversion with 'charconvert'.
@@ -1448,20 +1483,25 @@ Notes:
 - Pkzip uses the same encryption as 'cryptmethod' "zip", and US Govt has no
   objection to its export.  Pkzip's public file APPNOTE.TXT describes this
   algorithm in detail.
+- The implementation of 'cryptmethod' "blowfish" has a flaw.  It is possible
+  to crack the first 64 bytes of a file and in some circumstances more of the
+  file. Use of it is not recommended, but it's still the strongest method
+  supported by Vim 7.3 and 7.4.  The "zip" method is even weaker.
 - Vim originates from the Netherlands.  That is where the sources come from.
   Thus the encryption code is not exported from the USA.
 
 ==============================================================================
 10. Timestamps					*timestamp* *timestamps*
 
-Vim remembers the modification timestamp of a file when you begin editing it.
-This is used to avoid that you have two different versions of the same file
-(without you knowing this).
+Vim remembers the modification timestamp, mode and size of a file when you
+begin editing it.  This is used to avoid that you have two different versions
+of the same file (without you knowing this).
 
-After a shell command is run (|:!cmd| |suspend| |:read!| |K|) timestamps are
-compared for all buffers in a window.   Vim will run any associated
-|FileChangedShell| autocommands or display a warning for any files that have
-changed.  In the GUI this happens when Vim regains input focus.
+After a shell command is run (|:!cmd| |suspend| |:read!| |K|) timestamps,
+file modes and file sizes are compared for all buffers in a window.   Vim will
+run any associated |FileChangedShell| autocommands or display a warning for
+any files that have changed.  In the GUI this happens when Vim regains input
+focus.
 
 							*E321* *E462*
 If you want to automatically reload a file when it has been changed outside of
@@ -1639,6 +1679,6 @@ There are three different types of searching:
 
    Note that completion for ":find", ":sfind", and ":tabfind" commands do not
    currently work with 'path' items that contain a url or use the double star
-   (/usr/**2) or upward search (;) notations. >
+   with depth limiter (/usr/**2) or upward search (;) notations.
 
  vim:tw=78:ts=8:ft=help:norl:
