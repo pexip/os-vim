@@ -24,7 +24,7 @@ Build-Depends-Indep: docbook-xml, docbook-utils
 Vcs-Hg: http://hg.debian.org/hg/pkg-vim/vim
 Vcs-Browser: http://hg.debian.org/hg/pkg-vim/vim
 Homepage: http://www.vim.org/
-XS-Pexip-Upstream: http://archive.ubuntu.com/ubuntu/ precise
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ jessie
 
 Package: vim-common
 Priority: important
