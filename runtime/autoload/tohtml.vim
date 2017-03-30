@@ -1,6 +1,6 @@
 " Vim autoload file for the tohtml plugin.
 " Maintainer: Ben Fritz <fritzophrenic@gmail.com>
-" Last Change: 2011 Apr 05
+" Last Change: 2013 Jun 19
 "
 " Additional contributors:
 "
@@ -11,7 +11,7 @@
 
 " this file uses line continuations
 let s:cpo_sav = &cpo
-set cpo-=C
+set cpo&vim
 
 " Automatically find charsets from all encodings supported natively by Vim. With
 " the 8bit- and 2byte- prefixes, Vim can actually support more encodings than
@@ -391,12 +391,25 @@ func! tohtml#Diff2HTML(win_list, buf_list) "{{{
   call add(html, '<meta name="plugin-version" content="'.g:loaded_2html_plugin.'"'.tag_close)
   call add(html, '<meta name="settings" content="'.
 	\ join(filter(keys(s:settings),'s:settings[v:val]'),',').
+	\ ',prevent_copy='.s:settings.prevent_copy.
 	\ '"'.tag_close)
+  call add(html, '<meta name="colorscheme" content="'.
+	\ (exists('g:colors_name')
+	\ ? g:colors_name
+	\ : 'none'). '"'.tag_close)
 
   call add(html, '</head>')
   let body_line_num = len(html)
-  call add(html, '<body>')
-  call add(html, '<table border="1" width="100%">')
+  if !empty(s:settings.prevent_copy)
+    call add(html, "<body onload='FixCharWidth();".(s:settings.line_ids ? " JumpToLine();" : "")."'>")
+    call add(html, "<!-- hidden divs used by javascript to get the width of a char -->")
+    call add(html, "<div id='oneCharWidth'>0</div>")
+    call add(html, "<div id='oneInputWidth'><input size='1' value='0'".tag_close."</div>")
+    call add(html, "<div id='oneEmWidth' style='width: 1em;'></div>")
+  else
+    call add(html, '<body'.(s:settings.line_ids ? ' onload="JumpToLine();"' : '').'>')
+  endif
+  call add(html, "<table border='1' width='100%' id='vimCodeElement".s:settings.id_suffix."'>")
 
   call add(html, '<tr>')
   for buf in a:win_list
@@ -454,16 +467,19 @@ func! tohtml#Diff2HTML(win_list, buf_list) "{{{
       let insert_index = diff_style_start
     endif
 
-    " Delete those parts that are not needed so
-    " we can include the rest into the resulting table
-    1,/^<body/d_
+    " Delete those parts that are not needed so we can include the rest into the
+    " resulting table.
+    1,/^<body.*\%(\n<!--.*-->\_s\+.*id='oneCharWidth'.*\_s\+.*id='oneInputWidth'.*\_s\+.*id='oneEmWidth'\)\?\zs/d_
     $
     ?</body>?,$d_
     let temp = getline(1,'$')
+    " clean out id on the main content container because we already set it on
+    " the table
+    let temp[0] = substitute(temp[0], " id='vimCodeElement[^']*'", "", "")
     " undo deletion of start and end part
     " so we can later save the file as valid html
     " TODO: restore using grabbed lines if undolevel is 1?
-    normal 2u
+    normal! 2u
     if s:settings.use_css
       call add(html, '<td valign="top"><div>')
     elseif s:settings.use_xhtml
@@ -486,6 +502,11 @@ func! tohtml#Diff2HTML(win_list, buf_list) "{{{
   call add(html, '</table>')
   call add(html, s:body_end_line)
   call add(html, '</html>')
+
+  " The generated HTML is admittedly ugly and takes a LONG time to fold.
+  " Make sure the user doesn't do syntax folding when loading a generated file,
+  " using a modeline.
+  call add(html, '<!-- vim: set foldmethod=manual : -->')
 
   let i = 1
   let name = "Diff" . (s:settings.use_xhtml ? ".xhtml" : ".html")
@@ -520,12 +541,94 @@ func! tohtml#Diff2HTML(win_list, buf_list) "{{{
     1
     let style_start = search('^</head>')-1
 
-    " Insert javascript to toggle matching folds open and closed in all windows,
-    " if dynamic folding is active. {{{
+    " add required javascript in reverse order so we can just call append again
+    " and again without adjusting {{{
+
+    " insert script closing tag
+    call append(style_start, [
+	  \ '',
+	  \ s:settings.use_xhtml ? '//]]>' : '-->',
+	  \ "</script>"
+	  \ ])
+
+    " insert script which corrects the size of small input elements in
+    " prevent_copy mode. See 2html.vim for details on why this is needed and how
+    " it works.
+    if !empty(s:settings.prevent_copy)
+      call append(style_start, [
+	    \ '',
+	    \ '/* simulate a "ch" unit by asking the browser how big a zero character is */',
+	    \ 'function FixCharWidth() {',
+	    \ '  /* get the hidden element which gives the width of a single character */',
+	    \ '  var goodWidth = document.getElementById("oneCharWidth").clientWidth;',
+	    \ '  /* get all input elements, we''ll filter on class later */',
+	    \ '  var inputTags = document.getElementsByTagName("input");',
+	    \ '  var ratio = 5;',
+	    \ '  var inputWidth = document.getElementById("oneInputWidth").clientWidth;',
+	    \ '  var emWidth = document.getElementById("oneEmWidth").clientWidth;',
+	    \ '  if (inputWidth > goodWidth) {',
+	    \ '    while (ratio < 100*goodWidth/emWidth && ratio < 100) {',
+	    \ '      ratio += 5;',
+	    \ '    }',
+	    \ '    document.getElementById("vimCodeElement'.s:settings.id_suffix.'").className = "em"+ratio;',
+	    \ '  }',
+	    \ '}'
+	    \ ])
+    endif
+    "
+    " insert javascript to get IDs from line numbers, and to open a fold before
+    " jumping to any lines contained therein
+    call append(style_start, [
+	  \ "  /* Always jump to new location even if the line was hidden inside a fold, or",
+	  \ "   * we corrected the raw number to a line ID.",
+	  \ "   */",
+	  \ "  if (lineElem) {",
+	  \ "    lineElem.scrollIntoView(true);",
+	  \ "  }",
+	  \ "  return true;",
+	  \ "}",
+	  \ "if ('onhashchange' in window) {",
+	  \ "  window.onhashchange = JumpToLine;",
+	  \ "}"
+	  \ ])
     if s:settings.dynamic_folds
       call append(style_start, [
-	    \  "<script type='text/javascript'>",
-	    \  s:settings.use_xhtml ? '//<![CDATA[' : "  <!--",
+	    \ "",
+	    \ "  /* navigate upwards in the DOM tree to open all folds containing the line */",
+	    \ "  var node = lineElem;",
+	    \ "  while (node && node.id != 'vimCodeElement".s:settings.id_suffix."')",
+	    \ "  {",
+	    \ "    if (node.className == 'closed-fold')",
+	    \ "    {",
+	    \ "      /* toggle open the fold ID (remove window ID) */",
+	    \ "      toggleFold(node.id.substr(4));",
+	    \ "    }",
+	    \ "    node = node.parentNode;",
+	    \ "  }",
+	    \ ])
+    endif
+    call append(style_start, [
+	  \ "",
+	  \ "/* function to open any folds containing a jumped-to line before jumping to it */",
+	  \ "function JumpToLine()",
+	  \ "{",
+	  \ "  var lineNum;",
+	  \ "  lineNum = window.location.hash;",
+	  \ "  lineNum = lineNum.substr(1); /* strip off '#' */",
+	  \ "",
+	  \ "  if (lineNum.indexOf('L') == -1) {",
+	  \ "    lineNum = 'L'+lineNum;",
+	  \ "  }",
+	  \ "  if (lineNum.indexOf('W') == -1) {",
+	  \ "    lineNum = 'W1'+lineNum;",
+	  \ "  }",
+	  \ "  lineElem = document.getElementById(lineNum);"
+	  \ ])
+
+    " Insert javascript to toggle matching folds open and closed in all windows,
+    " if dynamic folding is active.
+    if s:settings.dynamic_folds
+      call append(style_start, [
 	    \  "  function toggleFold(objID)",
 	    \  "  {",
 	    \  "    for (win_num = 1; win_num <= ".len(a:buf_list)."; win_num++)",
@@ -542,10 +645,14 @@ func! tohtml#Diff2HTML(win_list, buf_list) "{{{
 	    \  "      }",
 	    \  "    }",
 	    \  "  }",
-	    \  s:settings.use_xhtml ? '//]]>' : "  -->",
-	    \  "</script>"
 	    \ ])
-    endif "}}}
+    endif
+
+    " insert script tag; javascript is always needed for the line number
+    " normalization for URL hashes
+    call append(style_start, [
+	  \ "<script type='text/javascript'>",
+	  \ s:settings.use_xhtml ? '//<![CDATA[' : "<!--"])
 
     " Insert styles from all the generated html documents and additional styles
     " for the table-based layout of the side-by-side diff. The diff should take
@@ -609,11 +716,13 @@ func! tohtml#GetUserSettings() "{{{
     call tohtml#GetOption(user_settings, 'ignore_conceal', 0 )
     call tohtml#GetOption(user_settings, 'ignore_folding', 0 )
     call tohtml#GetOption(user_settings,  'dynamic_folds', 0 )
-    call tohtml#GetOption(user_settings,  'no_foldcolumn', 0 )
+    call tohtml#GetOption(user_settings,  'no_foldcolumn', user_settings.ignore_folding)
     call tohtml#GetOption(user_settings,   'hover_unfold', 0 )
     call tohtml#GetOption(user_settings,         'no_pre', 0 )
+    call tohtml#GetOption(user_settings,     'no_invalid', 0 )
     call tohtml#GetOption(user_settings,   'whole_filler', 0 )
     call tohtml#GetOption(user_settings,      'use_xhtml', 0 )
+    call tohtml#GetOption(user_settings,       'line_ids', user_settings.number_lines )
     " }}}
     
     " override those settings that need it {{{
@@ -637,6 +746,8 @@ func! tohtml#GetUserSettings() "{{{
     " dynamic folding implies css
     if user_settings.dynamic_folds
       let user_settings.use_css = 1
+    else
+      let user_settings.no_foldcolumn = 1 " won't do anything but for consistency and for the test suite
     endif
 
     " if we're not using CSS we cannot use a pre section because <font> tags
@@ -663,6 +774,7 @@ func! tohtml#GetUserSettings() "{{{
     endif
     " }}}
 
+    " textual options
     if exists("g:html_use_encoding") "{{{
       " user specified the desired MIME charset, figure out proper
       " 'fileencoding' from it or warn the user if we cannot
@@ -704,6 +816,59 @@ func! tohtml#GetUserSettings() "{{{
 	echohl None
       endif
     endif "}}}
+
+    " Default to making nothing uncopyable, because we default to
+    " not-standards way of doing things, and also because Microsoft Word and
+    " others paste the <input> elements anyway.
+    "
+    " html_prevent_copy only has an effect when using CSS.
+    "
+    " All options:
+    "	  f - fold column
+    "	  n - line numbers (also within fold text)
+    "	  t - fold text
+    "	  d - diff filler
+    "	  c - concealed text (reserved future)
+    "	  l - listchars (reserved possible future)
+    "	  s - signs (reserved possible future)
+    "
+    " Normal text is always selectable.
+    let user_settings.prevent_copy = ""
+    if user_settings.use_css
+      if exists("g:html_prevent_copy")
+	if user_settings.dynamic_folds && !user_settings.no_foldcolumn && g:html_prevent_copy =~# 'f'
+	  let user_settings.prevent_copy .= 'f'
+	endif
+	if user_settings.number_lines && g:html_prevent_copy =~# 'n'
+	  let user_settings.prevent_copy .= 'n'
+	endif
+	if &diff && g:html_prevent_copy =~# 'd'
+	  let user_settings.prevent_copy .= 'd'
+	endif
+	if !user_settings.ignore_folding && g:html_prevent_copy =~# 't'
+	  let user_settings.prevent_copy .= 't'
+	endif
+      else
+	let user_settings.prevent_copy = ""
+      endif
+    endif
+    if empty(user_settings.prevent_copy)
+      let user_settings.no_invalid = 0
+    endif
+
+    if exists('g:html_id_expr')
+      let user_settings.id_suffix = eval(g:html_id_expr)
+      if user_settings.id_suffix !~ '^[-_:.A-Za-z0-9]*$'
+	echohl WarningMsg
+	echomsg '2html: g:html_id_expr evaluated to invalid string for HTML id attributes'
+	echomsg '2html: Omitting user-specified suffix'
+	echohl None
+	sleep 3
+	let user_settings.id_suffix=""
+      endif
+    else
+      let user_settings.id_suffix=""
+    endif
 
     " TODO: font
 

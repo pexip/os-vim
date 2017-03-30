@@ -1,4 +1,4 @@
-*intro.txt*     For Vim version 7.3.  Last change: 2011 May 15
+*intro.txt*     For Vim version 7.4.  Last change: 2014 May 24
 
 
 		  VIM REFERENCE MANUAL    by Bram Moolenaar
@@ -136,9 +136,10 @@ http://www.vim.org/maillist.php
 Bug reports:				*bugs* *bug-reports* *bugreport.vim*
 
 Send bug reports to: Vim Developers <vim_dev@vim.org>
-This is a maillist, many people will see the message.  If you don't want that,
-e.g. because it is a security issue, send it to <bugs@vim.org>, this only goes
-to the Vim maintainer (that's Bram).
+This is a maillist, you need to become a member first and many people will see
+the message.  If you don't want that, e.g. because it is a security issue,
+send it to <bugs@vim.org>, this only goes to the Vim maintainer (that's Bram).
+
 Please be brief; all the time that is spent on answering mail is subtracted
 from the time that is spent on improving Vim!  Always give a reproducible
 example and try to find out which settings or other things influence the
@@ -261,6 +262,7 @@ Vim would never have become what it is now, without the help of these people!
 I wish to thank all the people that sent me bug reports and suggestions.  The
 list is too long to mention them all here.  Vim would not be the same without
 the ideas from all these people: They keep Vim alive!
+*love* *peace* *friendship* *gross-national-happiness*
 
 
 In this documentation there are several references to other versions of Vi:
@@ -394,6 +396,8 @@ CTRL-{char}	{char} typed as a control character; that is, typing {char}
 							*quotecommandquote*
 "command"	A reference to a command that you can type is enclosed in
 		double quotes.
+`command`	New style command, this distinguishes it from other quoted
+		text and strings.
 
 					*key-notation* *key-codes* *keycodes*
 These names for keys are used in the documentation.  They can also be used

@@ -13,7 +13,45 @@
 #define _memory_h	/* avoid memset redeclaration */
 #define IN_PERL_FILE	/* don't include if_perl.pro from proto.h */
 
+/*
+ * Currently 32-bit version of ActivePerl is built with VC6 (or MinGW since
+ * ActivePerl 5.18).
+ * (http://community.activestate.com/faq/windows-compilers-perl-modules)
+ * It means that time_t should be 32-bit. However the default size of
+ * time_t is 64-bit since VC8. So we have to define _USE_32BIT_TIME_T.
+ */
+#if defined(WIN32) && !defined(_WIN64)
+# define _USE_32BIT_TIME_T
+#endif
+
+/*
+ * Prevent including winsock.h.  perl.h tries to detect whether winsock.h is
+ * already included before including winsock2.h, because winsock2.h isn't
+ * compatible with winsock.h.  However the detection doesn't work with some
+ * versions of MinGW.  If WIN32_LEAN_AND_MEAN is defined, windows.h will not
+ * include winsock.h.
+ */
+#ifdef WIN32
+# define WIN32_LEAN_AND_MEAN
+#endif
+
 #include "vim.h"
+
+/* Work around for perl-5.18.
+ * Don't include "perl\lib\CORE\inline.h" for now,
+ * include it after Perl_sv_free2 is defined. */
+#ifdef DYNAMIC_PERL
+# define PERL_NO_INLINE_FUNCTIONS
+#endif
+
+/* Work around for using MSVC and ActivePerl 5.18. */
+#ifdef _MSC_VER
+# define __inline__ __inline
+#endif
+
+#include <EXTERN.h>
+#include <perl.h>
+#include <XSUB.h>
 
 
 /*
@@ -76,6 +114,12 @@
 # define EXTERN_C
 #endif
 
+#if (PERL_REVISION == 5) && (PERL_VERSION >= 14) && defined(_MSC_VER)
+/* Using PL_errgv to get the error message after perl_eval_sv() causes a crash
+ * with MSVC and Perl version 5.14. */
+# define AVOID_PL_ERRGV
+#endif
+
 /* Compatibility hacks over */
 
 static PerlInterpreter *perl_interp = NULL;
@@ -94,6 +138,8 @@ typedef int HANDLE;
 #endif
 typedef int XSINIT_t;
 typedef int XSUBADDR_t;
+#endif
+#ifndef USE_ITHREADS
 typedef int perl_key;
 #endif
 
@@ -145,11 +191,14 @@ typedef int perl_key;
 # define Perl_pop_scope dll_Perl_pop_scope
 # define Perl_push_scope dll_Perl_push_scope
 # define Perl_save_int dll_Perl_save_int
+# if (PERL_REVISION == 5) && (PERL_VERSION >= 20)
+#  define Perl_save_strlen dll_Perl_save_strlen
+# endif
 # define Perl_stack_grow dll_Perl_stack_grow
 # define Perl_set_context dll_Perl_set_context
 # if (PERL_REVISION == 5) && (PERL_VERSION >= 14)
 # define Perl_sv_2bool_flags dll_Perl_sv_2bool_flags
-# define Perl_xs_apiversion_bootcheck dll_Perl_xs_apiversion_bootcheck 
+# define Perl_xs_apiversion_bootcheck dll_Perl_xs_apiversion_bootcheck
 # else
 # define Perl_sv_2bool dll_Perl_sv_2bool
 # endif
@@ -219,6 +268,11 @@ typedef int perl_key;
 # define Perl_call_list dll_Perl_call_list
 # define Perl_Iscopestack_ix_ptr dll_Perl_Iscopestack_ix_ptr
 # define Perl_Iunitcheckav_ptr dll_Perl_Iunitcheckav_ptr
+# if (PERL_REVISION == 5) && (PERL_VERSION >= 14)
+#  ifdef USE_ITHREADS
+#   define PL_thr_key *dll_PL_thr_key
+#  endif
+# endif
 
 /*
  * Declare HANDLE for perl.dll and function pointers.
@@ -234,7 +288,12 @@ static int (*perl_parse)(PerlInterpreter*, XSINIT_t, int, char**, char**);
 static void* (*Perl_get_context)(void);
 static void (*Perl_croak)(pTHX_ const char*, ...);
 #ifdef PERL5101_OR_LATER
+/* Perl-5.18 has a different Perl_croak_xs_usage signature. */
+# if (PERL_REVISION == 5) && (PERL_VERSION >= 18)
+static void (*Perl_croak_xs_usage)(const CV *const, const char *const params);
+# else
 static void (*Perl_croak_xs_usage)(pTHX_ const CV *const, const char *const params);
+# endif
 #endif
 static void (*Perl_croak_nocontext)(const char*, ...);
 static I32 (*Perl_dowantarray)(pTHX);
@@ -255,6 +314,9 @@ static SV* (*Perl_call_method)(pTHX_ const char*, I32);
 static void (*Perl_pop_scope)(pTHX);
 static void (*Perl_push_scope)(pTHX);
 static void (*Perl_save_int)(pTHX_ int*);
+#if (PERL_REVISION == 5) && (PERL_VERSION >= 20)
+static void (*Perl_save_strlen)(pTHX_ STRLEN* ptr);
+#endif
 static SV** (*Perl_stack_grow)(pTHX_ SV**, SV**p, int);
 static SV** (*Perl_set_context)(void*);
 #if (PERL_REVISION == 5) && (PERL_VERSION >= 14)
@@ -306,9 +368,17 @@ static SV** (*Perl_TSv_ptr)(register PerlInterpreter*);
 static XPV** (*Perl_TXpv_ptr)(register PerlInterpreter*);
 static STRLEN* (*Perl_Tna_ptr)(register PerlInterpreter*);
 #else
+/* Perl-5.18 has a different Perl_sv_free2 signature. */
+# if (PERL_REVISION == 5) && (PERL_VERSION >= 18)
+static void (*Perl_sv_free2)(pTHX_ SV*, const U32);
+# else
 static void (*Perl_sv_free2)(pTHX_ SV*);
+# endif
 static void (*Perl_sys_init)(int* argc, char*** argv);
 static void (*Perl_sys_term)(void);
+static void (*Perl_call_list)(pTHX_ I32, AV*);
+# if (PERL_REVISION == 5) && (PERL_VERSION >= 14)
+# else
 static SV** (*Perl_ISv_ptr)(register PerlInterpreter*);
 static SV*** (*Perl_Istack_max_ptr)(register PerlInterpreter*);
 static SV*** (*Perl_Istack_base_ptr)(register PerlInterpreter*);
@@ -320,16 +390,22 @@ static I32** (*Perl_Imarkstack_ptr_ptr)(register PerlInterpreter*);
 static I32** (*Perl_Imarkstack_max_ptr)(register PerlInterpreter*);
 static SV*** (*Perl_Istack_sp_ptr)(register PerlInterpreter*);
 static OP** (*Perl_Iop_ptr)(register PerlInterpreter*);
-static void (*Perl_call_list)(pTHX_ I32, AV*);
 static I32* (*Perl_Iscopestack_ix_ptr)(register PerlInterpreter*);
 static AV** (*Perl_Iunitcheckav_ptr)(register PerlInterpreter*);
+# endif
 #endif
 
+#if (PERL_REVISION == 5) && (PERL_VERSION >= 14)
+# ifdef USE_ITHREADS
+static perl_key* dll_PL_thr_key;
+# endif
+#else
 static GV** (*Perl_Idefgv_ptr)(register PerlInterpreter*);
 static GV** (*Perl_Ierrgv_ptr)(register PerlInterpreter*);
 static SV* (*Perl_Isv_yes_ptr)(register PerlInterpreter*);
-static void (*boot_DynaLoader)_((pTHX_ CV*));
 static perl_key* (*Perl_Gthr_key_ptr)_((pTHX));
+#endif
+static void (*boot_DynaLoader)_((pTHX_ CV*));
 
 /*
  * Table of name to function pointer of perl.
@@ -349,7 +425,9 @@ static struct {
 #ifdef PERL5101_OR_LATER
     {"Perl_croak_xs_usage", (PERL_PROC*)&Perl_croak_xs_usage},
 #endif
+#ifdef PERL_IMPLICIT_CONTEXT
     {"Perl_croak_nocontext", (PERL_PROC*)&Perl_croak_nocontext},
+#endif
     {"Perl_dowantarray", (PERL_PROC*)&Perl_dowantarray},
     {"Perl_free_tmps", (PERL_PROC*)&Perl_free_tmps},
     {"Perl_gv_stashpv", (PERL_PROC*)&Perl_gv_stashpv},
@@ -368,6 +446,9 @@ static struct {
     {"Perl_pop_scope", (PERL_PROC*)&Perl_pop_scope},
     {"Perl_push_scope", (PERL_PROC*)&Perl_push_scope},
     {"Perl_save_int", (PERL_PROC*)&Perl_save_int},
+#if (PERL_REVISION == 5) && (PERL_VERSION >= 20)
+    {"Perl_save_strlen", (PERL_PROC*)&Perl_save_strlen},
+#endif
     {"Perl_stack_grow", (PERL_PROC*)&Perl_stack_grow},
     {"Perl_set_context", (PERL_PROC*)&Perl_set_context},
 #if (PERL_REVISION == 5) && (PERL_VERSION >= 14)
@@ -441,6 +522,9 @@ static struct {
 # endif
 #endif
 #if (PERL_REVISION == 5) && (PERL_VERSION >= 14)
+#  ifdef USE_ITHREADS
+    {"PL_thr_key", (PERL_PROC*)&dll_PL_thr_key},
+#  endif
 #else
     {"Perl_Idefgv_ptr", (PERL_PROC*)&Perl_Idefgv_ptr},
     {"Perl_Ierrgv_ptr", (PERL_PROC*)&Perl_Ierrgv_ptr},
@@ -451,10 +535,18 @@ static struct {
     {"", NULL},
 };
 
+/* Work around for perl-5.18.
+ * The definitions of S_SvREFCNT_inc and S_SvREFCNT_dec are needed, so include
+ * "perl\lib\CORE\inline.h", after Perl_sv_free2 is defined.
+ * The linker won't complain about undefined __impl_Perl_sv_free2. */
+#if (PERL_REVISION == 5) && (PERL_VERSION >= 18)
+# include <inline.h>
+#endif
+
 /*
  * Make all runtime-links of perl.
  *
- * 1. Get module handle using LoadLibraryEx.
+ * 1. Get module handle using dlopen() or vimLoadLib().
  * 2. Get pointer to perl function by GetProcAddress.
  * 3. Repeat 2, until get all functions will be used.
  *
@@ -583,9 +675,9 @@ msg_split(s, attr)
  */
     char_u *
 eval_to_string(arg, nextcmd, dolist)
-    char_u	*arg;
-    char_u	**nextcmd;
-    int		dolist;
+    char_u	*arg UNUSED;
+    char_u	**nextcmd UNUSED;
+    int		dolist UNUSED;
 {
     return NULL;
 }
@@ -611,7 +703,7 @@ newWINrv(rv, ptr)
     if (ptr->w_perl_private == NULL)
     {
 	ptr->w_perl_private = newSV(0);
-	sv_setiv(ptr->w_perl_private, (IV)ptr);
+	sv_setiv(ptr->w_perl_private, PTR2IV(ptr));
     }
     else
 	SvREFCNT_inc(ptr->w_perl_private);
@@ -629,7 +721,7 @@ newBUFrv(rv, ptr)
     if (ptr->b_perl_private == NULL)
     {
 	ptr->b_perl_private = newSV(0);
-	sv_setiv(ptr->b_perl_private, (IV)ptr);
+	sv_setiv(ptr->b_perl_private, PTR2IV(ptr));
     }
     else
 	SvREFCNT_inc(ptr->b_perl_private);
@@ -640,7 +732,7 @@ newBUFrv(rv, ptr)
 
 /*
  * perl_win_free
- *	Remove all refences to the window to be destroyed
+ *	Remove all references to the window to be destroyed
  */
     void
 perl_win_free(wp)
@@ -796,7 +888,11 @@ ex_perl(eap)
 
     SvREFCNT_dec(sv);
 
+#ifdef AVOID_PL_ERRGV
+    err = SvPV(perl_get_sv("@", GV_ADD), length);
+#else
     err = SvPV(GvSV(PL_errgv), length);
+#endif
 
     FREETMPS;
     LEAVE;
@@ -866,7 +962,11 @@ ex_perldo(eap)
     sv_catpvn(sv, "}", 1);
     perl_eval_sv(sv, G_DISCARD | G_NOARGS);
     SvREFCNT_dec(sv);
+#ifdef AVOID_PL_ERRGV
+    str = SvPV(perl_get_sv("@", GV_ADD), length);
+#else
     str = SvPV(GvSV(PL_errgv), length);
+#endif
     if (length)
 	goto err;
 
@@ -880,7 +980,11 @@ ex_perldo(eap)
 	sv_setpv(GvSV(PL_defgv), (char *)ml_get(i));
 	PUSHMARK(sp);
 	perl_call_pv("VIM::perldo", G_SCALAR | G_EVAL);
+#ifdef AVOID_PL_ERRGV
+	str = SvPV(perl_get_sv("@", GV_ADD), length);
+#else
 	str = SvPV(GvSV(PL_errgv), length);
+#endif
 	if (length)
 	    break;
 	SPAGAIN;
@@ -913,24 +1017,6 @@ int win_count() { return 1; }
 win_T *win_find_nr(int n) { return curwin; }
 #endif
 
-XS(XS_VIM_Msg);
-XS(XS_VIM_SetOption);
-XS(XS_VIM_DoCommand);
-XS(XS_VIM_Eval);
-XS(XS_VIM_Buffers);
-XS(XS_VIM_Windows);
-XS(XS_VIWIN_DESTROY);
-XS(XS_VIWIN_Buffer);
-XS(XS_VIWIN_SetHeight);
-XS(XS_VIWIN_Cursor);
-XS(XS_VIBUF_DESTROY);
-XS(XS_VIBUF_Name);
-XS(XS_VIBUF_Number);
-XS(XS_VIBUF_Count);
-XS(XS_VIBUF_Get);
-XS(XS_VIBUF_Set);
-XS(XS_VIBUF_Delete);
-XS(XS_VIBUF_Append);
 XS(boot_VIM);
 
     static void
@@ -1037,7 +1123,7 @@ Buffers(...)
 	{
 	    SV *sv = ST(i);
 	    if (SvIOK(sv))
-		b = SvIV(ST(i));
+		b = (int) SvIV(ST(i));
 	    else
 	    {
 		char_u *pat;
@@ -1045,7 +1131,7 @@ Buffers(...)
 
 		pat = (char_u *)SvPV(sv, len);
 		++emsg_off;
-		b = buflist_findpat(pat, pat+len, FALSE, FALSE);
+		b = buflist_findpat(pat, pat+len, FALSE, FALSE, FALSE);
 		--emsg_off;
 	    }
 
@@ -1080,7 +1166,7 @@ Windows(...)
     {
 	for (i = 0; i < items; i++)
 	{
-	    w = SvIV(ST(i));
+	    w = (int) SvIV(ST(i));
 	    vimwin = win_find_nr(w);
 	    if (vimwin)
 		XPUSHs(newWINrv(newSV(0), vimwin));
@@ -1143,8 +1229,8 @@ Cursor(win, ...)
 
       if (!win_valid(win))
 	  win = curwin;
-      lnum = SvIV(ST(1));
-      col = SvIV(ST(2));
+      lnum = (int) SvIV(ST(1));
+      col = (int) SvIV(ST(2));
       win->w_cursor.lnum = lnum;
       win->w_cursor.col = col;
       check_cursor();		    /* put cursor on an existing line */
@@ -1205,7 +1291,7 @@ Get(vimbuf, ...)
     {
 	for (i = 1; i < items; i++)
 	{
-	    lnum = SvIV(ST(i));
+	    lnum = (long) SvIV(ST(i));
 	    if (lnum > 0 && lnum <= vimbuf->b_ml.ml_line_count)
 	    {
 		line = ml_get_buf(vimbuf, lnum, FALSE);
@@ -1228,7 +1314,7 @@ Set(vimbuf, ...)
 	if (items < 3)
 	    croak("Usage: VIBUF::Set(vimbuf, lnum, @lines)");
 
-	lnum = SvIV(ST(1));
+	lnum = (long) SvIV(ST(1));
 	for(i = 2; i < items; i++, lnum++)
 	{
 	    line = SvPV(ST(i),PL_na);
@@ -1263,13 +1349,13 @@ Delete(vimbuf, ...)
     {
 	if (items == 2)
 	{
-	    lnum = SvIV(ST(1));
+	    lnum = (long) SvIV(ST(1));
 	    count = 1;
 	}
 	else if (items == 3)
 	{
-	    lnum = SvIV(ST(1));
-	    count = 1 + SvIV(ST(2)) - lnum;
+	    lnum = (long) SvIV(ST(1));
+	    count = (long) 1 + SvIV(ST(2)) - lnum;
 	    if (count == 0)
 		count = 1;
 	    if (count < 0)
@@ -1320,7 +1406,7 @@ Append(vimbuf, ...)
 	if (items < 3)
 	    croak("Usage: VIBUF::Append(vimbuf, lnum, @lines)");
 
-	lnum = SvIV(ST(1));
+	lnum = (long) SvIV(ST(1));
 	for (i = 2; i < items; i++, lnum++)
 	{
 	    line = SvPV(ST(i),PL_na);

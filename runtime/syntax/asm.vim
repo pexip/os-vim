@@ -3,7 +3,7 @@
 " Maintainer:	Erik Wognsen <erik.wognsen@gmail.com>
 "		Previous maintainer:
 "		Kevin Dahlhausen <kdahlhaus@yahoo.com>
-" Last Change:	2012 Jan 5
+" Last Change:	2014 Feb 04
 
 " Thanks to Ori Avtalion for feedback on the comment markers!
 
@@ -56,6 +56,11 @@ syn keyword asmTodo		contained TODO
 " GAS supports one type of multi line comments:
 syn region asmComment		start="/\*" end="\*/" contains=asmTodo
 
+" GAS (undocumentedly?) supports C++ style comments. Unlike in C/C++ however,
+" a backslash ending a C++ style comment does not extend the comment to the
+" next line (hence the syntax region does not define 'skip="\\$"')
+syn region asmComment		start="//" end="$" keepend contains=asmTodo
+
 " Line comment characters depend on the target architecture and command line
 " options and some comments may double as logical line number directives or
 " preprocessor commands. This situation is described at
@@ -88,7 +93,11 @@ syn match asmCond		"\.endif"
 syn match asmMacro		"\.macro"
 syn match asmMacro		"\.endm"
 
-syn match asmDirective		"\.[a-z][a-z]\+"
+" Assembler directives start with a '.' and may contain upper case (e.g.,
+" .ABORT), numbers (e.g., .p2align), dash (e.g., .app-file) and underscore in
+" CFI directives (e.g., .cfi_startproc). This will also match labels starting
+" with '.', including the GCC auto-generated '.L' labels.
+syn match asmDirective		"\.[A-Za-z][0-9A-Za-z-_]*"
 
 
 syn case match

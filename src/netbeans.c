@@ -978,7 +978,7 @@ nb_free()
     buf_list_used = 0;
 
     /* free the queued key commands */
-    while(key_node != NULL && key_node != &keyHead)
+    while (key_node != NULL && key_node != &keyHead)
     {
 	keyQ_T *next = key_node->next;
 	vim_free(key_node->keystr);
@@ -993,7 +993,7 @@ nb_free()
     }
 
     /* free the queued netbeans commands */
-    while(cmd_node != NULL && cmd_node != &head)
+    while (cmd_node != NULL && cmd_node != &head)
     {
 	queue_T *next = cmd_node->next;
 	vim_free(cmd_node->buffer);
@@ -1812,14 +1812,15 @@ nb_do_cmd(
 			char_u *oldline = ml_get(lnum);
 			char_u *newline;
 
-			/* Insert halfway a line.  For simplicity we assume we
-			 * need to append to the line. */
+			/* Insert halfway a line. */
 			newline = alloc_check(
 				       (unsigned)(STRLEN(oldline) + len + 1));
 			if (newline != NULL)
 			{
-			    STRCPY(newline, oldline);
+			    mch_memmove(newline, oldline, (size_t)pos->col);
+			    newline[pos->col] = NUL;
 			    STRCAT(newline, args);
+			    STRCAT(newline, oldline + pos->col);
 			    ml_replace(lnum, newline, FALSE);
 			}
 		    }
@@ -2231,11 +2232,9 @@ nb_do_cmd(
 
 	    nb_set_curbuf(buf->bufp);
 
-#ifdef FEAT_VISUAL
 	    /* Don't want Visual mode now. */
 	    if (VIsual_active)
 		end_visual_mode();
-#endif
 #ifdef NBDEBUG
 	    s = args;
 #endif

@@ -317,7 +317,7 @@
 
 /* Type used for indexes in the word tree need to be at least 4 bytes.  If int
  * is 8 bytes we could use something smaller, but what? */
-#if SIZEOF_INT > 3
+#if VIM_SIZEOF_INT > 3
 typedef int idx_T;
 #else
 typedef long idx_T;
@@ -754,9 +754,9 @@ static int	    did_set_spelltab;
 static void clear_spell_chartab __ARGS((spelltab_T *sp));
 static int set_spell_finish __ARGS((spelltab_T	*new_st));
 static int spell_iswordp __ARGS((char_u *p, win_T *wp));
-static int spell_iswordp_nmw __ARGS((char_u *p));
+static int spell_iswordp_nmw __ARGS((char_u *p, win_T *wp));
 #ifdef FEAT_MBYTE
-static int spell_mb_isword_class __ARGS((int cl));
+static int spell_mb_isword_class __ARGS((int cl, win_T *wp));
 static int spell_iswordp_w __ARGS((int *p, win_T *wp));
 #endif
 static int write_spell_prefcond __ARGS((FILE *fd, garray_T *gap));
@@ -1149,7 +1149,7 @@ spell_check(wp, ptr, attrp, capcol, docount)
 
 	/* When we are at a non-word character there is no error, just
 	 * skip over the character (try looking for a word after it). */
-	else if (!spell_iswordp_nmw(ptr))
+	else if (!spell_iswordp_nmw(ptr, wp))
 	{
 	    if (capcol != NULL && wp->w_s->b_cap_prog != NULL)
 	    {
@@ -1561,7 +1561,7 @@ find_word(mip, mode)
 			 * accept a no-caps word, even when the dictionary
 			 * word specifies ONECAP. */
 			mb_ptr_back(mip->mi_word, p);
-			if (spell_iswordp_nmw(p)
+			if (spell_iswordp_nmw(p, mip->mi_win)
 				? capflags == WF_ONECAP
 				: (flags & WF_ONECAP) != 0
 						     && capflags != WF_ONECAP)
@@ -2180,9 +2180,9 @@ spell_move_to(wp, dir, allwords, curline, attrp)
     char_u	*endp;
     hlf_T	attr;
     int		len;
-# ifdef FEAT_SYN_HL
+#ifdef FEAT_SYN_HL
     int		has_syntax = syntax_present(wp);
-# endif
+#endif
     int		col;
     int		can_spell;
     char_u	*buf = NULL;
@@ -2280,7 +2280,7 @@ spell_move_to(wp, dir, allwords, curline, attrp)
 						     : p - buf)
 						  > wp->w_cursor.col)))
 		    {
-# ifdef FEAT_SYN_HL
+#ifdef FEAT_SYN_HL
 			if (has_syntax)
 			{
 			    col = (int)(p - buf);
@@ -2658,7 +2658,7 @@ slang_clear(lp)
     ga_clear(gap);
 
     for (i = 0; i < lp->sl_prefixcnt; ++i)
-	vim_free(lp->sl_prefprog[i]);
+	vim_regfree(lp->sl_prefprog[i]);
     lp->sl_prefixcnt = 0;
     vim_free(lp->sl_prefprog);
     lp->sl_prefprog = NULL;
@@ -2669,7 +2669,7 @@ slang_clear(lp)
     vim_free(lp->sl_midword);
     lp->sl_midword = NULL;
 
-    vim_free(lp->sl_compprog);
+    vim_regfree(lp->sl_compprog);
     vim_free(lp->sl_comprules);
     vim_free(lp->sl_compstartflags);
     vim_free(lp->sl_compallflags);
@@ -4228,19 +4228,31 @@ did_set_spelllang(wp)
     ga_init2(&ga, sizeof(langp_T), 2);
     clear_midword(wp);
 
-    /* Make a copy of 'spellang', the SpellFileMissing autocommands may change
+    /* Make a copy of 'spelllang', the SpellFileMissing autocommands may change
      * it under our fingers. */
     spl_copy = vim_strsave(wp->w_s->b_p_spl);
     if (spl_copy == NULL)
 	goto theend;
 
-    /* loop over comma separated language names. */
+#ifdef FEAT_MBYTE
+    wp->w_s->b_cjk = 0;
+#endif
+
+    /* Loop over comma separated language names. */
     for (splp = spl_copy; *splp != NUL; )
     {
 	/* Get one language name. */
 	copy_option_part(&splp, lang, MAXWLEN, ",");
 	region = NULL;
 	len = (int)STRLEN(lang);
+
+	if (STRCMP(lang, "cjk") == 0)
+	{
+#ifdef FEAT_MBYTE
+	    wp->w_s->b_cjk = 1;
+#endif
+	    continue;
+	}
 
 	/* If the name ends in ".spl" use it as the name of the spell file.
 	 * If there is a region name let "region" point to it and remove it
@@ -4496,6 +4508,7 @@ did_set_spelllang(wp)
 theend:
     vim_free(spl_copy);
     recursive = FALSE;
+    redraw_win_later(wp, NOT_VALID);
     return ret_msg;
 }
 
@@ -4601,7 +4614,7 @@ captype(word, end)
     int		past_second = FALSE;	/* past second word char */
 
     /* find first letter */
-    for (p = word; !spell_iswordp_nmw(p); mb_ptr_adv(p))
+    for (p = word; !spell_iswordp_nmw(p, curwin); mb_ptr_adv(p))
 	if (end == NULL ? *p == NUL : p >= end)
 	    return 0;	    /* only non-word characters, illegal word */
 #ifdef FEAT_MBYTE
@@ -4617,7 +4630,7 @@ captype(word, end)
      * But a word with an upper char only at start is a ONECAP.
      */
     for ( ; end == NULL ? *p != NUL : p < end; mb_ptr_adv(p))
-	if (spell_iswordp_nmw(p))
+	if (spell_iswordp_nmw(p, curwin))
 	{
 	    c = PTR2CHAR(p);
 	    if (!SPELL_ISUPPER(c))
@@ -4689,7 +4702,25 @@ badword_captype(word, end)
     return flags;
 }
 
-# if defined(FEAT_MBYTE) || defined(EXITFREE) || defined(PROTO)
+/*
+ * Delete the internal wordlist and its .spl file.
+ */
+    void
+spell_delete_wordlist()
+{
+    char_u	fname[MAXPATHL];
+
+    if (int_wordlist != NULL)
+    {
+	mch_remove(int_wordlist);
+	int_wordlist_spl(fname);
+	mch_remove(fname);
+	vim_free(int_wordlist);
+	int_wordlist = NULL;
+    }
+}
+
+#if defined(FEAT_MBYTE) || defined(EXITFREE) || defined(PROTO)
 /*
  * Free all languages.
  */
@@ -4698,7 +4729,6 @@ spell_free_all()
 {
     slang_T	*slang;
     buf_T	*buf;
-    char_u	fname[MAXPATHL];
 
     /* Go through all buffers and handle 'spelllang'. <VN> */
     for (buf = firstbuf; buf != NULL; buf = buf->b_next)
@@ -4711,26 +4741,16 @@ spell_free_all()
 	slang_free(slang);
     }
 
-    if (int_wordlist != NULL)
-    {
-	/* Delete the internal wordlist and its .spl file */
-	mch_remove(int_wordlist);
-	int_wordlist_spl(fname);
-	mch_remove(fname);
-	vim_free(int_wordlist);
-	int_wordlist = NULL;
-    }
-
-    init_spell_chartab();
+    spell_delete_wordlist();
 
     vim_free(repl_to);
     repl_to = NULL;
     vim_free(repl_from);
     repl_from = NULL;
 }
-# endif
+#endif
 
-# if defined(FEAT_MBYTE) || defined(PROTO)
+#if defined(FEAT_MBYTE) || defined(PROTO)
 /*
  * Clear all spelling tables and reload them.
  * Used after 'encoding' is set and when ":mkspell" was used.
@@ -4763,7 +4783,7 @@ spell_reload()
 	}
     }
 }
-# endif
+#endif
 
 /*
  * Reload the spell file "fname" if it's loaded.
@@ -4821,6 +4841,7 @@ typedef struct afffile_S
     unsigned	af_nosuggest;	/* NOSUGGEST ID */
     int		af_pfxpostpone;	/* postpone prefixes without chop string and
 				   without flags */
+    int		af_ignoreextra;	/* IGNOREEXTRA present */
     hashtab_T	af_pref;	/* hashtable for prefixes, affheader_T */
     hashtab_T	af_suff;	/* hashtable for suffixes, affheader_T */
     hashtab_T	af_comp;	/* hashtable for compound flags, compitem_T */
@@ -5585,6 +5606,10 @@ spell_read_aff(spin, fname)
 	    {
 		aff->af_pfxpostpone = TRUE;
 	    }
+	    else if (is_aff_rule(items, itemcnt, "IGNOREEXTRA", 1))
+	    {
+		aff->af_ignoreextra = TRUE;
+	    }
 	    else if ((STRCMP(items[0], "PFX") == 0
 					      || STRCMP(items[0], "SFX") == 0)
 		    && aff_todo == 0
@@ -5692,9 +5717,11 @@ spell_read_aff(spin, fname)
 		int		lasti = 5;
 
 		/* Myspell allows extra text after the item, but that might
-		 * mean mistakes go unnoticed.  Require a comment-starter.
-		 * Hunspell uses a "-" item. */
-		if (itemcnt > lasti && *items[lasti] != '#'
+		 * mean mistakes go unnoticed.  Require a comment-starter,
+		 * unless IGNOREEXTRA is used.  Hunspell uses a "-" item. */
+		if (itemcnt > lasti
+			&& !aff->af_ignoreextra
+			&& *items[lasti] != '#'
 			&& (STRCMP(items[lasti], "-") != 0
 						     || itemcnt != lasti + 1))
 		    smsg((char_u *)_(e_afftrailing), fname, lnum, items[lasti]);
@@ -5804,7 +5831,7 @@ spell_read_aff(spin, fname)
 					{
 					    sprintf((char *)buf, "^%s",
 							  aff_entry->ae_cond);
-					    vim_free(aff_entry->ae_prog);
+					    vim_regfree(aff_entry->ae_prog);
 					    aff_entry->ae_prog = vim_regcomp(
 						    buf, RE_MAGIC + RE_STRING);
 					}
@@ -6509,7 +6536,7 @@ spell_free_aff(aff)
 		--todo;
 		ah = HI2AH(hi);
 		for (ae = ah->ah_first; ae != NULL; ae = ae->ae_next)
-		    vim_free(ae->ae_prog);
+		    vim_regfree(ae->ae_prog);
 	    }
 	}
 	if (ht == &aff->af_suff)
@@ -7647,7 +7674,7 @@ tree_add_word(spin, word, root, flags, region, affixID)
 
 	/* Compress both trees.  Either they both have many nodes, which makes
 	 * compression useful, or one of them is small, which means
-	 * compression goes fast.  But when filling the souldfold word tree
+	 * compression goes fast.  But when filling the soundfold word tree
 	 * there is no keep-case tree. */
 	wordtree_compress(spin, spin->si_foldroot);
 	if (affixID >= 0)
@@ -8555,7 +8582,7 @@ ex_mkspell(eap)
     }
 
     /* Expand all the remaining arguments (e.g., $VIMRUNTIME). */
-    if (get_arglist_exp(arg, &fcount, &fnames) == OK)
+    if (get_arglist_exp(arg, &fcount, &fnames, FALSE) == OK)
     {
 	mkspell(fcount, fnames, ascii, eap->forceit, FALSE);
 	FreeWild(fcount, fnames);
@@ -8673,7 +8700,7 @@ sug_filltree(spin, slang)
     unsigned	words_done = 0;
     int		wordcount[MAXWLEN];
 
-    /* We use si_foldroot for the souldfolded trie. */
+    /* We use si_foldroot for the soundfolded trie. */
     spin->si_foldroot = wordtree_alloc(spin);
     if (spin->si_foldroot == NULL)
 	return FAIL;
@@ -9056,6 +9083,9 @@ open_spellbuf()
     {
 	buf->b_spell = TRUE;
 	buf->b_p_swf = TRUE;	/* may create a swap file */
+#ifdef FEAT_CRYPT
+	buf->b_p_key = empty_option;
+#endif
 	ml_open(buf);
 	ml_open_file(buf);	/* create swap file now */
     }
@@ -9478,7 +9508,8 @@ spell_add_word(word, len, bad, idx, undo)
 			if (undo)
 			{
 			    home_replace(NULL, fname, NameBuff, MAXPATHL, TRUE);
-			    smsg((char_u *)_("Word removed from %s"), NameBuff);
+			    smsg((char_u *)_("Word '%.*s' removed from %s"),
+							 len, word, NameBuff);
 			}
 		    }
 		    fseek(fd, fpos_next, SEEK_SET);
@@ -9524,7 +9555,7 @@ spell_add_word(word, len, bad, idx, undo)
 	    fclose(fd);
 
 	    home_replace(NULL, fname, NameBuff, MAXPATHL, TRUE);
-	    smsg((char_u *)_("Word added to %s"), NameBuff);
+	    smsg((char_u *)_("Word '%.*s' added to %s"), len, word, NameBuff);
 	}
     }
 
@@ -9905,7 +9936,7 @@ spell_iswordp(p, wp)
 
 	c = mb_ptr2char(s);
 	if (c > 255)
-	    return spell_mb_isword_class(mb_get_class(s));
+	    return spell_mb_isword_class(mb_get_class(s), wp);
 	return spelltab.st_isw[c];
     }
 #endif
@@ -9918,8 +9949,9 @@ spell_iswordp(p, wp)
  * Unlike spell_iswordp() this doesn't check for "midword" characters.
  */
     static int
-spell_iswordp_nmw(p)
+spell_iswordp_nmw(p, wp)
     char_u	*p;
+    win_T	*wp;
 {
 #ifdef FEAT_MBYTE
     int		c;
@@ -9928,7 +9960,7 @@ spell_iswordp_nmw(p)
     {
 	c = mb_ptr2char(p);
 	if (c > 255)
-	    return spell_mb_isword_class(mb_get_class(p));
+	    return spell_mb_isword_class(mb_get_class(p), wp);
 	return spelltab.st_isw[c];
     }
 #endif
@@ -9940,11 +9972,16 @@ spell_iswordp_nmw(p)
  * Return TRUE if word class indicates a word character.
  * Only for characters above 255.
  * Unicode subscript and superscript are not considered word characters.
+ * See also dbcs_class() and utf_class() in mbyte.c.
  */
     static int
-spell_mb_isword_class(cl)
-    int cl;
+spell_mb_isword_class(cl, wp)
+    int		cl;
+    win_T	*wp;
 {
+    if (wp->w_s->b_cjk)
+	/* East Asian characters are not considered word characters. */
+	return cl == 2 || cl == 0x2800;
     return cl >= 2 && cl != 0x2070 && cl != 0x2080;
 }
 
@@ -9969,9 +10006,10 @@ spell_iswordp_w(p, wp)
     if (*s > 255)
     {
 	if (enc_utf8)
-	    return spell_mb_isword_class(utf_class(*s));
+	    return spell_mb_isword_class(utf_class(*s), wp);
 	if (enc_dbcs)
-	    return dbcs_class((unsigned)*s >> 8, *s & 0xff) >= 2;
+	    return spell_mb_isword_class(
+				dbcs_class((unsigned)*s >> 8, *s & 0xff), wp);
 	return 0;
     }
     return spelltab.st_isw[*s];
@@ -10134,7 +10172,7 @@ spell_check_sps()
 }
 
 /*
- * "z?": Find badly spelled word under or after the cursor.
+ * "z=": Find badly spelled word under or after the cursor.
  * Give suggestions for the properly spelled word.
  * In Visual mode use the highlighted word as the bad word.
  * When "count" is non-zero use that suggestion.
@@ -10161,7 +10199,6 @@ spell_suggest(count)
     if (no_spell_checking(curwin))
 	return;
 
-#ifdef FEAT_VISUAL
     if (VIsual_active)
     {
 	/* Use the Visually selected text as the bad word.  But reject
@@ -10179,10 +10216,8 @@ spell_suggest(count)
 	++badlen;
 	end_visual_mode();
     }
-    else
-#endif
-	/* Find the start of the badly spelled word. */
-	if (spell_move_to(curwin, FORWARD, TRUE, TRUE, NULL) == 0
+    /* Find the start of the badly spelled word. */
+    else if (spell_move_to(curwin, FORWARD, TRUE, TRUE, NULL) == 0
 	    || curwin->w_cursor.col > prev_cursor.col)
     {
 	/* No bad word or it starts after the cursor: use the word under the
@@ -10191,13 +10226,13 @@ spell_suggest(count)
 	line = ml_get_curline();
 	p = line + curwin->w_cursor.col;
 	/* Backup to before start of word. */
-	while (p > line && spell_iswordp_nmw(p))
+	while (p > line && spell_iswordp_nmw(p, curwin))
 	    mb_ptr_back(line, p);
 	/* Forward to start of word. */
-	while (*p != NUL && !spell_iswordp_nmw(p))
+	while (*p != NUL && !spell_iswordp_nmw(p, curwin))
 	    mb_ptr_adv(p);
 
-	if (!spell_iswordp_nmw(p))		/* No word found. */
+	if (!spell_iswordp_nmw(p, curwin))		/* No word found. */
 	{
 	    beep_flush();
 	    return;
@@ -10434,7 +10469,7 @@ check_need_cap(lnum, col)
 	for (;;)
 	{
 	    mb_ptr_back(line, p);
-	    if (p == line || spell_iswordp_nmw(p))
+	    if (p == line || spell_iswordp_nmw(p, curwin))
 		break;
 	    if (vim_regexec(&regmatch, p, 0)
 					 && regmatch.endp[0] == line + endcol)
@@ -11643,7 +11678,7 @@ suggest_trie_walk(su, lp, fword, soundfold)
 
 		/* When appending a compound word after a word character don't
 		 * use Onecap. */
-		if (p != NULL && spell_iswordp_nmw(p))
+		if (p != NULL && spell_iswordp_nmw(p, curwin))
 		    c &= ~WF_ONECAP;
 		make_case_word(tword + sp->ts_splitoff,
 					      preword + sp->ts_prewordlen, c);
@@ -11893,7 +11928,8 @@ suggest_trie_walk(su, lp, fword, soundfold)
 			 * character when the word ends.  But only when the
 			 * good word can end. */
 			if (((!try_compound && !spell_iswordp_nmw(fword
-							       + sp->ts_fidx))
+							       + sp->ts_fidx,
+							       curwin))
 				    || fword_ends)
 				&& fword[sp->ts_fidx] != NUL
 				&& goodword_ends)
@@ -12006,7 +12042,7 @@ suggest_trie_walk(su, lp, fword, soundfold)
 		/* Normal byte, go one level deeper.  If it's not equal to the
 		 * byte in the bad word adjust the score.  But don't even try
 		 * when the byte was already changed.  And don't try when we
-		 * just deleted this byte, accepting it is always cheaper then
+		 * just deleted this byte, accepting it is always cheaper than
 		 * delete + substitute. */
 		if (c == fword[sp->ts_fidx]
 #ifdef FEAT_MBYTE
@@ -13021,7 +13057,7 @@ score_comp_sal(su)
 
 /*
  * Combine the list of suggestions in su->su_ga and su->su_sga.
- * They are intwined.
+ * They are entwined.
  */
     static void
 score_combine(su)
@@ -13376,9 +13412,8 @@ add_sound_suggest(su, goodword, score, lp)
 
 	/* Lookup the word "orgnr" one of the two tries. */
 	n = 0;
-	wlen = 0;
 	wordcount = 0;
-	for (;;)
+	for (wlen = 0; wlen < MAXWLEN - 3; ++wlen)
 	{
 	    i = 1;
 	    if (wordcount == orgnr && byts[n + 1] == NUL)
@@ -13392,6 +13427,7 @@ add_sound_suggest(su, goodword, score, lp)
 		if (i > byts[n])	/* safety check */
 		{
 		    STRCPY(theword + wlen, "BAD");
+		    wlen += 3;
 		    goto badword;
 		}
 
@@ -13404,7 +13440,7 @@ add_sound_suggest(su, goodword, score, lp)
 		wordcount += wc;
 	    }
 
-	    theword[wlen++] = byts[n + i];
+	    theword[wlen] = byts[n + i];
 	    n = idxs[n + i];
 	}
 badword:
@@ -13459,7 +13495,7 @@ badword:
 
 		/* Add a small penalty for changing the first letter from
 		 * lower to upper case.  Helps for "tath" -> "Kath", which is
-		 * less common thatn "tath" -> "path".  Don't do it when the
+		 * less common than "tath" -> "path".  Don't do it when the
 		 * letter is the same, that has already been counted. */
 		gc = PTR2CHAR(p);
 		if (SPELL_ISUPPER(gc))
@@ -13694,7 +13730,7 @@ similar_chars(slang, c1, c2)
 {
     int		m1, m2;
 #ifdef FEAT_MBYTE
-    char_u	buf[MB_MAXBYTES];
+    char_u	buf[MB_MAXBYTES + 1];
     hashitem_T  *hi;
 
     if (c1 >= 256)
@@ -14224,7 +14260,7 @@ spell_soundfold_sal(slang, inword, res)
 	    }
 	    else
 	    {
-		if (spell_iswordp_nmw(s))
+		if (spell_iswordp_nmw(s, curwin))
 		    *t++ = *s;
 		++s;
 	    }
@@ -14494,13 +14530,15 @@ spell_soundfold_wsal(slang, inword, res)
     int		p0 = -333;
     int		c0;
     int		did_white = FALSE;
+    int		wordlen;
+
 
     /*
      * Convert the multi-byte string to a wide-character string.
      * Remove accents, if wanted.  We actually remove all non-word characters.
      * But keep white space.
      */
-    n = 0;
+    wordlen = 0;
     for (s = inword; *s != NUL; )
     {
 	t = s;
@@ -14517,16 +14555,16 @@ spell_soundfold_wsal(slang, inword, res)
 	    else
 	    {
 		did_white = FALSE;
-		if (!spell_iswordp_nmw(t))
+		if (!spell_iswordp_nmw(t, curwin))
 		    continue;
 	    }
 	}
-	word[n++] = c;
+	word[wordlen++] = c;
     }
-    word[n] = NUL;
+    word[wordlen] = NUL;
 
     /*
-     * This comes from Aspell phonet.cpp.
+     * This algorithm comes from Aspell phonet.cpp.
      * Converted from C++ to C.  Added support for multi-byte chars.
      * Changed to keep spaces.
      */
@@ -14711,7 +14749,7 @@ spell_soundfold_wsal(slang, inword, res)
 			    }
 			if (k > k0)
 			    mch_memmove(word + i + k0, word + i + k,
-				    sizeof(int) * (STRLEN(word + i + k) + 1));
+				    sizeof(int) * (wordlen - (i + k) + 1));
 
 			/* new "actual letter" */
 			c = word[i];
@@ -14739,7 +14777,7 @@ spell_soundfold_wsal(slang, inword, res)
 			    if (c != NUL)
 				wres[reslen++] = c;
 			    mch_memmove(word, word + i + 1,
-				    sizeof(int) * (STRLEN(word + i + 1) + 1));
+				       sizeof(int) * (wordlen - (i + 1) + 1));
 			    i = 0;
 			    z0 = 1;
 			}
@@ -15565,11 +15603,21 @@ ex_spellinfo(eap)
 ex_spelldump(eap)
     exarg_T *eap;
 {
+    char_u  *spl;
+    long    dummy;
+
     if (no_spell_checking(curwin))
 	return;
+    get_option_value((char_u*)"spl", &dummy, &spl, OPT_LOCAL);
 
-    /* Create a new empty buffer by splitting the window. */
+    /* Create a new empty buffer in a new window. */
     do_cmdline_cmd((char_u *)"new");
+
+    /* enable spelling locally in the new window */
+    set_option_value((char_u*)"spell", TRUE, (char_u*)"", OPT_LOCAL);
+    set_option_value((char_u*)"spl",  dummy,         spl, OPT_LOCAL);
+    vim_free(spl);
+
     if (!bufempty() || !buf_valid(curbuf))
 	return;
 
@@ -16031,7 +16079,7 @@ spell_word_start(startcol)
     for (p = line + startcol; p > line; )
     {
 	mb_ptr_back(line, p);
-	if (spell_iswordp_nmw(p))
+	if (spell_iswordp_nmw(p, curwin))
 	    break;
     }
 

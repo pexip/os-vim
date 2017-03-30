@@ -2,14 +2,18 @@
 " Language: Valgrind Memory Debugger Output
 " Maintainer: Roger Luethi <rl@hellgate.ch>
 " Program URL: http://devel-home.kde.org/~sewardj/
-" Last Change: 2002 Apr 07
+" Last Change: 2014 Oct 02
 "
 " Notes: mostly based on strace.vim and xml.vim
+"
+" Contributors: Christoph Gysin <christoph.gysin@gmail.com>
 
 " Quit when a syntax file was already loaded
 if exists("b:current_syntax")
 	finish
 endif
+let s:keepcpo= &cpo
+set cpo&vim
 
 syn case match
 syn sync minlines=50
@@ -63,7 +67,7 @@ syn match valgrindAt "at\s\@=" contained
 syn match valgrindAddr "\(\W\)\@<=0x\x\+" contained
 syn match valgrindFunc "\(: \)\@<=\w\+" contained
 syn match valgrindBin "\((\(with\|\)in \)\@<=\S\+\()\)\@=" contained
-syn match valgrindSrc "\((\)\@<=.*:\d\+\()\)\@=" contained
+syn match valgrindSrc "\((\)\@<=[^)]*:\d\+\()\)\@=" contained
 
 " Define the default highlighting
 
@@ -97,3 +101,6 @@ hi def link valgrindBin		Comment
 hi def link valgrindSrc		Statement
 
 let b:current_syntax = "valgrind"
+
+let &cpo = s:keepcpo
+unlet s:keepcpo

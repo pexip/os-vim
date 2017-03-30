@@ -1,7 +1,7 @@
 # Makefile for Vim on Win32 (Windows NT/2000/XP/2003 and Windows 95/98/Me)
 # and Win64, using the Microsoft Visual C++ compilers. Known to work with
 # VC5, VC6 (VS98), VC7.0 (VS2002), VC7.1 (VS2003), VC8 (VS2005),
-# VC9 (VS2008), and VC10 (VS2010).
+# VC9 (VS2008), VC10 (VS2010) and VC11 (VS2012)
 #
 # To build using other Windows compilers, see INSTALLpc.txt
 #
@@ -15,11 +15,17 @@
 # This will build the console version of Vim with no additional interfaces.
 # To add features, define any of the following:
 #
+# 	For MSVC 11 you need to specify where the Win32.mak file is, e.g.:
+# 	   SDK_INCLUDE_DIR="C:\Program Files\Microsoft SDKs\Windows\v7.1\Include"
+#
 #	!!!!  After changing features do "nmake clean" first  !!!!
 #
-#       Feature Set: FEATURES=[TINY, SMALL, NORMAL, BIG, HUGE] (default is BIG)
+#	Feature Set: FEATURES=[TINY, SMALL, NORMAL, BIG, HUGE] (default is BIG)
 #
 #	GUI interface: GUI=yes (default is no)
+#
+#	GUI with DirectWrite(DirectX): DIRECTX=yes
+#	  (default is no, requires GUI=yes)
 #
 #	OLE interface: OLE=yes (usually with GUI=yes)
 #
@@ -63,6 +69,8 @@
 #	  RUBY_VER=[Ruby version, eg 16, 17] (default is 18)
 #	  RUBY_VER_LONG=[Ruby version, eg 1.6, 1.7] (default is 1.8)
 #	    You must set RUBY_VER_LONG when change RUBY_VER.
+#	    You must set RUBY_API_VER to RUBY_VER_LONG.
+#	    Don't set ruby API version to RUBY_VER like 191.
 #
 #	Tcl interface:
 #	  TCL=[Path to Tcl directory]
@@ -82,18 +90,20 @@
 #	  GETTEXT=[yes or no]  (default is yes)
 #	See http://sourceforge.net/projects/gettext/
 #
-#       PostScript printing: POSTSCRIPT=yes (default is no)
+#	PostScript printing: POSTSCRIPT=yes (default is no)
 #
-#       Netbeans Support: NETBEANS=[yes or no] (default is yes if GUI is yes)
+#	Netbeans Support: NETBEANS=[yes or no] (default is yes if GUI is yes)
 #
-#       XPM Image Support: XPM=[path to XPM directory]
+#	XPM Image Support: XPM=[path to XPM directory]
+#	Default is "xpm", using the files included in the distribution.
+#	Use "no" to disable this feature.
 #
-#       Optimization: OPTIMIZE=[SPACE, SPEED, MAXSPEED] (default is MAXSPEED)
+#	Optimization: OPTIMIZE=[SPACE, SPEED, MAXSPEED] (default is MAXSPEED)
 #
-#       Processor Version: CPUNR=[i386, i486, i586, i686, pentium4] (default is
-#       i386)
+#	Processor Version: CPUNR=[i386, i486, i586, i686, pentium4] (default is
+#	i386)
 #
-#       Version Support: WINVER=[0x0400, 0x0500] (default is 0x0400)
+#	Version Support: WINVER=[0x0400, 0x0500] (default is 0x0400)
 #
 #	Debug version: DEBUG=yes
 #	Mapfile: MAP=[no, yes or lines] (default is yes)
@@ -101,10 +111,12 @@
 #	  yes:   Write a normal mapfile.
 #	  lines: Write a mapfile with line numbers (only for VC6 and later)
 #
-#       Netbeans Debugging Support: NBDEBUG=[yes or no] (should be no, yes
-#       doesn't work)
+#	Netbeans Debugging Support: NBDEBUG=[yes or no] (should be no, yes
+#	doesn't work)
 #
-#       Visual C Version: MSVCVER=m.n (default derived from nmake if undefined)
+#	Visual C Version: MSVCVER=m.n (default derived from nmake if undefined)
+#
+#	Static Code Analysis: ANALYZE=yes (works with VS2012 only)
 #
 # You can combine any of these interfaces
 #
@@ -159,6 +171,9 @@ OBJDIR = .\ObjG
 !else
 OBJDIR = .\ObjC
 !endif
+!if "$(DIRECTX)" == "yes"
+OBJDIR = $(OBJDIR)X
+!endif
 !if "$(OLE)" == "yes"
 OBJDIR = $(OBJDIR)O
 !endif
@@ -209,6 +224,7 @@ CPU = i386
 # We're on Windows 95
 CPU = i386
 !endif # !PROCESSOR_ARCHITECTURE
+OBJDIR = $(OBJDIR)$(CPU)
 
 # Build a retail version by default
 
@@ -222,7 +238,12 @@ MAKEFLAGS_GVIMEXT = DEBUG=yes
 
 # Get all sorts of useful, standard macros from the Platform SDK.
 
+!ifdef SDK_INCLUDE_DIR
+!include $(SDK_INCLUDE_DIR)\Win32.mak
+!else
 !include <Win32.mak>
+!endif
+
 
 # Flag to turn on Win64 compatibility warnings for VC7.x and VC8.
 WP64CHECK = /Wp64
@@ -277,13 +298,30 @@ NBDEBUG_SRC	= nbdebug.c
 NETBEANS_LIB	= WSock32.lib
 !endif
 
-!ifdef XPM
+# DirectWrite(DirectX)
+!if "$(DIRECTX)" == "yes"
+DIRECTX_DEFS	= -DFEAT_DIRECTX -DDYNAMIC_DIRECTX
+DIRECTX_INCL	= gui_dwrite.h
+DIRECTX_OBJ	= $(OUTDIR)\gui_dwrite.obj
+!endif
+
+!ifndef XPM
+# XPM is not set, use the included xpm files, depending on the architecture.
+!if "$(CPU)" == "AMD64"
+XPM = xpm\x64
+!elseif "$(CPU)" == "i386"
+XPM = xpm\x86
+!else
+XPM = no
+!endif
+!endif
+!if "$(XPM)" != "no"
 # XPM - Include support for XPM signs
-# you can get xpm.lib from http://iamphet.nm.ru/xpm or create it yourself
+# See the xpm directory for more information.
 XPM_OBJ   = $(OBJDIR)/xpm_w32.obj
 XPM_DEFS  = -DFEAT_XPM_W32
 XPM_LIB   = $(XPM)\lib\libXpm.lib
-XPM_INC	  = -I $(XPM)\include
+XPM_INC	  = -I $(XPM)\include -I $(XPM)\..\include
 !endif
 !endif
 
@@ -350,6 +388,10 @@ MSVCVER = 5.0
 MSVCVER = 6.0
 CPU = ix86
 !endif
+!if "$(_NMAKE_VER)" == "6.00.9782.0"
+MSVCVER = 6.0
+CPU = ix86
+!endif
 !if "$(_NMAKE_VER)" == "7.00.9466"
 MSVCVER = 7.0
 !endif
@@ -380,9 +422,30 @@ MSVCVER = 10.0
 !if "$(_NMAKE_VER)" == "10.00.30319.01"
 MSVCVER = 10.0
 !endif
+!if "$(_NMAKE_VER)" == "10.00.40219.01"
+MSVCVER = 10.0
+!endif
+!if "$(_NMAKE_VER)" == "11.00.50727.1"
+MSVCVER = 11.0
+!endif
+!if "$(_NMAKE_VER)" == "11.00.51106.1"
+MSVCVER = 11.0
+!endif
+!if "$(_NMAKE_VER)" == "11.00.60315.1"
+MSVCVER = 11.0
+!endif
+!if "$(_NMAKE_VER)" == "11.00.60610.1"
+MSVCVER = 11.0
+!endif
+!if "$(_NMAKE_VER)" == "11.00.61030.0"
+MSVCVER = 11.0
+!endif
+!if "$(_NMAKE_VER)" == "12.00.21005.1"
+MSVCVER = 12.0
+!endif
 !endif
 
-# Abort bulding VIM if version of VC is unrecognised.
+# Abort building VIM if version of VC is unrecognised.
 !ifndef MSVCVER
 !message *** ERROR
 !message Cannot determine Visual C version being used.  If you are using the
@@ -394,7 +457,7 @@ MSVCVER = 10.0
 !endif
 
 # Convert processor ID to MVC-compatible number
-!if ("$(MSVCVER)" != "8.0") && ("$(MSVCVER)" != "9.0") && ("$(MSVCVER)" != "10.0")
+!if ("$(MSVCVER)" != "8.0") && ("$(MSVCVER)" != "9.0") && ("$(MSVCVER)" != "10.0") && ("$(MSVCVER)" != "11.0") && ("$(MSVCVER)" != "12.0")
 !if "$(CPUNR)" == "i386"
 CPUARG = /G3
 !elseif "$(CPUNR)" == "i486"
@@ -428,7 +491,7 @@ OPTFLAG = /O2
 OPTFLAG = /Ox
 !endif
 
-!if ("$(MSVCVER)" == "8.0") || ("$(MSVCVER)" == "9.0") || ("$(MSVCVER)" == "10.0")
+!if ("$(MSVCVER)" == "8.0") || ("$(MSVCVER)" == "9.0") || ("$(MSVCVER)" == "10.0") || ("$(MSVCVER)" == "11.0") || ("$(MSVCVER)" == "12.0")
 # Use link time code generation if not worried about size
 !if "$(OPTIMIZE)" != "SPACE"
 OPTFLAG = $(OPTFLAG) /GL
@@ -438,6 +501,11 @@ OPTFLAG = $(OPTFLAG) /GL
 # (/Wp64 is deprecated in VC9 and generates an obnoxious warning.)
 !if ("$(MSVCVER)" == "7.0") || ("$(MSVCVER)" == "7.1") || ("$(MSVCVER)" == "8.0") 
 CFLAGS=$(CFLAGS) $(WP64CHECK)
+!endif
+
+# Static code analysis generally available starting with VS2012
+!if ("$(ANALYZE)" == "yes") && (("$(MSVCVER)" == "10.0") || ("$(MSVCVER)" == "11.0") || ("$(MSVCVER)" == "12.0"))
+CFLAGS=$(CFLAGS) /analyze
 !endif
 
 CFLAGS = $(CFLAGS) $(OPTFLAG) -DNDEBUG $(CPUARG)
@@ -479,6 +547,8 @@ OBJ = \
 	$(OUTDIR)\blowfish.obj \
 	$(OUTDIR)\buffer.obj \
 	$(OUTDIR)\charset.obj \
+	$(OUTDIR)\crypt.obj \
+	$(OUTDIR)\crypt_zip.obj \
 	$(OUTDIR)\diff.obj \
 	$(OUTDIR)\digraph.obj \
 	$(OUTDIR)\edit.obj \
@@ -507,6 +577,7 @@ OBJ = \
 	$(OUTDIR)\ops.obj \
 	$(OUTDIR)\option.obj \
 	$(OUTDIR)\os_mswin.obj \
+	$(OUTDIR)\winclip.obj \
 	$(OUTDIR)\os_win32.obj \
 	$(OUTDIR)\pathdef.obj \
 	$(OUTDIR)\popupmnu.obj \
@@ -586,6 +657,16 @@ GUI_LIB = \
 SUBSYSTEM = console
 !endif
 
+!if "$(SUBSYSTEM_VER)" != ""
+SUBSYSTEM = $(SUBSYSTEM),$(SUBSYSTEM_VER)
+!endif
+
+!if "$(GUI)" == "yes" && "$(DIRECTX)" == "yes"
+CFLAGS = $(CFLAGS) $(DIRECTX_DEFS)
+GUI_INCL = $(GUI_INCL) $(DIRECTX_INCL)
+GUI_OBJ = $(GUI_OBJ) $(DIRECTX_OBJ)
+!endif
+
 # iconv.dll library (dynamically loaded)
 !ifndef ICONV
 ICONV = yes
@@ -616,7 +697,7 @@ CFLAGS  = $(CFLAGS) -DFEAT_TCL -DDYNAMIC_TCL -DDYNAMIC_TCL_DLL=\"$(TCL_DLL)\" \
 		-DDYNAMIC_TCL_VER=\"$(TCL_VER_LONG)\"
 TCL_OBJ	= $(OUTDIR)\if_tcl.obj
 TCL_INC	= /I "$(TCL)\Include" /I "$(TCL)"
-TCL_LIB = $(TCL)\lib\tclstub$(TCL_VER).lib
+TCL_LIB = "$(TCL)\lib\tclstub$(TCL_VER).lib"
 !else
 CFLAGS  = $(CFLAGS) -DFEAT_TCL
 TCL_OBJ	= $(OUTDIR)\if_tcl.obj
@@ -740,6 +821,8 @@ MZSCHEME_LIB = $(MZSCHEME)\lib\msvc\libmzgc$(MZSCHEME_VER).lib \
 !endif
 !endif
 MZSCHEME_OBJ = $(OUTDIR)\if_mzsch.obj
+# increase stack size
+MZSCHEME_LIB = $(MZSCHEME_LIB) /STACK:8388608
 !endif
 
 # Perl interface
@@ -770,7 +853,12 @@ PERL_INCDIR = $(PERL)\Lib$(PERL_ARCH)\Core
 PERL_LIB = $(PERL_INCDIR)\perl.lib
 !else
 PERL_DLL = perl$(PERL_VER).dll
+!if exist($(PERL_INCDIR)\perl$(PERL_VER).lib)
 PERL_LIB = $(PERL_INCDIR)\perl$(PERL_VER).lib
+!else
+# For ActivePerl 5.18 and later
+PERL_LIB = $(PERL_INCDIR)\libperl$(PERL_VER).a
+!endif
 !endif
 
 CFLAGS = $(CFLAGS) -DFEAT_PERL
@@ -805,28 +893,31 @@ RUBY_VER = 18
 !ifndef RUBY_VER_LONG
 RUBY_VER_LONG = 1.8
 !endif
+!ifndef RUBY_API_VER
+RUBY_API_VER = $(RUBY_VER_LONG:.=)
+!endif
 
 !if $(RUBY_VER) >= 18
 !ifndef RUBY_PLATFORM
 RUBY_PLATFORM = i386-mswin32
 !endif
 !ifndef RUBY_INSTALL_NAME
-RUBY_INSTALL_NAME = msvcrt-ruby$(RUBY_VER)
+RUBY_INSTALL_NAME = msvcrt-ruby$(RUBY_API_VER)
 !endif
 !else
 !ifndef RUBY_PLATFORM
 RUBY_PLATFORM = i586-mswin32
 !endif
 !ifndef RUBY_INSTALL_NAME
-RUBY_INSTALL_NAME = mswin32-ruby$(RUBY_VER)
+RUBY_INSTALL_NAME = mswin32-ruby$(RUBY_API_VER)
 !endif
 !endif # $(RUBY_VER) >= 18
 
 !message Ruby requested (version $(RUBY_VER)) - root dir is "$(RUBY)"
 CFLAGS = $(CFLAGS) -DFEAT_RUBY
 RUBY_OBJ = $(OUTDIR)\if_ruby.obj
-!if $(RUBY_VER) >= 190
-RUBY_INC = /I "$(RUBY)\include\ruby-$(RUBY_VER_LONG)\$(RUBY_PLATFORM)" /I "$(RUBY)\include\ruby-$(RUBY_VER_LONG)"
+!if $(RUBY_VER) >= 19
+RUBY_INC = /I "$(RUBY)\lib\ruby\$(RUBY_VER_LONG)\$(RUBY_PLATFORM)" /I "$(RUBY)\include\ruby-$(RUBY_VER_LONG)" /I "$(RUBY)\include\ruby-$(RUBY_VER_LONG)\$(RUBY_PLATFORM)"
 !else
 RUBY_INC = /I "$(RUBY)\lib\ruby\$(RUBY_VER_LONG)\$(RUBY_PLATFORM)"
 !endif
@@ -888,7 +979,7 @@ LINKARGS2 = $(CON_LIB) $(GUI_LIB) $(LIBC) $(OLE_LIB)  user32.lib $(SNIFF_LIB) \
 
 # Report link time code generation progress if used. 
 !ifdef NODEBUG
-!if ("$(MSVCVER)" == "8.0") || ("$(MSVCVER)" == "9.0") || ("$(MSVCVER)" == "10.0")
+!if ("$(MSVCVER)" == "8.0") || ("$(MSVCVER)" == "9.0") || ("$(MSVCVER)" == "10.0") || ("$(MSVCVER)" == "11.0") || ("$(MSVCVER)" == "12.0")
 !if "$(OPTIMIZE)" != "SPACE"
 LINKARGS1 = $(LINKARGS1) /LTCG:STATUS
 !endif
@@ -907,6 +998,7 @@ $(VIM).exe: $(OUTDIR) $(OBJ) $(GUI_OBJ) $(OLE_OBJ) $(OLE_IDL) $(MZSCHEME_OBJ) \
 		$(LUA_OBJ) $(MZSCHEME_OBJ) $(PERL_OBJ) $(PYTHON_OBJ) $(PYTHON3_OBJ) $(RUBY_OBJ) \
 		$(TCL_OBJ) $(SNIFF_OBJ) $(CSCOPE_OBJ) $(NETBEANS_OBJ) \
 		$(XPM_OBJ) $(OUTDIR)\version.obj $(LINKARGS2)
+	if exist $(VIM).exe.manifest mt.exe -nologo -manifest $(VIM).exe.manifest -updateresource:$(VIM).exe;1
 
 $(VIM): $(VIM).exe
 
@@ -1006,6 +1098,10 @@ $(OUTDIR)/buffer.obj:	$(OUTDIR) buffer.c  $(INCL)
 
 $(OUTDIR)/charset.obj:	$(OUTDIR) charset.c  $(INCL)
 
+$(OUTDIR)/crypt.obj:	$(OUTDIR) crypt.c  $(INCL)
+
+$(OUTDIR)/crypt_zip.obj: $(OUTDIR) crypt_zip.c  $(INCL)
+
 $(OUTDIR)/diff.obj:	$(OUTDIR) diff.c  $(INCL)
 
 $(OUTDIR)/digraph.obj:	$(OUTDIR) digraph.c  $(INCL)
@@ -1040,6 +1136,8 @@ $(OUTDIR)/gui_beval.obj:	$(OUTDIR) gui_beval.c $(INCL) $(GUI_INCL)
 
 $(OUTDIR)/gui_w32.obj:	$(OUTDIR) gui_w32.c gui_w48.c $(INCL) $(GUI_INCL)
 
+$(OUTDIR)/gui_dwrite.obj:	$(OUTDIR) gui_dwrite.cpp $(INCL) $(GUI_INCL)
+
 $(OUTDIR)/if_cscope.obj: $(OUTDIR) if_cscope.c  $(INCL)
 
 $(OUTDIR)/if_lua.obj: $(OUTDIR) if_lua.c  $(INCL)
@@ -1055,16 +1153,16 @@ $(OUTDIR)/if_perl.obj: $(OUTDIR) if_perl.c  $(INCL)
 $(OUTDIR)/if_perlsfio.obj: $(OUTDIR) if_perlsfio.c  $(INCL)
 	$(CC) $(CFLAGS) $(PERL_INC) if_perlsfio.c
 
-$(OUTDIR)/if_mzsch.obj: $(OUTDIR) if_mzsch.c  $(INCL) $(MZSCHEME_EXTRA_DEP)
+$(OUTDIR)/if_mzsch.obj: $(OUTDIR) if_mzsch.c if_mzsch.h $(INCL) $(MZSCHEME_EXTRA_DEP)
 	$(CC) $(CFLAGS) if_mzsch.c \
 		-DMZSCHEME_COLLECTS=\"$(MZSCHEME:\=\\)\\collects\"
 mzscheme_base.c:
 	$(MZSCHEME)\mzc --c-mods mzscheme_base.c ++lib scheme/base
 
-$(OUTDIR)/if_python.obj: $(OUTDIR) if_python.c  $(INCL)
+$(OUTDIR)/if_python.obj: $(OUTDIR) if_python.c if_py_both.h $(INCL)
 	$(CC) $(CFLAGS) $(PYTHON_INC) if_python.c
 
-$(OUTDIR)/if_python3.obj: $(OUTDIR) if_python3.c  $(INCL)
+$(OUTDIR)/if_python3.obj: $(OUTDIR) if_python3.c if_py_both.h $(INCL)
 	$(CC) $(CFLAGS) $(PYTHON3_INC) if_python3.c
 
 $(OUTDIR)/if_ole.obj: $(OUTDIR) if_ole.cpp  $(INCL) if_ole.h
@@ -1108,6 +1206,8 @@ $(OUTDIR)/ops.obj:	$(OUTDIR) ops.c  $(INCL)
 
 $(OUTDIR)/os_mswin.obj:	$(OUTDIR) os_mswin.c  $(INCL)
 
+$(OUTDIR)/winclip.obj:	$(OUTDIR) winclip.c  $(INCL)
+
 $(OUTDIR)/os_win32.obj:	$(OUTDIR) os_win32.c  $(INCL) os_win32.h
 
 $(OUTDIR)/os_w32exe.obj:	$(OUTDIR) os_w32exe.c  $(INCL)
@@ -1119,7 +1219,7 @@ $(OUTDIR)/popupmnu.obj:	$(OUTDIR) popupmnu.c  $(INCL)
 
 $(OUTDIR)/quickfix.obj:	$(OUTDIR) quickfix.c  $(INCL)
 
-$(OUTDIR)/regexp.obj:	$(OUTDIR) regexp.c  $(INCL)
+$(OUTDIR)/regexp.obj:	$(OUTDIR) regexp.c regexp_nfa.c  $(INCL)
 
 $(OUTDIR)/screen.obj:	$(OUTDIR) screen.c  $(INCL)
 
@@ -1188,6 +1288,8 @@ proto.h: \
 	proto/blowfish.pro \
 	proto/buffer.pro \
 	proto/charset.pro \
+	proto/crypt.pro \
+	proto/crypt_zip.pro \
 	proto/diff.pro \
 	proto/digraph.pro \
 	proto/edit.pro \
@@ -1215,6 +1317,7 @@ proto.h: \
 	proto/ops.pro \
 	proto/option.pro \
 	proto/os_mswin.pro \
+	proto/winclip.pro \
 	proto/os_win32.pro \
 	proto/popupmnu.pro \
 	proto/quickfix.pro \
