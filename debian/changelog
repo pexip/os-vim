@@ -1,3 +1,17 @@
+vim (2:7.4.488-7+deb8u3pexip1) pexip; urgency=low
+
+  * New upstream release
+
+ -- John-Mark Bell <jmb@pexip.com>  Tue, 09 May 2017 17:33:41 +0100
+
+vim (2:7.4.488-7+deb8u3) jessie; urgency=medium
+
+  * Backport upstream patches v8.0.0377 & v8.0.0378, to fix buffer overflows
+    when reading corrupted undo files.  (Closes: #856266, CVE-2017-6349,
+    CVE-2017-6350)
+
+ -- James McCoy <jamessan@debian.org>  Mon, 06 Mar 2017 23:52:28 -0500
+
 vim (2:7.4.488-7+deb8u2pexip1) pexip; urgency=low
 
   * Migrate to Jessie

@@ -10,3 +10,5 @@ debian/disabled-modelines.patch
 debian/extra-tex-detection.patch
 upstream/v8-0-0056.patch
 upstream/v8-0-0322.patch
+upstream/v8-0-0377.patch
+upstream/v8-0-0378.patch
