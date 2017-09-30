@@ -1,0 +1,28 @@
+From: James Vega <jamessan@debian.org>
+Date: Fri, 18 Aug 2006 09:06:20 -0400
+Subject: Detect the rst filetype using the contents of the file
+
+Closes: #382541
+---
+ runtime/scripts.vim | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/runtime/scripts.vim b/runtime/scripts.vim
+index 2763828..d3101c6 100644
+--- a/runtime/scripts.vim
++++ b/runtime/scripts.vim
+@@ -332,6 +332,14 @@ else
+   elseif s:line1 =~ 'exec\s\+\S*scheme' || s:line2 =~ 'exec\s\+\S*scheme'
+     set ft=scheme
+ 
++  " rst files
++  elseif s:line1 =~ '^\.\.\s\|^\s*restindex\s*$'
++	\ || s:line2 =~ '^\.\.\s\|^\s*restindex\s*$'
++	\ || s:line3 =~ '^\.\.\s\|^\s*restindex\s*$'
++	\ || s:line4 =~ '^\.\.\s\|^\s*restindex\s*$'
++	\ || s:line5 =~ '^\.\.\s\|^\s*restindex\s*$'
++    set ft=rst
++
+   " Git output
+   elseif s:line1 =~ '^\(commit\|tree\|object\) \x\{40\}\>\|^tag \S\+$'
+     set ft=git

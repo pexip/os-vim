@@ -1,0 +1,29 @@
+From: James Vega <jamessan@debian.org>
+Date: Thu, 27 Mar 2008 03:42:02 +0000
+Subject: Document Debian's decision to disable modelines by default
+
+Modelines have historically been a source of vulnerabilities in Vim.
+As long as it remains a "blacklist suspected/proven dangerous options"
+instead of a "whitelist allowed options" piece of functionality,
+Debian's system-wide vimrc will maintain this setting.  As such, the
+documentation needs to be updated to reflect the induced behavior.
+
+Closes: #472522
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ runtime/doc/options.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/runtime/doc/options.txt b/runtime/doc/options.txt
+index 88dca60..2520cc3 100644
+--- a/runtime/doc/options.txt
++++ b/runtime/doc/options.txt
+@@ -5126,7 +5126,7 @@ A jump table for the options with a short description can be found at |Q_op|.
+ 
+ 				   *'modeline'* *'ml'* *'nomodeline'* *'noml'*
+ 'modeline' 'ml'		boolean	(Vim default: on (off for root),
+-				 Vi default: off)
++				 Debian: off, Vi default: off)
+ 			local to buffer
+ 						*'modelines'* *'mls'*
+ 'modelines' 'mls'	number	(default 5)

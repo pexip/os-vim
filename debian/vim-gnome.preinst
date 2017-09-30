@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+dpkg-maintscript-helper symlink_to_dir \
+  /usr/share/doc/vim-gnome vim-gui-common 2:7.4.2330-1~ vim-gnome -- "$@"
+
+#DEBHELPER#
+
+exit 0
