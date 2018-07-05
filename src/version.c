@@ -1,4 +1,4 @@
-/* vi:set ts=8 sts=4 sw=4:
+/* vi:set ts=8 sts=4 sw=4 noet:
  *
  * VIM - Vi IMproved		by Bram Moolenaar
  *
@@ -17,8 +17,9 @@
  * Vim originated from Stevie version 3.6 (Fish disk 217) by GRWalter (Fred)
  * It has been changed beyond recognition since then.
  *
- * Differences between version 6.x and 7.x can be found with ":help version7".
- * Differences between version 5.x and 6.x can be found with ":help version6".
+ * Differences between version 7.4 and 8.x can be found with ":help version8".
+ * Differences between version 6.4 and 7.x can be found with ":help version7".
+ * Differences between version 5.8 and 6.x can be found with ":help version6".
  * Differences between version 4.x and 5.x can be found with ":help version5".
  * Differences between version 3.0 and 4.x can be found with ":help version4".
  * All the remarks about older versions have been removed, they are not very
@@ -36,7 +37,7 @@ char	longVersion[sizeof(VIM_VERSION_LONG_DATE) + sizeof(__DATE__)
 						      + sizeof(__TIME__) + 3];
 
     void
-make_version()
+make_version(void)
 {
     /*
      * Construct the long version string.  Necessary because
@@ -55,8 +56,8 @@ char	*longVersion = VIM_VERSION_LONG_DATE __DATE__ " " __TIME__ ")";
 char	*longVersion = VIM_VERSION_LONG;
 #endif
 
-static void list_features __ARGS((void));
-static void version_msg __ARGS((char *s));
+static void list_features(void);
+static void version_msg(char *s);
 
 static char *(features[]) =
 {
@@ -105,6 +106,11 @@ static char *(features[]) =
 	"+byte_offset",
 #else
 	"-byte_offset",
+#endif
+#ifdef FEAT_JOB_CHANNEL
+	"+channel",
+#else
+	"-channel",
 #endif
 #ifdef FEAT_CINDENT
 	"+cindent",
@@ -216,11 +222,7 @@ static char *(features[]) =
 #else
 	"-eval",
 #endif
-#ifdef FEAT_EX_EXTRA
 	"+ex_extra",
-#else
-	"-ex_extra",
-#endif
 #ifdef FEAT_SEARCH_EXTRA
 	"+extra_search",
 #else
@@ -288,6 +290,11 @@ static char *(features[]) =
 #else
 	"-insert_expand",
 #endif
+#ifdef FEAT_JOB_CHANNEL
+	"+job",
+#else
+	"-job",
+#endif
 #ifdef FEAT_JUMPLIST
 	"+jumplist",
 #else
@@ -297,6 +304,11 @@ static char *(features[]) =
 	"+keymap",
 #else
 	"-keymap",
+#endif
+#ifdef FEAT_EVAL
+	"+lambda",
+#else
+	"-lambda",
 #endif
 #ifdef FEAT_LANGMAP
 	"+langmap",
@@ -449,6 +461,11 @@ static char *(features[]) =
 #else
 	"-netbeans_intg",
 #endif
+#ifdef FEAT_NUM64
+	"+num64",
+#else
+	"-num64",
+#endif
 #ifdef FEAT_GUI_W32
 # ifdef FEAT_OLE
 	"+ole",
@@ -456,6 +473,7 @@ static char *(features[]) =
 	"-ole",
 # endif
 #endif
+	"+packages",
 #ifdef FEAT_PATH_EXTRA
 	"+path_extra",
 #else
@@ -547,11 +565,6 @@ static char *(features[]) =
 #else
 	"-smartindent",
 #endif
-#ifdef FEAT_SNIFF
-	"+sniff",
-#else
-	"-sniff",
-#endif
 #ifdef STARTUPTIME
 	"+startuptime",
 #else
@@ -573,7 +586,7 @@ static char *(features[]) =
 	"-syntax",
 #endif
 	    /* only interesting on Unix systems */
-#if defined(USE_SYSTEM) && (defined(UNIX) || defined(__EMX__))
+#if defined(USE_SYSTEM) && defined(UNIX)
 	"+system()",
 #endif
 #ifdef FEAT_TAG_BINS
@@ -600,8 +613,13 @@ static char *(features[]) =
 #else
 	"-tcl",
 #endif
-#if defined(UNIX) || defined(__EMX__)
-/* only Unix (or OS/2 with EMX!) can have terminfo instead of termcap */
+#ifdef FEAT_TERMGUICOLORS
+	"+termguicolors",
+#else
+	"-termguicolors",
+#endif
+#if defined(UNIX)
+/* only Unix can have terminfo instead of termcap */
 # ifdef TERMINFO
 	"+terminfo",
 # else
@@ -624,6 +642,11 @@ static char *(features[]) =
 #else
 	"-textobjects",
 #endif
+#ifdef FEAT_TIMERS
+	"+timers",
+#else
+	"-timers",
+#endif
 #ifdef FEAT_TITLE
 	"+title",
 #else
@@ -639,7 +662,7 @@ static char *(features[]) =
 #else
 	"-user_commands",
 #endif
-#ifdef FEAT_VERTSPLIT
+#ifdef FEAT_WINDOWS
 	"+vertsplit",
 #else
 	"-vertsplit",
@@ -702,6 +725,19 @@ static char *(features[]) =
 #else
 	"-xim",
 #endif
+#ifdef WIN3264
+# ifdef FEAT_XPM_W32
+	"+xpm_w32",
+# else
+	"-xpm_w32",
+# endif
+#else
+# ifdef HAVE_XPM
+	"+xpm",
+# else
+	"-xpm",
+# endif
+#endif
 #if defined(UNIX) || defined(VMS)
 # ifdef USE_XSMP_INTERACT
 	"+xsmp_interact",
@@ -723,606 +759,11 @@ static char *(features[]) =
 #else
 	"-xterm_save",
 #endif
-#ifdef WIN3264
-# ifdef FEAT_XPM_W32
-	"+xpm_w32",
-# else
-	"-xpm_w32",
-# endif
-#else
-# ifdef HAVE_XPM
-	"+xpm",
-# else
-	"-xpm",
-# endif
-#endif
 	NULL
 };
 
 static int included_patches[] =
 {   /* Add new patch number below this line */
-/**/
-    488,
-/**/
-    487,
-/**/
-    486,
-/**/
-    485,
-/**/
-    484,
-/**/
-    483,
-/**/
-    482,
-/**/
-    481,
-/**/
-    480,
-/**/
-    479,
-/**/
-    478,
-/**/
-    477,
-/**/
-    476,
-/**/
-    475,
-/**/
-    474,
-/**/
-    473,
-/**/
-    472,
-/**/
-    471,
-/**/
-    470,
-/**/
-    469,
-/**/
-    468,
-/**/
-    467,
-/**/
-    466,
-/**/
-    465,
-/**/
-    464,
-/**/
-    463,
-/**/
-    462,
-/**/
-    461,
-/**/
-    460,
-/**/
-    459,
-/**/
-    458,
-/**/
-    457,
-/**/
-    456,
-/**/
-    455,
-/**/
-    454,
-/**/
-    453,
-/**/
-    452,
-/**/
-    451,
-/**/
-    450,
-/**/
-    449,
-/**/
-    448,
-/**/
-    447,
-/**/
-    446,
-/**/
-    445,
-/**/
-    444,
-/**/
-    443,
-/**/
-    442,
-/**/
-    441,
-/**/
-    440,
-/**/
-    439,
-/**/
-    438,
-/**/
-    437,
-/**/
-    436,
-/**/
-    435,
-/**/
-    434,
-/**/
-    433,
-/**/
-    432,
-/**/
-    431,
-/**/
-    430,
-/**/
-    429,
-/**/
-    428,
-/**/
-    427,
-/**/
-    426,
-/**/
-    425,
-/**/
-    424,
-/**/
-    423,
-/**/
-    422,
-/**/
-    421,
-/**/
-    420,
-/**/
-    419,
-/**/
-    418,
-/**/
-    417,
-/**/
-    416,
-/**/
-    415,
-/**/
-    414,
-/**/
-    413,
-/**/
-    412,
-/**/
-    411,
-/**/
-    410,
-/**/
-    409,
-/**/
-    408,
-/**/
-    407,
-/**/
-    406,
-/**/
-    405,
-/**/
-    404,
-/**/
-    403,
-/**/
-    402,
-/**/
-    401,
-/**/
-    400,
-/**/
-    399,
-/**/
-    398,
-/**/
-    397,
-/**/
-    396,
-/**/
-    395,
-/**/
-    394,
-/**/
-    393,
-/**/
-    392,
-/**/
-    391,
-/**/
-    390,
-/**/
-    389,
-/**/
-    388,
-/**/
-    387,
-/**/
-    386,
-/**/
-    385,
-/**/
-    384,
-/**/
-    383,
-/**/
-    382,
-/**/
-    381,
-/**/
-    380,
-/**/
-    379,
-/**/
-    378,
-/**/
-    377,
-/**/
-    376,
-/**/
-    375,
-/**/
-    374,
-/**/
-    373,
-/**/
-    372,
-/**/
-    371,
-/**/
-    370,
-/**/
-    369,
-/**/
-    368,
-/**/
-    367,
-/**/
-    366,
-/**/
-    365,
-/**/
-    364,
-/**/
-    363,
-/**/
-    362,
-/**/
-    361,
-/**/
-    360,
-/**/
-    359,
-/**/
-    358,
-/**/
-    357,
-/**/
-    356,
-/**/
-    355,
-/**/
-    354,
-/**/
-    353,
-/**/
-    352,
-/**/
-    351,
-/**/
-    350,
-/**/
-    349,
-/**/
-    348,
-/**/
-    347,
-/**/
-    346,
-/**/
-    345,
-/**/
-    344,
-/**/
-    343,
-/**/
-    342,
-/**/
-    341,
-/**/
-    340,
-/**/
-    339,
-/**/
-    338,
-/**/
-    337,
-/**/
-    336,
-/**/
-    335,
-/**/
-    334,
-/**/
-    333,
-/**/
-    332,
-/**/
-    331,
-/**/
-    330,
-/**/
-    329,
-/**/
-    328,
-/**/
-    327,
-/**/
-    326,
-/**/
-    325,
-/**/
-    324,
-/**/
-    323,
-/**/
-    322,
-/**/
-    321,
-/**/
-    320,
-/**/
-    319,
-/**/
-    318,
-/**/
-    317,
-/**/
-    316,
-/**/
-    315,
-/**/
-    314,
-/**/
-    313,
-/**/
-    312,
-/**/
-    311,
-/**/
-    310,
-/**/
-    309,
-/**/
-    308,
-/**/
-    307,
-/**/
-    306,
-/**/
-    305,
-/**/
-    304,
-/**/
-    303,
-/**/
-    302,
-/**/
-    301,
-/**/
-    300,
-/**/
-    299,
-/**/
-    298,
-/**/
-    297,
-/**/
-    296,
-/**/
-    295,
-/**/
-    294,
-/**/
-    293,
-/**/
-    292,
-/**/
-    291,
-/**/
-    290,
-/**/
-    289,
-/**/
-    288,
-/**/
-    287,
-/**/
-    286,
-/**/
-    285,
-/**/
-    284,
-/**/
-    283,
-/**/
-    282,
-/**/
-    281,
-/**/
-    280,
-/**/
-    279,
-/**/
-    278,
-/**/
-    277,
-/**/
-    276,
-/**/
-    275,
-/**/
-    274,
-/**/
-    273,
-/**/
-    272,
-/**/
-    271,
-/**/
-    270,
-/**/
-    269,
-/**/
-    268,
-/**/
-    267,
-/**/
-    266,
-/**/
-    265,
-/**/
-    264,
-/**/
-    263,
-/**/
-    262,
-/**/
-    261,
-/**/
-    260,
-/**/
-    259,
-/**/
-    258,
-/**/
-    257,
-/**/
-    256,
-/**/
-    255,
-/**/
-    254,
-/**/
-    253,
-/**/
-    252,
-/**/
-    251,
-/**/
-    250,
-/**/
-    249,
-/**/
-    248,
-/**/
-    247,
-/**/
-    246,
-/**/
-    245,
-/**/
-    244,
-/**/
-    243,
-/**/
-    242,
-/**/
-    241,
-/**/
-    240,
-/**/
-    239,
-/**/
-    238,
-/**/
-    237,
-/**/
-    236,
-/**/
-    235,
-/**/
-    234,
-/**/
-    233,
-/**/
-    232,
-/**/
-    231,
-/**/
-    230,
-/**/
-    229,
-/**/
-    228,
-/**/
-    227,
-/**/
-    226,
-/**/
-    225,
-/**/
-    224,
-/**/
-    223,
-/**/
-    222,
-/**/
-    221,
-/**/
-    220,
-/**/
-    219,
-/**/
-    218,
-/**/
-    217,
-/**/
-    216,
-/**/
-    215,
-/**/
-    214,
-/**/
-    213,
-/**/
-    212,
-/**/
-    211,
-/**/
-    210,
-/**/
-    209,
-/**/
-    208,
-/**/
-    207,
-/**/
-    206,
-/**/
-    205,
-/**/
-    204,
-/**/
-    203,
-/**/
-    202,
-/**/
-    201,
-/**/
-    200,
-/**/
-    199,
-/**/
-    198,
 /**/
     197,
 /**/
@@ -1735,7 +1176,7 @@ static char *(extra_patches[]) =
 };
 
     int
-highest_patch()
+highest_patch(void)
 {
     int		i;
     int		h = 0;
@@ -1751,8 +1192,7 @@ highest_patch()
  * Return TRUE if patch "n" has been included.
  */
     int
-has_patch(n)
-    int		n;
+has_patch(int n)
 {
     int		i;
 
@@ -1764,8 +1204,7 @@ has_patch(n)
 #endif
 
     void
-ex_version(eap)
-    exarg_T	*eap;
+ex_version(exarg_T *eap)
 {
     /*
      * Ignore a ":version 9.99" command.
@@ -1781,7 +1220,7 @@ ex_version(eap)
  * List all features aligned in columns, dictionary style.
  */
     static void
-list_features()
+list_features(void)
 {
     int		i;
     int		ncol;
@@ -1848,7 +1287,7 @@ list_features()
 }
 
     void
-list_version()
+list_version(void)
 {
     int		i;
     int		first;
@@ -1861,18 +1300,11 @@ list_version()
     MSG(longVersion);
 #ifdef WIN3264
 # ifdef FEAT_GUI_W32
-#  if defined(_MSC_VER) && (_MSC_VER <= 1010)
-    /* Only MS VC 4.1 and earlier can do Win32s */
-    MSG_PUTS(_("\nMS-Windows 16/32-bit GUI version"));
-#  else
-#   ifdef _WIN64
+#  ifdef _WIN64
     MSG_PUTS(_("\nMS-Windows 64-bit GUI version"));
-#   else
+#  else
     MSG_PUTS(_("\nMS-Windows 32-bit GUI version"));
-#   endif
 #  endif
-    if (gui_is_win32s())
-	MSG_PUTS(_(" in Win32s mode"));
 # ifdef FEAT_OLE
     MSG_PUTS(_(" with OLE support"));
 # endif
@@ -1882,16 +1314,6 @@ list_version()
 #  else
     MSG_PUTS(_("\nMS-Windows 32-bit console version"));
 #  endif
-# endif
-#endif
-#ifdef WIN16
-    MSG_PUTS(_("\nMS-Windows 16-bit version"));
-#endif
-#ifdef MSDOS
-# ifdef DJGPP
-    MSG_PUTS(_("\n32-bit MS-DOS version"));
-# else
-    MSG_PUTS(_("\n16-bit MS-DOS version"));
 # endif
 #endif
 #ifdef MACOS
@@ -2003,11 +1425,15 @@ list_version()
     MSG_PUTS(_("without GUI."));
 #else
 # ifdef FEAT_GUI_GTK
-#  ifdef FEAT_GUI_GNOME
-    MSG_PUTS(_("with GTK2-GNOME GUI."));
+#  ifdef USE_GTK3
+    MSG_PUTS(_("with GTK3 GUI."));
 #  else
-    MSG_PUTS(_("with GTK2 GUI."));
-#  endif
+#   ifdef FEAT_GUI_GNOME
+     MSG_PUTS(_("with GTK2-GNOME GUI."));
+#   else
+     MSG_PUTS(_("with GTK2 GUI."));
+#   endif
+# endif
 # else
 #  ifdef FEAT_GUI_MOTIF
     MSG_PUTS(_("with X11-Motif GUI."));
@@ -2096,6 +1522,9 @@ list_version()
     version_msg("\"\n");
 # endif
 #endif
+    version_msg(_("       defaults file: \""));
+    version_msg(VIM_DEFAULTS_FILE);
+    version_msg("\"\n");
 #ifdef FEAT_GUI
 # ifdef SYS_MENU_FILE
     version_msg(_("    system menu file: \""));
@@ -2141,8 +1570,7 @@ list_version()
  * newline, unless the message is too long to fit on the screen anyway.
  */
     static void
-version_msg(s)
-    char	*s;
+version_msg(char *s)
 {
     int		len = (int)STRLEN(s);
 
@@ -2153,13 +1581,13 @@ version_msg(s)
 	MSG_PUTS(s);
 }
 
-static void do_intro_line __ARGS((int row, char_u *mesg, int add_version, int attr));
+static void do_intro_line(int row, char_u *mesg, int add_version, int attr);
 
 /*
  * Show the intro message when not editing a file.
  */
     void
-maybe_intro_message()
+maybe_intro_message(void)
 {
     if (bufempty()
 	    && curbuf->b_fname == NULL
@@ -2176,8 +1604,8 @@ maybe_intro_message()
  * Or with the ":intro" command (for Sven :-).
  */
     void
-intro_message(colon)
-    int		colon;		/* TRUE for ":intro" */
+intro_message(
+    int		colon)		/* TRUE for ":intro" */
 {
     int		i;
     int		row;
@@ -2200,7 +1628,7 @@ intro_message(colon)
 	"",
 	N_("type  :q<Enter>               to exit         "),
 	N_("type  :help<Enter>  or  <F1>  for on-line help"),
-	N_("type  :help version7<Enter>   for version info"),
+	N_("type  :help version8<Enter>   for version info"),
 	NULL,
 	"",
 	N_("Running in Vi compatible mode"),
@@ -2237,10 +1665,6 @@ intro_message(colon)
     blanklines = (int)Rows - ((sizeof(lines) / sizeof(char *)) - 1);
     if (!p_cp)
 	blanklines += 4;  /* add 4 for not showing "Vi compatible" message */
-#if defined(WIN3264) && !defined(FEAT_GUI_W32)
-    if (mch_windows95())
-	blanklines -= 3;  /* subtract 3 for showing "Windows 95" message */
-#endif
 
 #ifdef FEAT_WINDOWS
     /* Don't overwrite a statusline.  Depends on 'cmdheight'. */
@@ -2289,17 +1713,6 @@ intro_message(colon)
 		do_intro_line(row, (char_u *)_(p), i == 2, 0);
 	    ++row;
 	}
-#if defined(WIN3264) && !defined(FEAT_GUI_W32)
-	if (mch_windows95())
-	{
-	    do_intro_line(++row,
-		    (char_u *)_("WARNING: Windows 95/98/ME detected"),
-							FALSE, hl_attr(HLF_E));
-	    do_intro_line(++row,
-		(char_u *)_("type  :help windows95<Enter>  for info on this"),
-								    FALSE, 0);
-	}
-#endif
     }
 
     /* Make the wait-return message appear just below the text. */
@@ -2308,11 +1721,11 @@ intro_message(colon)
 }
 
     static void
-do_intro_line(row, mesg, add_version, attr)
-    int		row;
-    char_u	*mesg;
-    int		add_version;
-    int		attr;
+do_intro_line(
+    int		row,
+    char_u	*mesg,
+    int		add_version,
+    int		attr)
 {
     char_u	vers[20];
     int		col;
@@ -2326,7 +1739,7 @@ do_intro_line(row, mesg, add_version, attr)
     if (*mesg == ' ')
     {
 	vim_strncpy(modby, (char_u *)_("Modified by "), MODBY_LEN - 1);
-	l = STRLEN(modby);
+	l = (int)STRLEN(modby);
 	vim_strncpy(modby + l, (char_u *)MODIFIED_BY, MODBY_LEN - l - 1);
 	mesg = modby;
     }
@@ -2385,8 +1798,7 @@ do_intro_line(row, mesg, add_version, attr)
  * ":intro": clear screen, display intro screen and wait for return.
  */
     void
-ex_intro(eap)
-    exarg_T	*eap UNUSED;
+ex_intro(exarg_T *eap UNUSED)
 {
     screenclear();
     intro_message(TRUE);
