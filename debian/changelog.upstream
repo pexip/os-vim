@@ -1,0 +1,223 @@
+Patches for Vim - Vi IMproved 8.0
+
+The files in this directory contain source code changes to fix problems
+in a released version of Vim.  Each file also contains an explanation of
+the problem that is fixed, like the message that was sent to the vim-dev
+maillist.
+
+The best is to apply the patches in sequence.  This avoids problems when
+a patch depends on a previous patch. 
+
+Before patching, change to the top Vim directory, where the "src" and
+"runtime" directories are located.
+Depending on the version of "patch" that you use, you may have add an
+argument to make it patch the right file:
+        patch -p < 8.0.0001
+        patch -p0 < 8.0.0001
+
+After applying a patch, you need to compile Vim.  There are no patches
+for binaries.
+
+Checksums for the patch files can be found in the file MD5SUMS.
+
+
+Individual patches for Vim 8.0:
+
+  SIZE  NAME      FIXES
+  2886  8.0.0001  intro screen still mentions version7
+  1864  8.0.0002  the netrw plugin does not work
+  2835  8.0.0003  getwinvar() returns wrong Value of boolean and number options
+  2662  8.0.0004  error messagge of function() with wrong argument says NULL
+  1871  8.0.0005  netbeans test fails with Python 3
+  1936  8.0.0006  ":lb" is interpreted as ":lbottom" instead of ":lbuffer"
+  7370  8.0.0007  Vim 7.4 is still mentioned in a few places
+  2527  8.0.0008  popup complete test is disabled
+  1673  8.0.0009  unnecessary workaround for AppVeyor
+  3230  8.0.0010  crash when editing file that starts with crypt header
+  1577  8.0.0011  on OSX Test_pipe_through_sort_all() sometimes fails
+  7754  8.0.0012  typos in comments
+  2257  8.0.0013  (after 8.0.0011) missing comma in list
+  9516  8.0.0014  crypt tests are old style
+ 12101  8.0.0015  can't tell which part of a channel has "buffered" status
+  1579  8.0.0016  (after 8.0.0015) build fails
+  4451  8.0.0017  cannot get the number of current quickfix or location list
+  8819  8.0.0018  when using ":sleep" channel input is not handled
+ 14106  8.0.0019  test_command_count is old style
+ 86459  8.0.0020  the regexp engines are not reentrant
+  1734  8.0.0021  GUI: cursor may be drawn on second half of double byte char
+  5008  8.0.0022  if channel is missing final NL remaining chars are dropped
+ 10912  8.0.0023  "gd" and "gD" may find a match in a comment or string
+  2437  8.0.0024  when netbeans channel closes, "DETACH" is put in output part
+ 10551  8.0.0025  inconsistent use of spaces vs tabs in gd test
+  5078  8.0.0026  error format with %W, %C and %Z does not work
+ 47686  8.0.0027  channel is closed when there may still be something to read
+  1800  8.0.0028  superfluous semicolons
+119305  8.0.0029  exceptions for old systems make MS-Windows code complicated
+  1680  8.0.0030  mouse mode is not automatically detected for tmux
+  3962  8.0.0031  after ":bwipeout" 'fileformat' is not set to the default
+  3521  8.0.0032  tests may change the input file when something goes wrong
+  2996  8.0.0033  cannot use overlapping positions with matchaddpos()
+  4951  8.0.0034  no completion for ":messages"
+ 16444  8.0.0035  order of matches for 'omnifunc' is messed up
+ 13336  8.0.0036  detecting that a job has finished may take a while
+  2597  8.0.0037  get E924 when switching tabs
+  1807  8.0.0038  OPEN_CHR_FILES not defined for FreeBSD/Debian mix
+  3492  8.0.0039  when Vim 8 reads an old viminfo next time marks are not read
+  4622  8.0.0040  (after 8.0.0033) matchaddpos() whole line highlighting broken
+  3574  8.0.0041  get undo item with Insert mode completion without inserting
+  2457  8.0.0042  (after 8.0.0041) Insert mode completion is not saved for undo
+  4037  8.0.0043  (after 8.0.0041) Insert mode completion is not saved for undo
+  7877  8.0.0044  ml_get error In diff mode
+  8476  8.0.0045  calling job_stop() right after job_start() does not work
+  2559  8.0.0046  using NUL instead of NULL
+  1719  8.0.0047  crash when using the preview window from an unnamed buffer
+  5148  8.0.0048  on Windows job_stop() stops cmd.exe, not processes it runs
+  2839  8.0.0049  concealing and match highlighting interfere
+ 12736  8.0.0050  an exiting job is detected with a large latency
+  4939  8.0.0051  (after 8.0.0048) job_stop() change breaks tests
+  1701  8.0.0052  (after 8.0.0049) conceal test passes even without the bug fix
+  2684  8.0.0053  (after 8.0.0047) no test for what 8.0.0047 fixes
+  3649  8.0.0054  (after 8.0.0051) Windows: job_stop() does not stop processes
+  3450  8.0.0055  minor comment and style deficiencies
+  4920  8.0.0056  when setting 'filetype' there is no check for a valid name
+  2356  8.0.0057  (after 8.0.0056) tests fail without the 'keymap' features
+  4871  8.0.0058  positioning of the popup menu is not good
+ 20700  8.0.0059  Vim does not build on VMS systems
+  3176  8.0.0060  when 'keywordprg' is an Ex command it is shell-escaped
+  1437  8.0.0061  (after 8.0.0058) compiler warning for unused variable
+  2433  8.0.0062  no digraph for HORIZONTAL ELLIPSIS
+  1681  8.0.0063  compiler warning for comparing with unsigned
+  1771  8.0.0064  (after 8.0.0060) normal test fails on MS-Windows
+  1727  8.0.0065  (after 8.0.0056) compiler warning for unused function
+  4158  8.0.0066  calling an operator function without 'linebreak' set
+  2184  8.0.0067  VMS has a problem with infinity
+  5802  8.0.0068  checking did_throw after executing autocommands is wrong
+  8650  8.0.0069  compiler warning for self-comparison
+  1843  8.0.0070  tests referred in Makefile that no longer exist
+  3054  8.0.0071  exit value from a shell command is wrong
+  1600  8.0.0072  MS-Windows: Crash with long font name
+  7228  8.0.0073  (after 8.0.0069) more comparisons between firstwin & lastwin
+ 36284  8.0.0074  cannot make Vim fail on an internal error
+  5460  8.0.0075  using number for exception type lacks type checking
+  1906  8.0.0076  channel log has double parens ()()
+  1683  8.0.0077  GUI is not tested on Travis CI
+  2550  8.0.0078  accessing freed memory in quickfix
+ 30894  8.0.0079  accessing freed memory in quickfix
+  1740  8.0.0080  Travis CI fails for OS X
+ 16764  8.0.0081  inconsistent function names
+309315  8.0.0082  extension for configure should be ".ac"
+  2446  8.0.0083  using freed memory with win_getid()
+  3153  8.0.0084  using freed memory when adding to a quickfix list
+  3977  8.0.0085  using freed memory with recursive function call
+  7394  8.0.0086  cannot add a comment after ":hide"
+ 14140  8.0.0087  channel callback may get job info after it was deleted
+  2355  8.0.0088  when a test fails in Setup/Teardown problem is not reported
+ 13532  8.0.0089  various problems with GTK 3.22.2
+ 17957  8.0.0090  cursor moved after last character when using 'breakindent'
+  6000  8.0.0091  test_help_complete sometimes fails in MS-Windows console
+  3075  8.0.0092  C indent does not support nested namespaces that C++ 17 has
+  1842  8.0.0093  not using multiprocess build feature
+  2397  8.0.0094  if vimrun.exe not found error message is not properly encoded
+  3684  8.0.0095  problems with GTK 3.22.2 fixed in 3.22.4
+  7771  8.0.0096  when the input or output is not a tty Vim appears to hang
+ 11867  8.0.0097  if channel callback takes a lot of time Vim is unresponsive
+  1728  8.0.0098  (after 8.0.0097) can't build on MS-Windows
+  1734  8.0.0099  popup menu appears above the cursor too often
+  1852  8.0.0100  file name options may contain non-filename characters
+  4074  8.0.0101  some options are not strictly checked
+  4876  8.0.0102  (after 8.0.0101) cannot set 'dictionary' to a path
+  4425  8.0.0103  may not process channel readahead
+  3602  8.0.0104  value of 'thesaurus' option not checked properly
+ 16483  8.0.0105  can't tell difference between reading empty line or nothing
+  2174  8.0.0106  (after 8.0.0100) cannot use a semicolon in 'backupext'
+ 17300  8.0.0107  when reading channel output in timer messages may be missing
+  2747  8.0.0108  (after 8.0.0107) the channel "drop" option is not tested
+  6083  8.0.0109  still checking if memcmp() exists, should be everywhere now
+  2281  8.0.0110  drop command doesn't use existing window
+  3528  8.0.0111  the :history command is not tested
+ 13404  8.0.0112  tests 92 and 93 are old style
+  5376  8.0.0113  MS-Windows: dialog for saving changes on the wrong monitor
+  3510  8.0.0114  coding style not optimal
+  1875  8.0.0115  when building with Cygwin libwinpthread isn't found
+  5896  8.0.0116  using CTRl-] in English help language from 'helplang' is used
+  3071  8.0.0117  parallel make fails
+  2075  8.0.0118  "make proto" adds extra function prototype
+  2045  8.0.0119  no test for using CTRL-R on the command line
+  1506  8.0.0120  channel test is still flaky on OS X
+  3662  8.0.0121  setting 'cursorline' changes the curswant column
+  1678  8.0.0122  channel test is still flaky on OS X
+  5083  8.0.0123  modern Sun compilers define "__sun" instead of "sun"
+  2401  8.0.0124  internal error for assert_inrange(1, 1)
+  1943  8.0.0125  not enough testing for entering Ex commands
+  3820  8.0.0126  display problem with 'foldcolumn' and a wide character
+  2553  8.0.0127  cancelling completion still formats text
+  1334  8.0.0128  (after 8.0.0126) display test fails on MS-Windows
+  2553  8.0.0129  parallel make still doesn't work
+  2693  8.0.0130  configure uses "ushort" while the Vim code doesn't
+  4053  8.0.0131  not enough test coverage for syntax commands
+  1413  8.0.0132  (after 8.0.0131) test fails because of using :finish
+  2151  8.0.0133  "2;'(" causes ml_get errors in an empty buffer
+  1718  8.0.0134  null pointer access reported by UBsan
+  8593  8.0.0135  relative address does not work with closed fold
+  2856  8.0.0136  when changing indent the wrong fold is opened
+  2715  8.0.0137  when 'maxfuncdepth' set above 200 nesting is limited to 200
+  1872  8.0.0138  (after 8.0.0137) small build fails
+  2233  8.0.0139  (after 8.0.0135) warning for unused argument
+  2612  8.0.0140  pasting inserted text in Visual mode does not work properly
+  1695  8.0.0141  (after 8.0.0137) nested function test fails on AppVeyor
+  1503  8.0.0142  normal colors are wrong with 'termguicolors'
+  2206  8.0.0143  line number of current buffer in getbufinfo() is wrong
+  1345  8.0.0144  when using MSVC the GvimExt directory is cleaned twice
+  3293  8.0.0145  running tests on MS-Windows is noisy
+  2023  8.0.0146  termguicolors uses wrong colors on MS-Windows with ConEmu
+  3113  8.0.0147  searchpair() fails when 'magic' is off
+  7263  8.0.0148  wrong indent in C preprocessor with line continuation
+  3343  8.0.0149  :earlier does not work after reading the undo file
+  3206  8.0.0150  completion for :filter does not skip the pattern
+  6000  8.0.0151  passing buffer content to system() is clumsy
+  1390  8.0.0152  stray channellog created when running tests
+  3196  8.0.0153  (after 8.0.0151) system() test fails on MS-Windows
+  2439  8.0.0154  (after 8.0.0151) system() test fails on OS/X
+  1875  8.0.0155  ubsan complains about NULL pointer
+ 10791  8.0.0156  not enough test coverage for float functions
+  4214  8.0.0157  no completion for :syntax spell and :syntax sync
+ 19641  8.0.0158  (after 8.0.0156) float function test fails on MS-Windows
+  2519  8.0.0159  crash on startup when updating tabline
+  3936  8.0.0160  EMSG() is sometimes used where it should be IEMSG()
+  1956  8.0.0161  (after 8.0.0159) can't build with small features
+  1635  8.0.0162  build error on Fedora 23
+  1978  8.0.0163  cannot build with Ruby 2.4
+  5660  8.0.0164  outdated and misplaced comments
+  2573  8.0.0165  ubsan warns for integer overflow
+  6483  8.0.0166  JSON with a duplicate key gives an internal error
+  5691  8.0.0167  str2nr()/str2float() fail with negative values
+  9266  8.0.0168  not all float functionality is tested
+ 19080  8.0.0169  json_decode() may run out of stack space
+  1576  8.0.0170  crash in channel test
+  5678  8.0.0171  JS style JSON does not support single quotes
+  3145  8.0.0172  command line window does not work
+  4273  8.0.0173  build fails with EBCDIC defined
+  2727  8.0.0174  executing "locale -a" on MS-Windows needlessly
+ 12312  8.0.0175  setting language on MS-Windows does not always work
+  4907  8.0.0176  cannot use :change inside a function definition
+  7235  8.0.0177  BufEnter autocommand not fired for a directory
+  1862  8.0.0178  command count test fails on MS-Windows
+  8495  8.0.0179  cannot have a local value for 'formatprg'
+  2746  8.0.0180  error E937 is used twice
+  1683  8.0.0181  with cursorbind set cursor column highlighting is off
+  1746  8.0.0182  cursor ilne not update when 'cursorbind' is set
+  2165  8.0.0183  ubsan warns for unaligned address
+  3557  8.0.0184  when an error is caught Vim still exits with non-zero result
+  1679  8.0.0185  (after 8.0.0184) system() test fails on MS-Windows
+  3072  8.0.0186  confusing error message from assert_notequal()
+  1503  8.0.0187  cant build with new Ruby version
+  2382  8.0.0188  (after 8.0.0182) redrawing for 'cursorbind' is inefficient
+  7079  8.0.0189  profile commands are not tested
+ 14608  8.0.0190  finding duplicate tags uses a slow linear search
+  2848  8.0.0191  (after 8.0.0187) can't build with Ruby on some systems
+  2365  8.0.0192  (after 8.0.0190) cannot build with tiny features
+  1622  8.0.0193  (after 8.0.0188) accidentally removed #ifdef
+  2204  8.0.0194  (after 8.0.0189) profile test fails if times are equal
+  4685  8.0.0195  (after 8.0.0190) fail to jump to static tag in current file
+  8101  8.0.0196  profile test is slow and does not work on MS-Windows
+  4234  8.0.0197  system() test skips some parts for MS-Windows

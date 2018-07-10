@@ -1,0 +1,40 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Tue, 11 Jul 2017 18:28:46 +0200
+Subject: patch 8.0.0707: freeing wrong memory with certain autocommands
+
+Problem:    Freeing wrong memory when manipulating buffers in autocommands.
+            (James McCoy)
+Solution:   Also set the w_s pointer if w_buffer was NULL.
+---
+ src/ex_cmds.c | 4 ++--
+ src/version.c | 2 ++
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/ex_cmds.c b/src/ex_cmds.c
+index 00cac92..628d27b 100644
+--- a/src/ex_cmds.c
++++ b/src/ex_cmds.c
+@@ -3967,8 +3967,8 @@ do_ecmd(
+ 		     * <VN> We could instead free the synblock
+ 		     * and re-attach to buffer, perhaps.
+ 		     */
+-		    if (curwin->w_buffer != NULL
+-			    && curwin->w_s == &(curwin->w_buffer->b_s))
++		    if (curwin->w_buffer == NULL
++			    || curwin->w_s == &(curwin->w_buffer->b_s))
+ 			curwin->w_s = &(buf->b_s);
+ #endif
+ 		    curwin->w_buffer = buf;
+diff --git a/src/version.c b/src/version.c
+index 6986625..59ef8b2 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -771,6 +771,8 @@ static char *(features[]) =
+ static int included_patches[] =
+ {   /* Add new patch number below this line */
+ /**/
++    707,
++/**/
+     706,
+ /**/
+     703,

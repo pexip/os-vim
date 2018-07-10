@@ -1,0 +1,53 @@
+From: James McCoy <jamessan@debian.org>
+Date: Sat, 12 Nov 2016 12:40:03 -0500
+Subject: Add Zesty Zapus to deb{changelog,sources} syntax files
+
+---
+ runtime/syntax/debchangelog.vim | 4 ++--
+ runtime/syntax/debsources.vim   | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/runtime/syntax/debchangelog.vim b/runtime/syntax/debchangelog.vim
+index a10e4ad..eb02aaf 100644
+--- a/runtime/syntax/debchangelog.vim
++++ b/runtime/syntax/debchangelog.vim
+@@ -3,7 +3,7 @@
+ " Maintainer:  Debian Vim Maintainers <pkg-vim-maintainers@lists.alioth.debian.org>
+ " Former Maintainers: Gerfried Fuchs <alfie@ist.org>
+ "                     Wichert Akkerman <wakkerma@debian.org>
+-" Last Change: 2016 Aug 30
++" Last Change: 2016 Nov 12
+ " URL: https://anonscm.debian.org/cgit/pkg-vim/vim.git/plain/runtime/syntax/debchangelog.vim
+ 
+ " Standard syntax initialization
+@@ -21,7 +21,7 @@ let binNMU='binary-only=yes'
+ syn match debchangelogName	contained "^[[:alnum:]][[:alnum:].+-]\+ "
+ exe 'syn match debchangelogFirstKV	contained "; \('.urgency.'\|'.binNMU.'\)"'
+ exe 'syn match debchangelogOtherKV	contained ", \('.urgency.'\|'.binNMU.'\)"'
+-syn match debchangelogTarget	contained "\v %(frozen|unstable|sid|%(testing|%(old)=stable)%(-proposed-updates|-security)=|experimental|squeeze-%(backports%(-sloppy)=|volatile|lts|security)|wheezy-%(backports%(-sloppy)=|security)|jessie%(-backports|-security)=|stretch|%(devel|precise|trusty|vivid|wily|xenial|yakkety)%(-%(security|proposed|updates|backports|commercial|partner))=)+"
++syn match debchangelogTarget	contained "\v %(frozen|unstable|sid|%(testing|%(old)=stable)%(-proposed-updates|-security)=|experimental|squeeze-%(backports%(-sloppy)=|volatile|lts|security)|wheezy-%(backports%(-sloppy)=|security)|jessie%(-backports|-security)=|stretch|%(devel|precise|trusty|vivid|wily|xenial|yakkety|zesty)%(-%(security|proposed|updates|backports|commercial|partner))=)+"
+ syn match debchangelogVersion	contained "(.\{-})"
+ syn match debchangelogCloses	contained "closes:\_s*\(bug\)\=#\=\_s\=\d\+\(,\_s*\(bug\)\=#\=\_s\=\d\+\)*"
+ syn match debchangelogLP	contained "\clp:\s\+#\d\+\(,\s*#\d\+\)*"
+diff --git a/runtime/syntax/debsources.vim b/runtime/syntax/debsources.vim
+index 2777944..390c430 100644
+--- a/runtime/syntax/debsources.vim
++++ b/runtime/syntax/debsources.vim
+@@ -2,7 +2,7 @@
+ " Language:     Debian sources.list
+ " Maintainer:   Debian Vim Maintainers <pkg-vim-maintainers@lists.alioth.debian.org>
+ " Former Maintainer: Matthijs Mohlmann <matthijs@cacholong.nl>
+-" Last Change: 2016 Sep 27
++" Last Change: 2016 Nov 12
+ " URL: https://anonscm.debian.org/cgit/pkg-vim/vim.git/plain/runtime/syntax/debsources.vim
+ 
+ " Standard syntax initialization
+@@ -25,7 +25,7 @@ let s:supported = [
+       \ 'oldstable', 'stable', 'testing', 'unstable', 'experimental',
+       \ 'squeeze', 'wheezy', 'jessie', 'stretch', 'sid', 'rc-buggy',
+       \
+-      \ 'precise', 'trusty', 'xenial', 'yakkety', 'devel'
++      \ 'precise', 'trusty', 'xenial', 'yakkety', 'zesty', 'devel'
+       \ ]
+ let s:unsupported = [
+       \ 'buzz', 'rex', 'bo', 'hamm', 'slink', 'potato',

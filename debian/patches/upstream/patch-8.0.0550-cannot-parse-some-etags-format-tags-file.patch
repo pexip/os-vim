@@ -1,0 +1,103 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Fri, 7 Apr 2017 20:30:29 +0200
+Subject: patch 8.0.0550: cannot parse some etags format tags file
+
+Problem:    Some etags format tags file use 0x01, breaking the parsing.
+Solution:   Use 0x02 for TAG_SEP. (James McCoy, closes #1614)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/tag.c                    | 13 +++++++------
+ src/testdir/test_taglist.vim | 39 +++++++++++++++++++++++++++++++++++++++
+ src/version.c                |  2 ++
+ 3 files changed, 48 insertions(+), 6 deletions(-)
+ create mode 100644 src/testdir/test_taglist.vim
+
+diff --git a/src/tag.c b/src/tag.c
+index a80a362..80b21c1 100644
+--- a/src/tag.c
++++ b/src/tag.c
+@@ -2335,18 +2335,19 @@ parse_line:
+ 		}
+ 		else
+ 		{
+-#define TAG_SEP 0x01
++#define TAG_SEP 0x02
+ 		    size_t tag_fname_len = STRLEN(tag_fname);
+ #ifdef FEAT_EMACS_TAGS
+ 		    size_t ebuf_len = 0;
+ #endif
+ 
+ 		    /* Save the tag in a buffer.
+-		     * Use 0x01 to separate fields (Can't use NUL, because the
+-		     * hash key is terminated by NUL).
+-		     * Emacs tag: <mtt><tag_fname><0x01><ebuf><0x01><lbuf><NUL>
+-		     * other tag: <mtt><tag_fname><0x01><0x01><lbuf><NUL>
+-		     * without Emacs tags: <mtt><tag_fname><0x01><lbuf><NUL>
++		     * Use 0x02 to separate fields (Can't use NUL because the
++		     * hash key is terminated by NUL, or Ctrl_A because that is
++		     * part of some Emacs tag files -- see parse_tag_line).
++		     * Emacs tag: <mtt><tag_fname><0x02><ebuf><0x02><lbuf><NUL>
++		     * other tag: <mtt><tag_fname><0x02><0x02><lbuf><NUL>
++		     * without Emacs tags: <mtt><tag_fname><0x02><lbuf><NUL>
+ 		     * Here <mtt> is the "mtt" value plus 1 to avoid NUL.
+ 		     */
+ 		    len = (int)tag_fname_len + (int)STRLEN(lbuf) + 3;
+diff --git a/src/testdir/test_taglist.vim b/src/testdir/test_taglist.vim
+new file mode 100644
+index 0000000..7aa830b
+--- /dev/null
++++ b/src/testdir/test_taglist.vim
+@@ -0,0 +1,39 @@
++" test 'taglist' function
++
++func Test_taglist_native_etags()
++  if !has('emacs_tags')
++    return
++  endif
++  call writefile([
++	\ "\x0c",
++	\ "src/os_unix.c,13491",
++	\ "set_signals(\x7f1335,32699",
++	\ "reset_signals(\x7f1407,34136",
++	\ ], 'Xtags')
++
++  set tags=Xtags
++
++  call assert_equal([['set_signals', '1335,32699'], ['reset_signals', '1407,34136']],
++	\ map(taglist('set_signals'), {i, v -> [v.name, v.cmd]}))
++
++  call delete('Xtags')
++endfunc
++
++func Test_taglist_ctags_etags()
++  if !has('emacs_tags')
++    return
++  endif
++  call writefile([
++	\ "\x0c",
++	\ "src/os_unix.c,13491",
++	\ "set_signals(void)\x7fset_signals\x011335,32699",
++	\ "reset_signals(void)\x7freset_signals\x011407,34136",
++	\ ], 'Xtags')
++
++  set tags=Xtags
++
++  call assert_equal([['set_signals', '1335,32699'], ['reset_signals', '1407,34136']],
++	\ map(taglist('set_signals'), {i, v -> [v.name, v.cmd]}))
++
++  call delete('Xtags')
++endfunc
+diff --git a/src/version.c b/src/version.c
+index c301a98..b10438e 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -771,6 +771,8 @@ static char *(features[]) =
+ static int included_patches[] =
+ {   /* Add new patch number below this line */
+ /**/
++    550,
++/**/
+     378,
+ /**/
+     377,

@@ -235,7 +235,7 @@ doc/vcscommand.txt</programlisting>
 	where <replaceable>PKGNAME</replaceable> is the name of the
 	&debian; package shipping it.  There is no need to create the
 	file in postinst, you can ship it normally as a file contained
-	in a your package.<footnote> <para> In the future we might
+	in your package.<footnote> <para> In the future we might
 	    provide a debhelper to installed &vim; registry files in the
 	    right place, but it is not available yet.  </para>
       </footnote> </para>

@@ -1,36 +1,316 @@
+vim (2:8.0.0197-4+deb9u1) stretch; urgency=medium
+
+  * Backport upstream patches to fix CVE-2017-11109  (Closes: #867720)
+    + 8.0.0703: Illegal memory access with empty :doau command
+    + 8.0.0706: Crash when cancelling the cmdline window in Ex mode
+    + 8.0.0707: Freeing wrong memory when manipulating buffers in autocommands
+
+ -- James McCoy <jamessan@debian.org>  Sat, 30 Sep 2017 14:21:38 -0400
+
+vim (2:8.0.0197-4) unstable; urgency=medium
+
+  * Backport upstream patch v8.0.0550 to fix a regression in tag lookups for
+    ctags-generated emacs style tags files.  (Closes: #859426)
+  * Add Artful Aardvark, jessie-backports-sloppy, and
+    stretch-backports/security to deb{changelog,sources} syntax files.
+  * debsources.vim: Require word boundaries around distribution name.
+    (Closes: #859247)
+  * Set $TERM to a known sane value when running tests to avoid test failures
+    due to an unknown $TERM.
+
+ -- James McCoy <jamessan@debian.org>  Sun, 23 Apr 2017 08:10:29 -0400
+
+vim (2:8.0.0197-3) unstable; urgency=high
+
+  * Backport upstream patches v8.0.0377 & v8.0.0378, to fix buffer overflows
+    when reading corrupted undo files.  (Closes: #856266, CVE-2017-6349,
+    CVE-2017-6350)
+
+ -- James McCoy <jamessan@debian.org>  Mon, 06 Mar 2017 22:33:23 -0500
+
+vim (2:8.0.0197-2) unstable; urgency=high
+
+  * Backport upstream patch v8.0.0322, to fix buffer overflow if a spellfile
+    has an invalid length in it.  (Closes: #854969, CVE-2017-5953)
+
+ -- James McCoy <jamessan@debian.org>  Sun, 12 Feb 2017 19:56:16 -0500
+
+vim (2:8.0.0197-1) unstable; urgency=medium
+
+  [ upstream ]
+  * 8.0.0190: Improve performance of tag lookup  (Closes: #673130)
+
+ -- James McCoy <jamessan@debian.org>  Mon, 16 Jan 2017 20:26:10 -0500
+
+vim (2:8.0.0134-1) unstable; urgency=medium
+
+  * Merge upstream tag v8.0.0134
+  * Bump minimum version of debhelper for --dbgsym-migration option.  (Closes:
+    #846183)
+  * debian/rules: Remove '=' from "define" directive to maintain compatibility
+    with make < 3.82.  (Closes: #846312)
+  * syntax/debcontrol.vim: Add sections for Rust and JavaScript.  Thanks to
+    Josh Triplett for the patch!  (Closes: #847539)
+  * Add an (old) NEWS.Debian entry describing the switch from py2 -> py3 for
+    Vim's python language bindings.
+
+ -- James McCoy <jamessan@debian.org>  Wed, 14 Dec 2016 22:33:53 -0500
+
+vim (2:8.0.0095-1) unstable; urgency=high
+
+  * Merge upstream tag v8.0.0095
+    + 8.0.0056: Only allow valid characters in 'filetype', 'syntax' and
+      'keymap'.  (CVE-2016-1248)
+    + 8.0.0089: Fix problems with Gtk 3.22.2. This replaces the proposed
+      patches applied earlier.  (#842070)
+
+ -- James McCoy <jamessan@debian.org>  Tue, 22 Nov 2016 13:23:07 -0500
+
+vim (2:8.0.0049-1) unstable; urgency=medium
+
+  * Merge upstream tag v8.0.0049
+    + 8.0.0038: Define OPEN_CHR_FILES for kFreeBSD to fix Test_read_fifo_utf8
+      test failure.  (Part of #827319)
+  * Disable Perl bindings for kfreebsd-* until #827319 is resolved since the
+    FTBFS was blocking bootstrapping of kfreebsd systems.
+  * Add Zesty Zapus to deb{changelog,sources} syntax files
+  * Cherry-pick two proposed patches to fix vim-gtk3's widget sizing, while
+    upstream Vim and Gtk figure out what the right fix is.  (Related to
+    #842070)
+
+ -- James McCoy <jamessan@debian.org>  Sat, 12 Nov 2016 13:17:06 -0500
+
+vim (2:8.0.0022-1) unstable; urgency=medium
+
+  * syntax/debsources: Recognize https URLs.  Thanks to Joe Stein for the
+    patch!
+  * Add information about defaults.vim to NEWS.Debian and /etc/vim/vimrc.
+    (Closes: #837761)
+  * Update vim-tiny patch to not source defaults.vim when vim.tiny is invoked
+    as vi.
+  * Bump priority of vim-tiny's vi alternative, so it's higher than e3vi.
+    (Closes: #839265)
+
+ -- James McCoy <jamessan@debian.org>  Tue, 04 Oct 2016 23:34:23 -0400
+
+vim (2:8.0.0003-1) unstable; urgency=medium
+
+  [ upstream ]
+  * Vim 8 released!
+  * v8.0.0003: Fix test failures on big-endian architectures.
+
+ -- James McCoy <jamessan@debian.org>  Mon, 12 Sep 2016 21:54:12 -0400
+
+vim (2:7.4.2347-1) unstable; urgency=medium
+
+  [ upstream ]
+  * Fix test failure due to relying on modelines.  (Closes: #837130)
+
+  [ James McCoy ]
+  * Move xxd into its own package.  This allows other packages to express a
+    relationship on xxd itself, rather than vim-common, and also enables
+    turning vim-common into an Arch: all package.
+  * Remove dpkg-dev Build-Depends, since the version is satisifed prior to
+    oldstable.
+
+ -- James McCoy <jamessan@debian.org>  Sat, 10 Sep 2016 23:35:08 -0400
+
+vim (2:7.4.2330-1) unstable; urgency=medium
+
+  [ upstream ]
+  * Highlighted changes:
+    + 7.4.1976: Support 64-bit number variables in VimL.  Use has('num64') to
+      test for presence of the functionality.  (Closes: #788055)
+    + runtime/ftplugin/man.vim:
+      - Use the width of the current window when formatting a man page.
+        (Closes: #827634)
+    + runtime/syntax/rst.vim:
+      - Use underline for emphasized text.  (Closes: #547537)
+    + runtime/tutor/tutor.es:
+      - Fix misspelling of seguido.  (Closes: #834336)
+
+  [ James McCoy ]
+  * Switch from Python2 to Python3 language bindings.  All packaged
+    addons which use Python support both 2 & 3.  (Closes: #729924)
+  * Add mips64el as a recognized architecture in debcontrol files.  Thanks to
+    Reiner Herrmann for the patch.  (Closes: #830545)
+  * Update supported Ubuntu releases in debsources files.
+  * Remove vim-gnome (which uses deprecated gnome2 libraries) in favor of
+    vim-gtk3.  (Closes: #820239)
+  * Run tests during build targets to avoid test failures related to running
+    as (fake)root.
+
+ -- James McCoy <jamessan@debian.org>  Wed, 07 Sep 2016 22:12:11 -0400
+
+vim (2:7.4.1829-1) unstable; urgency=medium
+
+  * Merge upstream tag v7.4.1829
+    + 7.4.1713: Force use of X11 backend under Wayland.  (Closes: #819954)
+    + 7.4.1802: Improve handling of long lines in quickfix lists.  (Closes:
+      #815976)
+    + LogiPat plugin's :ELP command renamed to :LPE, so it doesn't shadow :E.
+      (Closes: #796075)
+
+ -- James McCoy <jamessan@debian.org>  Mon, 09 May 2016 23:06:14 -0400
+
+vim (2:7.4.1689-3) unstable; urgency=medium
+
+  * helpztags: Fix regression in previous upload where the doc file isn't
+    opened, so no tags file is generated.  (Closes: #820313)
+
+ -- James McCoy <jamessan@debian.org>  Thu, 07 Apr 2016 22:37:20 -0400
+
+vim (2:7.4.1689-2) unstable; urgency=medium
+
+  * Stop installing a dangling symlink at
+    /usr/share/vim/addons/doc/matchit.txt.  (Closes: #819796)
+  * Lintian:
+    + Provide more details in vim-doc's long description.  Thanks to Elimar
+      Riesebieter for the patch.  (Closes: #819733)
+  * helpztags:
+    + Don't try to read a file if it can't be opened.  (Closes: #819764)
+    + Don't error if the specified directory doesn't exist.  (Closes: #819809)
+  * Generate vim-policy in a consistent locale.
+
+ -- James McCoy <jamessan@debian.org>  Sun, 03 Apr 2016 09:25:18 -0400
+
+vim (2:7.4.1689-1) unstable; urgency=medium
+
+  * Merge upstream tag v7.4.1689.
+    + Highlighted changes:
+      - 7.4.1142: “:syn iskeyword” command to define the set of keyword
+        characters for syntax highlighting, rather than changing the buffer's
+        'iskeyword' option.
+      - 7.4.1154 et.al.: Support converting between JSON
+        and VimL.  See json_decode(), json_encode(), js_decode(), and
+        js_encode().
+      - 7.4.1169 et.al.: Support async communication with external processes
+        using the new channel and job features.
+      - 7.4.1384 et.al.: Provide native support for managing Vim
+        addons/packages with the :packadd command and 'packpath' option.
+      - 7.4.1402: GTK3 GUI support
+      - 7.4.1578: Support running a function on a periodic basis with the
+        timer_start()/timer_start() functions.
+      - runtime/syntax/sh.vim
+        + Fix incorrect highlighting when case/esac are embedded in a word.
+          (Closes: #818137)
+      - runtime/syntax/sshdconfig.vim
+        + Update with recent keywords, including VersionAddendum.  (Closes:
+          #776834)
+  * Add a vim-gtk3 package.  (Closes: #815750)
+  * Improve reproducibility of Vim builds.  (Closes: #787327)
+    + Use $SOURCE_DATE_EPOCH to set the compilation time displayed in :version
+    + Set a static value for configure's --with-compiledby argument
+  * Migrate to automatic -dbgsym packages
+  * Declare compliance with Policy 3.9.7, no changes needed.
+  * Stop installing empty icon directories in vim-common.  Thanks to Elimar
+    Riesebieter for the patch.  (Closes: #819653)
+
+ -- James McCoy <jamessan@debian.org>  Thu, 31 Mar 2016 21:57:48 -0400
+
+vim (2:7.4.963-1) unstable; urgency=medium
+
+  * Merge upstream tag v7.4.963.
+    + Remove merged patches:
+      - Typo in Spanish translation of swapfile recovery.
+    + Highlighted changes:
+      - 7.4.849: New Insert mode command to maintain the undo sequence across
+        cursor movements (c.f., :help i_CTRL-G_U).
+      - 7.4.858: New quickfix-related commands (:ldo, :lfdo, :cdo, and :cfdo).
+      - indent/yaml.vim: Maintain indent of mapping key when mapping is
+        contained in a list.  (Closes: #713066)
+      - 7.4.941: New 'tagcase' option to control whether tag searches are case
+        insensitive.
+  * Rewrite vim-tiny's help.txt.
+    + Clarify the reasoning for the package and why the help isn't available.
+    + Explicitly mention what the more featureful Vim packages are.
+    + Point to vimhelp.appspot.com for online help, since it is better kept
+      updated.
+  * Update Vcs-* URLs to point to Git.
+  * Install upstream's patchlist as the changelog.  (Closes: #622827)
+  * Fix a typo in vim-policy.  Thanks to Jakuyo Friel for the patch.  (Closes:
+    #773531)
+  * Fix FTBFS when running “dpkg-buildpackage -A”.  (Closes: #806875)
+  * Stop installing menu files.
+  * Install upstream's desktop files and drop the ones from debian/.
+  * Mark vim-runtime/vim-gui-common as Multi-Arch: foreign.  (Closes: #806535)
+
+ -- James McCoy <jamessan@debian.org>  Wed, 09 Dec 2015 23:31:36 -0500
+
+vim (2:7.4.826-1) unstable; urgency=medium
+
+  * Merge upstream tag v7-4-826. Remove merged patches.
+    + Recognize bash completion files for syntax highlighting.  (Closes:
+      #628494)
+    + Update declared license for xxd.  (Closes: #776191)
+  * Enable <S-Insert> mappings when gvim is started via “:gui”.  Based on a
+    patch from Daniel Shahaf.  (Closes: #793781)
+
+ -- James McCoy <jamessan@debian.org>  Sun, 16 Aug 2015 22:17:45 -0400
+
+vim (2:7.4.712-3) unstable; urgency=medium
+
+  * Change Suggests: ttf-dejavu → fonts-dejavu.  (Closes: #783969)
+  * Welcome, wily werewolf.
+  * Remove vim-lesstif transitional package.
+  * Remove obsolete Breaks/Replaces from vim-gui-common.
+  * Lintian:
+    + Add override to vim-common for desktop-command-not-in-package, since vim
+      is provided by the other binary packages.
+    + Remove spelling-error-in-binary overrides for tEH
+    + Remove empty /usr/share/pixmaps directory from vim-gui-common
+  * Declare compliance with policy 3.9.6
+  * Fix FTBFS with newer ghostscript by using ps2write device.  (Closes:
+    #785221)
+  * Make build resilient to changes in the default tcl version.
+  * Update description of vim-tiny to clarify it only exists to provide the vi
+    binary for the base install.  (Closes: #784268)
+
+ -- James McCoy <jamessan@debian.org>  Sat, 13 Jun 2015 01:16:02 -0400
+
+vim (2:7.4.712-2) unstable; urgency=medium
+
+  * Add stretch to Debian syntax files.  (Closes: #783506)
+  * syntax/debsources.vim: Recognize all Debian/Ubuntu releases, but highlight
+    unsupported releases differently.
+  * Add patch upstream/lcs_space-overflow.patch, which fixes an integer
+    overflow when determining whether to apply listchar's space setting.  This
+    fixes the test_listchars failure on certain architectures when PIE is
+    enabled.
+
+ -- James McCoy <jamessan@debian.org>  Thu, 30 Apr 2015 20:25:42 -0400
+
+vim (2:7.4.712-1) unstable; urgency=medium
+
+  * Merge upstream tag v7-4-712
+    + 7.4.586: Remove a cyclic dependency when generating documentation, which
+      results in unreproducible builds.  (Closes: #775562)
+    + 7.4.609: Use a stack of dicts and lists to be marked for garbage
+      collection, thus making it iterative instead of recursive.  Fixes crash
+      with some plugins written in other languages (e.g., lua).  (Closes:
+      #778821)
+    + runtime/syntax/registry.vim: Correct highlighting of comments.  (Closes:
+      #687199)
+    + runtime/syntax/strace.vim: Highlight 2-digit escape sequences the same
+      as 1 or 3-digit escape sequences.  (Closes: #775113)
+  * Remove backported patches upstream/v7-4-576.patch and
+    upstream/netrwSavePosn.patch.
+  * Add a Build-Conflict for autoconf2.13 to avoid a FTBFS if it's installed.
+    (Closes: #781031)
+
+ -- James McCoy <jamessan@debian.org>  Sat, 25 Apr 2015 09:00:09 -0400
+
 vim (2:7.4.488-7+deb8u3pexip1) pexip; urgency=low
 
   * New upstream release
 
  -- John-Mark Bell <jmb@pexip.com>  Tue, 09 May 2017 17:33:41 +0100
 
-vim (2:7.4.488-7+deb8u3) jessie; urgency=medium
-
-  * Backport upstream patches v8.0.0377 & v8.0.0378, to fix buffer overflows
-    when reading corrupted undo files.  (Closes: #856266, CVE-2017-6349,
-    CVE-2017-6350)
-
- -- James McCoy <jamessan@debian.org>  Mon, 06 Mar 2017 23:52:28 -0500
-
 vim (2:7.4.488-7+deb8u2pexip1) pexip; urgency=low
 
   * Migrate to Jessie
 
  -- John-Mark Bell <jmb@pexip.com>  Thu, 30 Mar 2017 23:47:18 +0100
-
-vim (2:7.4.488-7+deb8u2) jessie-security; urgency=high
-
-  * Backport patch 8.0.0322 to fix a buffer overflow if a spellfile has an
-    invalid length in it.  (Closes: #854969, CVE-2017-5953)
-
- -- James McCoy <jamessan@debian.org>  Sun, 12 Feb 2017 20:02:50 -0500
-
-vim (2:7.4.488-7+deb8u1) jessie-security; urgency=high
-
-  * Backport patch 8.0.0056 (and adapt tests) to fix an issue where malicious
-    modelines could execute arbitrary shell commands.  (CVE-2016-1248)
-
- -- James McCoy <jamessan@debian.org>  Wed, 16 Nov 2016 21:27:43 -0500
 
 vim (2:7.4.488-7) unstable; urgency=medium
 
