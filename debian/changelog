@@ -1,3 +1,9 @@
+vim (2:8.0.0197-4+deb9u1pexip1) pexip; urgency=medium
+
+  * Migrate to Stretch
+
+ -- John-Mark Bell <jmb@pexip.com>  Tue, 10 Jul 2018 11:54:52 +0000
+
 vim (2:8.0.0197-4+deb9u1) stretch; urgency=medium
 
   * Backport upstream patches to fix CVE-2017-11109  (Closes: #867720)
