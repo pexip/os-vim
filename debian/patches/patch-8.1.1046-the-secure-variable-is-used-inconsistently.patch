@@ -1,0 +1,64 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Sun, 24 Mar 2019 14:02:04 +0100
+Subject: patch 8.1.1046: the "secure" variable is used inconsistently
+
+Problem:    the "secure" variable is used inconsistently. (Justin M. Keyes)
+Solution:   Set it to one instead of incrementing.
+
+(cherry picked from commit 82b033eff82d3ed0da77fd5f5a1c023766acabba)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/buffer.c  | 2 +-
+ src/option.c  | 9 ++++-----
+ src/version.c | 2 ++
+ 3 files changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/src/buffer.c b/src/buffer.c
+index 98d505f..2c5c282 100644
+--- a/src/buffer.c
++++ b/src/buffer.c
+@@ -5510,7 +5510,7 @@ chk_modeline(
+ 		current_sctx.sc_lnum = 0;
+ #endif
+ 		// Make sure no risky things are executed as a side effect.
+-		++secure;
++		secure = 1;
+ 
+ 		retval = do_set(s, OPT_MODELINE | OPT_LOCAL | flags);
+ 
+diff --git a/src/option.c b/src/option.c
+index 77d1024..4b6157d 100644
+--- a/src/option.c
++++ b/src/option.c
+@@ -5161,13 +5161,12 @@ do_set(
+ 			    // effects in secure mode.  Also when the value was
+ 			    // set with the P_INSECURE flag and is not
+ 			    // completely replaced.
+-			    if (secure
++			    if ((opt_flags & OPT_MODELINE)
+ #ifdef HAVE_SANDBOX
+-				    || sandbox != 0
++				  || sandbox != 0
+ #endif
+-				    || (opt_flags & OPT_MODELINE)
+-				    || (!value_is_replaced && (*p & P_INSECURE)))
+-				++secure;
++				  || (!value_is_replaced && (*p & P_INSECURE)))
++				secure = 1;
+ 
+ 			    // Handle side effects, and set the global value
+ 			    // for ":set" on local options. Note: when setting
+diff --git a/src/version.c b/src/version.c
+index b59878e..1a7ffa4 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -791,6 +791,8 @@ static char *(features[]) =
+ 
+ static int included_patches[] =
+ {   /* Add new patch number below this line */
++/**/
++    1046,
+ /**/
+     948,
+ /**/

@@ -1,4 +1,11 @@
 /etc/
 /usr/bin/
 /usr/share/applications/
-/usr/share/man/man1
+/usr/share/man/da/man1/
+/usr/share/man/de/man1/
+/usr/share/man/fr/man1/
+/usr/share/man/it/man1/
+/usr/share/man/ja/man1/
+/usr/share/man/man1/
+/usr/share/man/pl/man1/
+/usr/share/man/ru/man1/

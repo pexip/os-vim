@@ -19,11 +19,11 @@ preprocessor's __DATE__/__TIME__ symbols will be used.
 ---
  src/config.h.in  |  3 +++
  src/configure.ac | 10 ++++++++++
- src/version.c    |  6 ++++++
- 3 files changed, 19 insertions(+)
+ src/version.c    |  8 ++++++++
+ 3 files changed, 21 insertions(+)
 
 diff --git a/src/config.h.in b/src/config.h.in
-index 38b0ccf..ab8f202 100644
+index d1aaf70..78cf319 100644
 --- a/src/config.h.in
 +++ b/src/config.h.in
 @@ -30,6 +30,9 @@
@@ -37,12 +37,12 @@ index 38b0ccf..ab8f202 100644
  #undef HAVE_ATTRIBUTE_UNUSED
  
 diff --git a/src/configure.ac b/src/configure.ac
-index 1706a8d..9cf8b96 100644
+index 2b7725b..21ca7a1 100644
 --- a/src/configure.ac
 +++ b/src/configure.ac
-@@ -29,6 +29,16 @@ dnl in autoconf needs it, where it uses STDC_HEADERS.
- AC_HEADER_STDC
- AC_HEADER_SYS_WAIT
+@@ -62,6 +62,16 @@ if test x"$ac_cv_prog_cc_c99" != xno; then
+   fi
+ fi
  
 +dnl If $SOURCE_DATE_EPOCH is present in the environment, use that as the
 +dnl "compiled" timestamp in :version's output.  Attempt to get the formatted
@@ -58,10 +58,10 @@ index 1706a8d..9cf8b96 100644
  
  AC_MSG_CHECKING(--enable-fail-if-missing argument)
 diff --git a/src/version.c b/src/version.c
-index 71c0450..dacb42d 100644
+index 9b2e7c9..0b86826 100644
 --- a/src/version.c
 +++ b/src/version.c
-@@ -44,11 +44,17 @@ make_version(void)
+@@ -44,9 +44,13 @@ init_longVersion(void)
       * VAX C can't catenate strings in the preprocessor.
       */
      strcpy(longVersion, VIM_VERSION_LONG_DATE);
@@ -74,8 +74,16 @@ index 71c0450..dacb42d 100644
 +#endif
      strcat(longVersion, ")");
  }
-+# elif defined(BUILD_DATE)
-+char	*longVersion = VIM_VERSION_LONG_DATE BUILD_DATE ")";
- # else
- char	*longVersion = VIM_VERSION_LONG_DATE __DATE__ " " __TIME__ ")";
- # endif
+ 
+@@ -54,7 +58,11 @@ init_longVersion(void)
+     void
+ init_longVersion(void)
+ {
++#ifdef BUILD_DATE
++    char *date_time = BUILD_DATE;
++#else
+     char *date_time = __DATE__ " " __TIME__;
++#endif
+     char *msg = _("%s (%s, compiled %s)");
+     size_t len = strlen(msg)
+ 		+ strlen(VIM_VERSION_LONG_ONLY)

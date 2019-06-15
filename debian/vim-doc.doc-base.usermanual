@@ -7,5 +7,5 @@ Abstract: The Vim user manual.
  on using Vim.
 
 Format: html
-Index: /usr/share/doc/vim-doc/html/usr_toc.html
-Files: /usr/share/doc/vim-doc/html/usr_*.html
+Index: /usr/share/doc/vim/html/usr_toc.html
+Files: /usr/share/doc/vim/html/usr_*.html

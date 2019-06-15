@@ -1,0 +1,27 @@
+.build_template: &build
+  only:
+    - branches
+  before_script:
+    - adduser --home /home/ci ci --quiet --disabled-login --gecos "" --uid 1000
+    - apt-get -q update
+    - env DEBIAN_FRONTEND=noninteractive apt-get -q -y -o Debug::pkgProblemResolver=yes build-dep .
+    - env DEBIAN_FRONTEND=noninteractive apt-get -q -y -o Debug::pkgProblemResolver=yes install --no-install-recommends gitpkg fakeroot sudo
+    - rm -rf ../deb-packages/vim
+    - install -d -o ci ../deb-packages ../deb-packages/vim
+    - export UPSTREAM_VERSION=$(dpkg-parsechangelog -SVersion | sed -e 's/^[0-9]*://' -e 's/\(.*\)-[^-]*/\1/')
+    - sudo -u ci gitpkg --keep-unpacked-source "$CI_COMMIT_SHA" v"$UPSTREAM_VERSION"
+  script:
+    - cd ../deb-packages/vim/vim-"$UPSTREAM_VERSION"
+    - sudo -u ci dpkg-buildpackage -us -uc
+
+test:unstable:
+  <<: *build
+  image: debian:unstable
+
+test:testing:
+  <<: *build
+  image: debian:testing
+
+test:ubuntu-devel:
+  <<: *build
+  image: ubuntu:devel

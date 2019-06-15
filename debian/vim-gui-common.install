@@ -1,0 +1,9 @@
+debian/runtime/gvimrc					etc/vim/
+usr/bin/gvimtutor
+usr/share/applications/gvim.desktop
+usr/share/man/fr/man1/evim.1
+usr/share/man/it/man1/evim.1
+usr/share/man/ja/man1/evim.1
+usr/share/man/man1/evim.1
+usr/share/man/pl/man1/evim.1
+usr/share/man/ru/man1/evim.1

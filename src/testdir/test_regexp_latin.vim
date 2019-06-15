@@ -62,3 +62,25 @@ func Test_eow_with_optional()
     call assert_equal(expected, actual)
   endfor
 endfunc
+
+func Test_backref()
+  new
+  call setline(1, ['one', 'two', 'three', 'four', 'five'])
+  call assert_equal(3, search('\%#=1\(e\)\1'))
+  call assert_equal(3, search('\%#=2\(e\)\1'))
+  call assert_fails('call search("\\%#=1\\(e\\1\\)")', 'E65:')
+  call assert_fails('call search("\\%#=2\\(e\\1\\)")', 'E65:')
+  bwipe!
+endfunc
+
+func Test_multi_failure()
+  set re=1
+  call assert_fails('/a**', 'E61:')
+  call assert_fails('/a*\+', 'E62:')
+  call assert_fails('/a\{a}', 'E554:')
+  set re=2
+  call assert_fails('/a**', 'E871:')
+  call assert_fails('/a*\+', 'E871:')
+  call assert_fails('/a\{a}', 'E870:')
+  set re=0
+endfunc

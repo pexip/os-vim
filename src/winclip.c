@@ -10,7 +10,7 @@
 /*
  * winclip.c
  *
- * Routines common to both Win16 and Win32 for clipboard handling.
+ * Routines for Win32 clipboard handling.
  * Also used by Cygwin, using os_unix.c.
  */
 
@@ -44,7 +44,6 @@ typedef int LPWSTR;
 typedef int UINT;
 #endif
 
-#if defined(FEAT_MBYTE) || defined(PROTO)
 /*
  * Convert an UTF-8 string to UTF-16.
  * "instr[inlen]" is the input.  "inlen" is in bytes.
@@ -179,7 +178,6 @@ WideCharToMultiByte_alloc(UINT cp, DWORD flags,
     }
 }
 
-#endif /* FEAT_MBYTE */
 
 #ifdef FEAT_CLIPBOARD
 /*
@@ -214,9 +212,8 @@ typedef struct
 /*
  * Make vim the owner of the current selection.  Return OK upon success.
  */
-/*ARGSUSED*/
     int
-clip_mch_own_selection(VimClipboard *cbd)
+clip_mch_own_selection(VimClipboard *cbd UNUSED)
 {
     /*
      * Never actually own the clipboard.  If another application sets the
@@ -228,9 +225,8 @@ clip_mch_own_selection(VimClipboard *cbd)
 /*
  * Make vim NOT the owner of the current selection.
  */
-/*ARGSUSED*/
     void
-clip_mch_lose_selection(VimClipboard *cbd)
+clip_mch_lose_selection(VimClipboard *cbd UNUSED)
 {
     /* Nothing needs to be done here */
 }
@@ -303,12 +299,10 @@ clip_mch_request_selection(VimClipboard *cbd)
     VimClipType_t	metadata = { -1, -1, -1, -1 };
     HGLOBAL		hMem = NULL;
     char_u		*str = NULL;
-#if defined(FEAT_MBYTE) && defined(WIN3264)
+#if defined(WIN3264)
     char_u		*to_free = NULL;
 #endif
-#ifdef FEAT_MBYTE
     HGLOBAL		rawh = NULL;
-#endif
     int			str_size = 0;
     int			maxlen;
     size_t		n;
@@ -341,7 +335,6 @@ clip_mch_request_selection(VimClipboard *cbd)
 	}
     }
 
-#ifdef FEAT_MBYTE
     /* Check for Vim's raw clipboard format first.  This is used without
      * conversion, but only if 'encoding' matches. */
     if (IsClipboardFormatAvailable(cbd->format_raw)
@@ -368,79 +361,75 @@ clip_mch_request_selection(VimClipboard *cbd)
     }
     if (str == NULL)
     {
-#endif
-
-#if defined(FEAT_MBYTE) && defined(WIN3264)
-    /* Try to get the clipboard in Unicode if it's not an empty string. */
-    if (IsClipboardFormatAvailable(CF_UNICODETEXT) && metadata.ucslen != 0)
-    {
-	HGLOBAL hMemW;
-
-	if ((hMemW = GetClipboardData(CF_UNICODETEXT)) != NULL)
+#if defined(WIN3264)
+	/* Try to get the clipboard in Unicode if it's not an empty string. */
+	if (IsClipboardFormatAvailable(CF_UNICODETEXT) && metadata.ucslen != 0)
 	{
-	    WCHAR *hMemWstr = (WCHAR *)GlobalLock(hMemW);
+	    HGLOBAL hMemW;
 
-	    /* Use the length of our metadata if possible, but limit it to the
-	     * GlobalSize() for safety. */
-	    maxlen = (int)(GlobalSize(hMemW) / sizeof(WCHAR));
-	    if (metadata.ucslen >= 0)
+	    if ((hMemW = GetClipboardData(CF_UNICODETEXT)) != NULL)
 	    {
-		if (metadata.ucslen > maxlen)
-		    str_size = maxlen;
+		WCHAR *hMemWstr = (WCHAR *)GlobalLock(hMemW);
+
+		/* Use the length of our metadata if possible, but limit it to
+		 * the GlobalSize() for safety. */
+		maxlen = (int)(GlobalSize(hMemW) / sizeof(WCHAR));
+		if (metadata.ucslen >= 0)
+		{
+		    if (metadata.ucslen > maxlen)
+			str_size = maxlen;
+		    else
+			str_size = metadata.ucslen;
+		}
 		else
-		    str_size = metadata.ucslen;
+		{
+		    for (str_size = 0; str_size < maxlen; ++str_size)
+			if (hMemWstr[str_size] == NUL)
+			    break;
+		}
+		to_free = str = utf16_to_enc((short_u *)hMemWstr, &str_size);
+		GlobalUnlock(hMemW);
 	    }
-	    else
+	}
+	else
+#endif
+	    /* Get the clipboard in the Active codepage. */
+	    if (IsClipboardFormatAvailable(CF_TEXT))
+	{
+	    if ((hMem = GetClipboardData(CF_TEXT)) != NULL)
 	    {
-		for (str_size = 0; str_size < maxlen; ++str_size)
-		    if (hMemWstr[str_size] == NUL)
-			break;
+		str = (char_u *)GlobalLock(hMem);
+
+		/* The length is either what our metadata says or the strlen().
+		 * But limit it to the GlobalSize() for safety. */
+		maxlen = (int)GlobalSize(hMem);
+		if (metadata.txtlen >= 0)
+		{
+		    if (metadata.txtlen > maxlen)
+			str_size = maxlen;
+		    else
+			str_size = metadata.txtlen;
+		}
+		else
+		{
+		    for (str_size = 0; str_size < maxlen; ++str_size)
+			if (str[str_size] == NUL)
+			    break;
+		}
+
+#if defined(WIN3264)
+		/* The text is in the active codepage.  Convert to
+		 * 'encoding', going through UTF-16. */
+		acp_to_enc(str, str_size, &to_free, &maxlen);
+		if (to_free != NULL)
+		{
+		    str_size = maxlen;
+		    str = to_free;
+		}
+#endif
 	    }
-	    to_free = str = utf16_to_enc((short_u *)hMemWstr, &str_size);
-	    GlobalUnlock(hMemW);
 	}
     }
-    else
-#endif
-    /* Get the clipboard in the Active codepage. */
-    if (IsClipboardFormatAvailable(CF_TEXT))
-    {
-	if ((hMem = GetClipboardData(CF_TEXT)) != NULL)
-	{
-	    str = (char_u *)GlobalLock(hMem);
-
-	    /* The length is either what our metadata says or the strlen().
-	     * But limit it to the GlobalSize() for safety. */
-	    maxlen = (int)GlobalSize(hMem);
-	    if (metadata.txtlen >= 0)
-	    {
-		if (metadata.txtlen > maxlen)
-		    str_size = maxlen;
-		else
-		    str_size = metadata.txtlen;
-	    }
-	    else
-	    {
-		for (str_size = 0; str_size < maxlen; ++str_size)
-		    if (str[str_size] == NUL)
-			break;
-	    }
-
-# if defined(FEAT_MBYTE) && defined(WIN3264)
-	    /* The text is in the active codepage.  Convert to 'encoding',
-	     * going through UTF-16. */
-	    acp_to_enc(str, str_size, &to_free, &maxlen);
-	    if (to_free != NULL)
-	    {
-		str_size = maxlen;
-		str = to_free;
-	    }
-# endif
-	}
-    }
-#ifdef FEAT_MBYTE
-    }
-#endif
 
     if (str != NULL && *str != NUL)
     {
@@ -462,12 +451,10 @@ clip_mch_request_selection(VimClipboard *cbd)
     /* unlock the global object */
     if (hMem != NULL)
 	GlobalUnlock(hMem);
-#ifdef FEAT_MBYTE
     if (rawh != NULL)
 	GlobalUnlock(rawh);
-#endif
     CloseClipboard();
-#if defined(FEAT_MBYTE) && defined(WIN3264)
+#if defined(WIN3264)
     vim_free(to_free);
 #endif
 }
@@ -484,7 +471,7 @@ clip_mch_set_selection(VimClipboard *cbd)
     HGLOBAL		hMemRaw = NULL;
     HGLOBAL		hMem = NULL;
     HGLOBAL		hMemVim = NULL;
-# if defined(FEAT_MBYTE) && defined(WIN3264)
+# if defined(WIN3264)
     HGLOBAL		hMemW = NULL;
 # endif
 
@@ -501,7 +488,6 @@ clip_mch_set_selection(VimClipboard *cbd)
     metadata.ucslen = 0;
     metadata.rawlen = 0;
 
-#ifdef FEAT_MBYTE
     /* Always set the raw bytes: 'encoding', NUL and the text.  This is used
      * when copy/paste from/to Vim with the same 'encoding', so that illegal
      * bytes can also be copied and no conversion is needed. */
@@ -521,9 +507,8 @@ clip_mch_set_selection(VimClipboard *cbd)
 	else
 	    metadata.rawlen = 0;
     }
-#endif
 
-# if defined(FEAT_MBYTE) && defined(WIN3264)
+# if defined(WIN3264)
     {
 	WCHAR		*out;
 	int		len = metadata.txtlen;
@@ -605,7 +590,7 @@ clip_mch_set_selection(VimClipboard *cbd)
 	{
 	    SetClipboardData(cbd->format, hMemVim);
 	    hMemVim = 0;
-# if defined(FEAT_MBYTE) && defined(WIN3264)
+# if defined(WIN3264)
 	    if (hMemW != NULL)
 	    {
 		if (SetClipboardData(CF_UNICODETEXT, hMemW) != NULL)
@@ -626,7 +611,7 @@ clip_mch_set_selection(VimClipboard *cbd)
 	GlobalFree(hMemRaw);
     if (hMem)
 	GlobalFree(hMem);
-# if defined(FEAT_MBYTE) && defined(WIN3264)
+# if defined(WIN3264)
     if (hMemW)
 	GlobalFree(hMemW);
 # endif
@@ -636,7 +621,6 @@ clip_mch_set_selection(VimClipboard *cbd)
 
 #endif /* FEAT_CLIPBOARD */
 
-#if defined(FEAT_MBYTE) || defined(PROTO)
 /*
  * Note: the following two functions are only guaranteed to work when using
  * valid MS-Windows codepages or when iconv() is available.
@@ -761,9 +745,8 @@ utf16_to_enc(short_u *str, int *lenp)
 
     return enc_str;
 }
-#endif /* FEAT_MBYTE */
 
-#if (defined(FEAT_MBYTE) && defined(WIN3264)) || defined(PROTO)
+#if defined(WIN3264) || defined(PROTO)
 /*
  * Convert from the active codepage to 'encoding'.
  * Input is "str[str_size]".

@@ -1,0 +1,69 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Sun, 26 May 2019 19:20:43 +0200
+Subject: patch 8.1.1401: misspelled mkspellmem as makespellmem
+
+Problem:    Misspelled mkspellmem as makespellmem.
+Solution:   Drop duplicate help entry, fix test. (Naruhiko Nishino, Ken
+            Takata, closes #4437)
+
+(cherry picked from commit 076073950c44ea0e35bc39d539dc7ab41bf9c7ec)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ runtime/doc/options.txt       | 8 ++------
+ src/testdir/test_modeline.vim | 2 +-
+ src/version.c                 | 2 ++
+ 3 files changed, 5 insertions(+), 7 deletions(-)
+
+diff --git a/runtime/doc/options.txt b/runtime/doc/options.txt
+index 7b25f20..4ab87db 100644
+--- a/runtime/doc/options.txt
++++ b/runtime/doc/options.txt
+@@ -5245,12 +5245,6 @@ A jump table for the options with a short description can be found at |Q_op|.
+ <	This option cannot be set from a |modeline| or in the |sandbox|, for
+ 	security reasons.
+ 
+-						*'makespellmem'* *'msm'*
+-'makespellmem' 'msm'		string	(default "460000,2000,500")
+-			global
+-	Values relevant only when compressing a spell file, see |spell|.
+-	This option cannot be set from a |modeline| or in the |sandbox|.
+-
+ 						*'matchpairs'* *'mps'*
+ 'matchpairs' 'mps'	string	(default "(:),{:},[:]")
+ 			local to buffer
+@@ -5413,6 +5407,8 @@ A jump table for the options with a short description can be found at |Q_op|.
+ <	If you have less than 512 Mbyte |:mkspell| may fail for some
+ 	languages, no matter what you set 'mkspellmem' to.
+ 
++	This option cannot be set from a |modeline| or in the |sandbox|.
++
+ 				   *'modeline'* *'ml'* *'nomodeline'* *'noml'*
+ 'modeline' 'ml'		boolean	(Vim default: on (off for root),
+ 				 Debian: off, Vi default: off)
+diff --git a/src/testdir/test_modeline.vim b/src/testdir/test_modeline.vim
+index 7251036..b5513d5 100644
+--- a/src/testdir/test_modeline.vim
++++ b/src/testdir/test_modeline.vim
+@@ -116,7 +116,7 @@ func Test_modeline_fails_always()
+   call s:modeline_fails('luadll', 'luadll=Something()', 'E520:')
+   call s:modeline_fails('makeef', 'makeef=Something()', 'E520:')
+   call s:modeline_fails('makeprg', 'makeprg=Something()', 'E520:')
+-  call s:modeline_fails('makespellmem', 'makespellmem=Something()', 'E520:')
++  call s:modeline_fails('mkspellmem', 'mkspellmem=Something()', 'E520:')
+   call s:modeline_fails('mzschemedll', 'mzschemedll=Something()', 'E520:')
+   call s:modeline_fails('mzschemegcdll', 'mzschemegcdll=Something()', 'E520:')
+   call s:modeline_fails('modelineexpr', 'modelineexpr', 'E520:')
+diff --git a/src/version.c b/src/version.c
+index a0ca945..1b5d863 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -791,6 +791,8 @@ static char *(features[]) =
+ 
+ static int included_patches[] =
+ {   /* Add new patch number below this line */
++/**/
++    1401,
+ /**/
+     1382,
+ /**/

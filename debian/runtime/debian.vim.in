@@ -27,12 +27,21 @@ if &term =~ "xterm-debian" || &term =~ "xterm-xfree86"
 endif
 
 " Some Debian-specific things
-if has("autocmd")
-  if has('gui')
-    " Make shift-insert work like in Xterm
-    autocmd GUIEnter * if empty(maparg("<S-Insert>", "nvso")) | execute "map <S-Insert> <MiddleMouse>" | endif
-    autocmd GUIEnter * if empty(maparg("<S-Insert>", "ic")) | execute "map! <S-Insert> <MiddleMouse>" | endif
-  endif
+if has('gui')
+  " Must define this within the :if so it does not cause problems with
+  " vim-tiny (which does not have +eval)
+  function! <SID>MapExists(name, modes)
+    for mode in split(a:modes, '\zs')
+      if !empty(maparg(a:name, mode))
+        return 1
+      endif
+    endfor
+    return 0
+  endfunction
+
+  " Make shift-insert work like in Xterm
+  autocmd GUIEnter * if !<SID>MapExists("<S-Insert>", "nvso") | execute "map <S-Insert> <MiddleMouse>" | endif
+  autocmd GUIEnter * if !<SID>MapExists("<S-Insert>", "ic") | execute "map! <S-Insert> <MiddleMouse>" | endif
 endif
 
 " Set paper size from /etc/papersize if available (Debian-specific)

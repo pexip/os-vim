@@ -1,0 +1,42 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Thu, 23 May 2019 17:35:55 +0200
+Subject: patch 8.1.1368: modeline test fails with python but without
+ pythonhome
+
+Problem:    Modeline test fails with python but without pythonhome.
+Solution:   Correct test argument.
+
+(cherry picked from commit e09244ee3567d658c293fb1ae0d47a1a8be870ac)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/testdir/test_modeline.vim | 2 +-
+ src/version.c                 | 2 ++
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/testdir/test_modeline.vim b/src/testdir/test_modeline.vim
+index 89c06ba..7251036 100644
+--- a/src/testdir/test_modeline.vim
++++ b/src/testdir/test_modeline.vim
+@@ -127,7 +127,7 @@ func Test_modeline_fails_always()
+   call s:modeline_fails('patchexpr', 'patchexpr=Something()', 'E520:')
+   call s:modeline_fails('printexpr', 'printexpr=Something()', 'E520:')
+   call s:modeline_fails('pythondll', 'pythondll=Something()', 'E520:')
+-  call s:modeline_fails('pythonhome', 'pythondll=Something()', 'E520:')
++  call s:modeline_fails('pythonhome', 'pythonhome=Something()', 'E520:')
+   call s:modeline_fails('pythonthreedll', 'pythonthreedll=Something()', 'E520:')
+   call s:modeline_fails('pythonthreehome', 'pythonthreehome=Something()', 'E520:')
+   call s:modeline_fails('pyxversion', 'pyxversion=Something()', 'E520:')
+diff --git a/src/version.c b/src/version.c
+index 0ce8831..90acd77 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -791,6 +791,8 @@ static char *(features[]) =
+ 
+ static int included_patches[] =
+ {   /* Add new patch number below this line */
++/**/
++    1368,
+ /**/
+     1367,
+ /**/

@@ -1,3 +1,4 @@
-version=3
-opts=pasv,dversionmangle=s/\.\d+$// \
-  ftp://ftp.vim.org/pub/vim/unix/vim-(\d+\.\d+)\.tar\.bz2
+version=4
+opts=filenamemangle=s%(?:.*?)?v(\d[\d.]+)\.tar\.gz%vim-$1.tar.gz% \
+  https://github.com/vim/vim/tags \
+  (?:.*?)?v(\d[\d.]+)\.tar\.gz

@@ -1,21 +1,27 @@
 Source: vim
 Section: editors
 Priority: optional
-Maintainer: Debian Vim Maintainers <pkg-vim-maintainers@lists.alioth.debian.org>
+Maintainer: Debian Vim Maintainers <team+vim@tracker.debian.org>
 Uploaders:
  James McCoy <jamessan@debian.org>,
-Standards-Version: 3.9.7
+Standards-Version: 4.3.0
+Rules-Requires-Root: no
 Build-Depends:
  autoconf,
- debhelper (>= 9.20160114),
+ cscope <!nocheck>,
+ debhelper (>= 11~),
+# SOURCE_DATE_EPOCH provided by pkg-info.mk
+ dpkg-dev (>= 1.18.8),
  libacl1-dev,
  libgpmg1-dev [linux-any],
  libgtk-3-dev,
  libgtk2.0-dev,
  liblua5.2-dev,
- libperl-dev [!kfreebsd-any],
+ libperl-dev,
  libselinux1-dev [linux-any],
- libtinfo-dev | libncurses5-dev,
+ libncurses-dev,
+# Needed to run libvterm's tests
+ libtool-bin <!nocheck>,
  libxaw7-dev,
  libxpm-dev,
  libxt-dev,
@@ -26,30 +32,24 @@ Build-Depends:
  tcl-dev,
 Build-Conflicts:
  autoconf2.13,
- ruby1.8 (<< 1.8.7.358-8),
- ruby1.8-dev (<< 1.8.7.358-8),
 Build-Depends-Indep:
  docbook-utils,
  docbook-xml,
  ghostscript,
  pdf2svg,
-Vcs-Git: https://anonscm.debian.org/cgit/pkg-vim/vim.git/
-Vcs-Browser: https://anonscm.debian.org/cgit/pkg-vim/vim.git
-Homepage: http://www.vim.org/
+Vcs-Git: https://salsa.debian.org/vim-team/vim.git
+Vcs-Browser: https://salsa.debian.org/vim-team/vim
+Homepage: https://www.vim.org/
 
 Package: vim-common
 Priority: important
 Architecture: all
+Multi-Arch: foreign
 Depends:
  xxd,
  ${misc:Depends},
- ${shlibs:Depends},
 Recommends:
  vim | vim-gtk | vim-gtk3 | vim-athena | vim-nox | vim-tiny,
-Breaks:
- vim-gui-common (<< 2:7.4.488-4~),
-Replaces:
- vim-gui-common (<< 2:7.4.488-4~),
 Description: Vi IMproved - Common files
  Vim is an almost compatible version of the UNIX editor Vi.
  .
@@ -94,6 +94,7 @@ Description: Vi IMproved - Runtime files
 Package: vim-doc
 Section: doc
 Architecture: all
+Multi-Arch: foreign
 Depends:
  ${misc:Depends},
 Description: Vi IMproved - HTML documentation
@@ -149,7 +150,6 @@ Description: Vi IMproved - enhanced vi editor
  (or less).
 
 Package: vim-gtk
-Priority: extra
 Architecture: any
 Depends:
  vim-common (= ${source:Version}),
@@ -167,10 +167,10 @@ Provides:
  gvim,
  vim,
  vim-lua,
- vim-python,
+ vim-perl,
+ vim-python3,
  vim-ruby,
  vim-tcl,
- ${vim:Perl-Provides},
 Description: Vi IMproved - enhanced vi editor - with GTK2 GUI
  Vim is an almost compatible version of the UNIX editor Vi.
  .
@@ -179,10 +179,9 @@ Description: Vi IMproved - enhanced vi editor - with GTK2 GUI
  completion, block operations, folding, Unicode support, etc.
  .
  This package contains a version of vim compiled with a GTK2 GUI
- and support for scripting with Lua, Perl, Python, Ruby, and Tcl.
+ and support for scripting with Lua, Perl, Python 3, Ruby, and Tcl.
 
 Package: vim-gtk3
-Priority: extra
 Architecture: any
 Depends:
  vim-common (= ${source:Version}),
@@ -200,10 +199,10 @@ Provides:
  gvim,
  vim,
  vim-lua,
- vim-python,
- vim-ruby,
+ vim-perl,
+ vim-python3,
+ ${vim:Ruby-Provides},
  vim-tcl,
- ${vim:Perl-Provides},
 Description: Vi IMproved - enhanced vi editor - with GTK3 GUI
  Vim is an almost compatible version of the UNIX editor Vi.
  .
@@ -212,10 +211,9 @@ Description: Vi IMproved - enhanced vi editor - with GTK3 GUI
  completion, block operations, folding, Unicode support, etc.
  .
  This package contains a version of vim compiled with a GTK3 GUI
- and support for scripting with Lua, Perl, Python, Ruby, and Tcl.
+ and support for scripting with Lua, Perl, Python 3,${vim:Ruby-Desc} and Tcl.
 
 Package: vim-nox
-Priority: extra
 Architecture: any
 Depends:
  vim-common (= ${source:Version}),
@@ -229,10 +227,10 @@ Provides:
  editor,
  vim,
  vim-lua,
- vim-python,
+ vim-perl,
+ vim-python3,
  vim-ruby,
  vim-tcl,
- ${vim:Perl-Provides},
 Description: Vi IMproved - enhanced vi editor - with scripting languages support
  Vim is an almost compatible version of the UNIX editor Vi.
  .
@@ -241,10 +239,9 @@ Description: Vi IMproved - enhanced vi editor - with scripting languages support
  completion, block operations, folding, Unicode support, etc.
  .
  This package contains a version of vim compiled with support for
- scripting with Lua, Perl, Python, Ruby, and Tcl but no GUI.
+ scripting with Lua, Perl, Python 3, Ruby, and Tcl but no GUI.
 
 Package: vim-athena
-Priority: extra
 Architecture: any
 Depends:
  vim-common (= ${source:Version}),
@@ -260,10 +257,10 @@ Provides:
  gvim,
  vim,
  vim-lua,
- vim-python,
+ vim-perl,
+ vim-python3,
  vim-ruby,
  vim-tcl,
- ${vim:Perl-Provides},
 Description: Vi IMproved - enhanced vi editor - with Athena GUI
  Vim is an almost compatible version of the UNIX editor Vi.
  .
@@ -272,22 +269,11 @@ Description: Vi IMproved - enhanced vi editor - with Athena GUI
  completion, block operations, folding, Unicode support, etc.
  .
  This package contains a version of vim compiled with a Athena GUI
- and support for scripting with Lua, Perl, Python, Ruby, and Tcl.
-
-Package: vim-gnome
-Priority: extra
-Architecture: all
-Depends:
- vim-gtk3,
- ${misc:Depends},
-Section: oldlibs
-Description: Vi IMproved - enhanced vi editor (dummy package)
- This is a transitional package to install the vim-gtk3 package.  You may
- remove this package if nothing depends on it.
+ and support for scripting with Lua, Perl, Python 3, Ruby, and Tcl.
 
 Package: xxd
-Priority: extra
 Architecture: any
+Multi-Arch: foreign
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},

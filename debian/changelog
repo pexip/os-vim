@@ -1,49 +1,345 @@
-vim (2:8.0.0197-4+deb9u3) stretch-security; urgency=medium
+vim (2:8.1.0875-5) unstable; urgency=medium
 
-  * Backport patch 8.1.0067 to fix loss of syntax highlighting (Closes: #930718)
-    + 8.1.0067: syntax highlighting not working when re-entering a buffer
-
- -- James McCoy <jamessan@debian.org>  Fri, 21 Jun 2019 00:10:35 -0400
-
-vim (2:8.0.0197-4+deb9u2) stretch-security; urgency=high
-
-  * Backport patches to address CVE-2019-12735 (Closes: #930020)
-    + 8.0.0649: when opening a help file the filetype is set several times
-    + 8.0.0651: build failure without the auto command feature
-    + 8.1.0066: nasty autocommand causes using freed memory
-    + 8.1.0177: defining function in sandbox is inconsistent
-    + 8.1.0189: function defined in sandbox not tested
-    + 8.1.0205: invalid memory access with invalid modeline
-    + 8.1.0206: duplicate test function name
-    + 8.1.0208: file left behind after running individual test
-    + 8.1.0506: modelinen test fails when run by root
-    + 8.1.0538: evaluating a modeline might invoke using a shell command
-    + 8.1.0539: cannot build without the sandbox
-    + 8.1.0540: may evaluate insecure value when appending to option
-    + 8.1.0544: setting 'filetype' in a modeline causes an error
-    + 8.1.0546: modeline test with keymap fails
-    + 8.1.0547: modeline test with keymap still fails
-    + 8.1.0613: when executing an insecure function the secure flag is stuck
-    + 8.1.1046: the "secure" variable is used inconsistently
-    + 8.1.1365: source command doesn't check for the sandbox
-    + 8.1.1366: using expressions in a modeline is unsafe
+  * gbp.conf: Set debian-tag to debian/%(version)s
+  * Backport 'modelineexpr' patches to further restrict modelines
+    + 8.1.1366: Using expressions in a modeline is unsafe
     + 8.1.1367: can set 'modelineexpr' in modeline
-    + 8.1.1368: modeline test fails with python but without pythonhome
-    + 8.1.1382: error when editing test files
-    + 8.1.1401: misspelled mkspellmem and makespellmem
-  * gbp.conf: Set debian-branch to debian/stretch
-  * gbp.conf: Set upstream-tag to v%(version)s
+    + 8.1.1368: Modeline test fails with python but without pythonhome
+    + 8.1.1382: Error when editing test file
+    + 8.1.1401: misspelled mkspellmem as makespellmem (test fix)
 
- -- James McCoy <jamessan@debian.org>  Sun, 16 Jun 2019 13:06:40 -0400
+ -- James McCoy <jamessan@debian.org>  Sat, 15 Jun 2019 12:41:15 -0400
 
-vim (2:8.0.0197-4+deb9u1) stretch; urgency=medium
+vim (2:8.1.0875-4) unstable; urgency=high
+
+  * Backport 8.1.1046 and 8.1.1365 to fix CVE-2019-12735  (Closes: #930020)
+    + 8.1.1365: source command doesn't check for the sandbox
+
+ -- James McCoy <jamessan@debian.org>  Fri, 07 Jun 2019 06:49:19 -0400
+
+vim (2:8.1.0875-3) unstable; urgency=medium
+
+  * syntax/deb{changelog,sources}: Update release names for Debian/Ubuntu
+    (Closes: #927167)
+
+ -- James McCoy <jamessan@debian.org>  Sun, 05 May 2019 23:41:10 -0400
+
+vim (2:8.1.0875-2) unstable; urgency=medium
+
+  * Backport 8.1.0878 and 8.1.0884 to fix test failures on kFreeBSD.
+  * Backport 8.1.0948 to avoid enabling filetype detection when the +eval
+    feature isn't present.  (Closes: #922106)
+
+ -- James McCoy <jamessan@debian.org>  Fri, 22 Feb 2019 07:55:04 -0500
+
+vim (2:8.1.0875-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.1.0875
+    + "autocmd", "multi_byte", "virtualedit", and "visualextra" features are
+      now always enabled.
+    + New Blob type, for working with raw bytes.
+    + Support a 3rd character for the "tab" setting in the 'listchars' option.
+    + *.com files under /etc/apache2/sites-* are properly recognized as apache
+       filetype.  (Closes: #740387)
+    + syntax/debchangelog.vim: Recognize "emergency" as a valid urgency.
+      (Closes: #920522)
+    + Support 64-bit offsets for xxd.  (Closes: #771456)
+  * rules:
+    + Remove --enable-multibyte since it is always enabled
+  * debian.vim:
+    + Remove has('autocmd') checks since it is always enabled
+  * gvimrc:
+    + Adapt gui check to work for gtk2/gtk3
+
+ -- James McCoy <jamessan@debian.org>  Mon, 04 Feb 2019 23:11:09 -0500
+
+vim (2:8.1.0693-2) unstable; urgency=medium
+
+  * Separate /etc/vim and /usr/share/vim/vimfiles.  The former should be for
+    the sysadmin, while the latter is used by packages.
+    + Make /usr/share/vim/vimfiles a directory, not a symlink to /etc/vim
+    + Add /etc/vim to the default 'runtimepath'
+
+ -- James McCoy <jamessan@debian.org>  Sat, 05 Jan 2019 15:53:12 -0500
+
+vim (2:8.1.0693-1) unstable; urgency=medium
+
+  * Merge upstream tag v8.1.0693
+  * control:
+    + Remove obsolete vim-gnome package
+    + Remove ${shlibs:Depends} from vim-common, since it is Arch: all
+    + Build-Depend on libtool-bin to run libterm tests
+    + Replace libtinfo-dev Build-Depends with libncurses-dev
+    + Change Homepage to https://www.vim.org/
+  * Use debian/clean to cleanup files/directories
+  * rules:
+    + Rename stamp files so dh_clean deletes them automatically
+    + Ensure helptags are generated before running tests
+  * Declare compliance with Policy 4.3.0, no changes needed
+
+ -- James McCoy <jamessan@debian.org>  Sat, 05 Jan 2019 12:34:12 -0500
+
+vim (2:8.1.0549-1) unstable; urgency=medium
+
+  * Merge upstream tag v8.1.0549
+    + Built-in support for performing diffs, via the libxdiff library, which
+      allows setting the diff algorithm (:help 'diffopt').
+    + Fix formatting of example output in translated xxd man pages.  (Closes:
+      #909217)
+  * gitlab-ci.yml: Run build as non-root user
+  * Mark vim-common Multi-Arch: foreign (Closes: #910732)
+
+ -- James McCoy <jamessan@debian.org>  Tue, 27 Nov 2018 20:38:28 -0500
+
+vim (2:8.1.0320-1) unstable; urgency=medium
+
+  * Merge upstream tag v8.1.0320
+    - syntax/debcontrol.vim:
+      + Recognize riscv64 as an architecture (Closes: #905435)
+    - syntax/sh.vim:
+      + Fix syntax highlighting of curly braces inside parameter expansion
+        (Closes: #904875)
+  * rules:
+    + Stop using --dbgsym-migration
+    + Stop overriding default dpkg-deb compression
+  * Declare compliance with Policy 4.2.0, no changes needed
+  * control: Add cscope to Build-Depends to test cscope integration
+
+ -- James McCoy <jamessan@debian.org>  Wed, 22 Aug 2018 19:46:39 -0400
+
+vim (2:8.1.0229-1) unstable; urgency=medium
+
+  [ upstream ]
+  * Unicode 11 support
+  * New options ('vartabstop'/'varsofttabstop') to define variable width tab
+    stops.
+  * Danish translation
+
+  [ James McCoy ]
+  * Change "Compiled by" string to team+vim@tracker.d.o
+  * rules:
+    + Only run scratch target, not distclean, in autoconf-stamp to avoid FTBFS
+      with parallel builds.
+    + Allow defining VARIANT from the environment.  Thanks to Guillem Jover
+      for the suggestion (Closes: #903927)
+  * Change vim-python Provides to vim-python3.  While Vim only supports py2 or
+    py3, Neovim supports both so the change in provides allows
+    python(3)-neovim to differentiate the supported Python version.
+
+ -- James McCoy <jamessan@debian.org>  Thu, 02 Aug 2018 21:44:43 -0400
+
+vim (2:8.1.0089-1) unstable; urgency=medium
+
+  * New upstream release
+    + New syntax highlighting for machine-readable debian/copyright files.
+      (Closes: #869965)
+    + Fix mis-highlighting of architectures in debian/control files.  (Closes:
+      #900476)
+  * Change Maintainer to team+vim@tracker.debian.org
+  * Add wildcard to binaries-have-file-conflict override between
+    vim-tiny/vim-runtime to account for upstream releases.
+
+ -- James McCoy <jamessan@debian.org>  Tue, 19 Jun 2018 22:44:05 -0400
+
+vim (2:8.0.1766-1) unstable; urgency=medium
+
+  [ David Rabel ]
+  * d/copyright: Fix path to tee.c
+
+  [ upstream ]
+  * 8.0.1477: Avoid cursor flicker when changing (de)focusing the terminal.
+    (Closes: #890642)
+  * 8.0.1491: New 'pumwidth' option allows controlling the width of the popup
+    menu.  (Closes: #450481)
+  * 8.0.1744: Skip Test_writefile_sync_dev_stdout when /dev/stdout isn't
+    writable.  (Closes: #894565)
+  * syntax/config.vim: Fix highlighting matching paren for AC_MSG_* syntax
+    items.  (Closes: #881654)
+  * syntax/debcontrol.vim: Recognize Testsuite and Testsuite-Triggers fields.
+    (Closes: #886230)
+  * syntax/sh.vim: Do not highlight substring processing as an error for POSIX
+    sh.  (Closes: #885938)
+
+  [ James McCoy ]
+  * watch: Track git tags instead of major releases
+  * Declare compliance with Policy 4.1.4, no changes needed
+  * control: Use 11~ for minimum debhelper version to ease backporting
+  * rules:
+    + Fold config.mk handling into autoconf-stamp target
+    + Use C.UTF-8 locale when running tests to avoid an upstream bug in the
+      tests.  When not run in a UTF-8 locale, a child Vim used by the tests
+      displays some unicode characters incorrectly, breaking the test.
+
+ -- James McCoy <jamessan@debian.org>  Thu, 26 Apr 2018 22:08:08 -0400
+
+vim (2:8.0.1453-1) unstable; urgency=medium
+
+  [ upstream ]
+  * 8.0.1452: terminal test fails on some systems
+    + This should fix the massive FTBFS on the buildds
+  * 8.0.1453: terminal test fails on some slow terminals
+
+ -- James McCoy <jamessan@debian.org>  Fri, 02 Feb 2018 15:37:32 -0500
+
+vim (2:8.0.1451-1) unstable; urgency=medium
+
+  [ David Rabel ]
+  * Update Standards-Version to 4.1.3
+
+  [ upstream ]
+  * 8.0.1444: missing -D_FILE_OFFSET_BITS=64 may cause problems
+    This should work around the inconsistent handling of large file support in
+    glibc (#888566), which closes: #827319.
+
+  [ James McCoy ]
+  * Re-enable Perl bindings on kFreeBSD
+  * Change Vcs-* to salsa.d.o
+  * Bump debhelper compat to 11
+  * Set R³ to no
+  * d/control: Use https URL for Homepage
+  * vim-doc: Move documentation under /usr/share/doc/vim, per §12.3
+  * Remove doc/<arch pkg> → doc/<all pkg> symlinks
+  * d/rules: Set .NOTPARALLEL to avoid dh_prep clobbering each other
+
+ -- James McCoy <jamessan@debian.org>  Thu, 01 Feb 2018 19:07:29 -0500
+
+vim (2:8.0.1401-2) unstable; urgency=medium
+
+  * debian.vim: Move a function definition inside an :if so it doesn't cause
+    vim-tiny to spew lots of errors.  (Closes: #885073)
+
+ -- James McCoy <jamessan@debian.org>  Sun, 24 Dec 2017 08:21:33 -0500
+
+vim (2:8.0.1401-1) unstable; urgency=medium
+
+  [ upstream ]
+  * syntax/sh.vim:
+    + Fix syntax highlighting of $() when the /bin/sh is detected as
+      POSIX-compliant.  (Closes: #848663)
+    + Correctly highlight escaped single-quotes inside test expressions.
+      (Closes: #761064)
+
+  [ James McCoy ]
+  * runtime/debian.vim:
+    + Fix mechanism used to check for <S-Insert> mappings, since maparg()
+      doesn't understand multiple modes in the {mode} argument.  Thanks to
+      Sergey Vlasov for the patch!  (Closes: #883422)
+  * syntax/debcontrol.vim:
+    + Fix highlighting of "Section: javascript" … again.  (Closes: #884495)
+
+ -- James McCoy <jamessan@debian.org>  Sun, 17 Dec 2017 22:32:25 -0500
+
+vim (2:8.0.1257-2) unstable; urgency=medium
+
+  * Add patch to fix flakiness in test_search.vim
+  * syntax/debcontrol.vim:
+    + Recognize golang section.  Thanks to Guillem Jover.  (Closes: #880698)
+
+ -- James McCoy <jamessan@debian.org>  Sat, 04 Nov 2017 00:17:46 -0400
+
+vim (2:8.0.1257-1) unstable; urgency=medium
+
+  [ upstream ]
+  * 8.0.1246: Fix flaky popup test, which should fix the various FTBFS from
+    the last upload.
+
+  [ James McCoy ]
+  * syntax/debsources.vim:
+    + Fix syntax error in definition of unsupported releases.  Thanks to Josh
+      Triplett.  (Closes: #879986)
+  * Declare compliance with Policy 4.1.1, no changes needed.
+
+ -- James McCoy <jamessan@debian.org>  Thu, 02 Nov 2017 21:27:13 -0400
+
+vim (2:8.0.1226-1) unstable; urgency=medium
+
+  [ upstream ]
+  * 8.0.1154: Fix indentation when 'indentkeys' is in use.  (Closes: #877262)
+
+  [ James McCoy ]
+  * syntax/debcontrol.vim:
+    + Add support for all fields in deb-src-control(5).  (Closes: #878970)
+  * syntax/deb{sources,changelog}.vim:
+    + Add bionic release and mark yakkety & squeeze unsupported.
+
+ -- James McCoy <jamessan@debian.org>  Fri, 27 Oct 2017 08:27:27 -0400
+
+vim (2:8.0.1144-1) unstable; urgency=medium
+
+  [ upstream ]
+  * Fix detection/enabling of cursor blink state.  (Closes: #872302)
+  * ftplugin/perl.vim: Set 'iskeyword' local to the buffer so it doesn't
+    affect subsequently opened buffers.  (Closes: #873755)
+  * syntax/mason.vim: Correctly highlight mason files again.  (Closes:
+    #700016)
+
+  [ James McCoy ]
+  * debcontrol.vim:
+    + Recognize Testsuite field  (Closes: #872360)
+    + Treat tabs as valid whitespace  (Closes: #872557)
+  * Declare compliance with Policy 4.1.0, no changes needed
+  * Add basic autopkgtests
+  * Add missing postrm for symlink_to_dir maintscripts
+
+ -- James McCoy <jamessan@debian.org>  Sun, 24 Sep 2017 22:02:28 -0400
+
+vim (2:8.0.0946-1) unstable; urgency=medium
+
+  [ upstream ]
+  * 8.0.0939, 8.0.0940: Handle flakiness in terminal tests.  (Closes: #872164)
+  * 8.0.0944: test_profile: Accept a match when self and total time are the
+    same.
+  * 8.0.0946: Don't rely on PATH_MAX.  Fixes FTBFS on hurd.
+
+ -- James McCoy <jamessan@debian.org>  Mon, 14 Aug 2017 22:41:29 -0400
+
+vim (2:8.0.0937-1) unstable; urgency=medium
+
+  [ upstream ]
+  * 8.0.0210 et.al.: Add support for bracketed paste.  (Closes: #504244)
+  * 8.0.0421: Fix display in diff mode when adding a line at the end of a
+    buffer.  (Closes: #846993)
+  * 8.0.0693 et.al.: Implement a terminal emulator.
+  * 8.0.0698: Fix a crash on exit when using a Python function from a timer.
+    (Closes: #868767)
+  * 8.0.0737: Crash when X11 selection is very big  (Closes: #606957)
+
+  [ James McCoy ]
+  * vim-policy:
+    + Specify the "addon", not "name", field is used to declare the addon.
+      Thanks to Reiner Herrmann.
+  * Merge changes from Ubuntu, dependent on DEB_VENDOR=Ubuntu:
+    + Remove --disable-python3interp on Ubuntu for vim-basic
+    + Disable ruby for vim-gtk3
+  * d/rules:
+    + Remove src/po/vim.pot and *.pyc during clean
+    + Remove explicit setting of SOURCE_DATE_EPOCH since dpkg's pkg-info.mk
+      provides it.
+  * debcontrol.vim:
+    + Add highlighting for Build-(Depends|Conflicts)-Arch
+    + Fix syntax highlighting of "javascript" section.  (Closes: #867307)
+  * Rewrite d/copyright in machine readable format.  (Closes: #819734)
+    + Properly document xxd's license.  (Closes: #776191)
+  * Mark vim-doc and xxd Multi-Arch: foreign.  Thanks to Helmut Grohne for the
+    patch.  (Closes: #852722)
+  * Declare compliance with policy 4.0.1
+    + Change Priority: extra packages to optional
+  * Reference Python 3 instead of Python in long descriptions.  (Closes:
+    #868020)
+  * Bump debhelper compat to 10.
+  * debian/control:
+    + Remove version constraints that are satisifed in oldstable.
+
+ -- James McCoy <jamessan@debian.org>  Sun, 13 Aug 2017 16:06:37 -0400
+
+vim (2:8.0.0197-5) unstable; urgency=high
 
   * Backport upstream patches to fix CVE-2017-11109  (Closes: #867720)
     + 8.0.0703: Illegal memory access with empty :doau command
     + 8.0.0706: Crash when cancelling the cmdline window in Ex mode
     + 8.0.0707: Freeing wrong memory when manipulating buffers in autocommands
 
- -- James McCoy <jamessan@debian.org>  Sat, 30 Sep 2017 14:21:38 -0400
+ -- James McCoy <jamessan@debian.org>  Tue, 11 Jul 2017 23:11:25 -0400
 
 vim (2:8.0.0197-4) unstable; urgency=medium
 

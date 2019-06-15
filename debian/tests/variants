@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+for variant in /usr/bin/vim.*
+do
+  $variant "$@"
+done
