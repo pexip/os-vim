@@ -1,0 +1,78 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Sun, 17 Jun 2018 19:08:30 +0200
+Subject: patch 8.1.0067: syntax highlighting not working when re-entering a
+ buffer
+
+Problem:    Syntax highlighting not working when re-entering a buffer.
+Solution:   Do force executing autocommands when not called recursively.
+
+(cherry picked from commit a5616b0136cea2104a475d143a1685d71e9b2d3d)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/option.c  | 29 ++++++++++++++++++++---------
+ src/version.c |  2 ++
+ 2 files changed, 22 insertions(+), 9 deletions(-)
+
+diff --git a/src/option.c b/src/option.c
+index 056292f..1b8a6f4 100644
+--- a/src/option.c
++++ b/src/option.c
+@@ -7371,24 +7371,35 @@ did_set_string_option(
+ 	/* When 'syntax' is set, load the syntax of that name */
+ 	if (varp == &(curbuf->b_p_syn))
+ 	{
+-	    // Only pass TRUE for "force" when the value changed, to avoid
+-	    // endless recurrence. */
+-	    apply_autocmds(EVENT_SYNTAX, curbuf->b_p_syn,
+-				       curbuf->b_fname, value_changed, curbuf);
++	    static int syn_recursive = 0;
++
++	    ++syn_recursive;
++	    // Only pass TRUE for "force" when the value changed or not used
++	    // recursively, to avoid endless recurrence.
++	    apply_autocmds(EVENT_SYNTAX, curbuf->b_p_syn, curbuf->b_fname,
++		    value_changed || syn_recursive == 1, curbuf);
++	    --syn_recursive;
+ 	}
+ # endif
+ 	else if (varp == &(curbuf->b_p_ft))
+ 	{
+ 	    /* 'filetype' is set, trigger the FileType autocommand.
+ 	     * Skip this when called from a modeline and the filetype was
+-	     * already set to this value.
+-	     * Only pass TRUE for "force" when the value changed, to avoid
+-	     * endless recurrence. */
++	     * already set to this value. */
+ 	    if (!(opt_flags & OPT_MODELINE) || value_changed)
+ 	    {
++		static int ft_recursive = 0;
++
++		++ft_recursive;
+ 		did_filetype = TRUE;
+-		apply_autocmds(EVENT_FILETYPE, curbuf->b_p_ft,
+-				       curbuf->b_fname, value_changed, curbuf);
++		// Only pass TRUE for "force" when the value changed or not
++		// used recursively, to avoid endless recurrence.
++		apply_autocmds(EVENT_FILETYPE, curbuf->b_p_ft, curbuf->b_fname,
++				   value_changed || ft_recursive == 1, curbuf);
++		--ft_recursive;
++		/* Just in case the old "curbuf" is now invalid. */
++		if (varp != &(curbuf->b_p_ft))
++		    varp = NULL;
+ 	    }
+ 	}
+ #endif
+diff --git a/src/version.c b/src/version.c
+index f8f34d4..0aba135 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -1195,6 +1195,8 @@ static int included_patches[] =
+  */
+ static char *(extra_patches[]) =
+ {   /* Add your patch description below this line */
++/**/
++    "8.1.0067",
+ /**/
+     "8.1.0066",
+ /**/

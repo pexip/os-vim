@@ -1,0 +1,38 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Tue, 24 Jul 2018 04:51:20 +0200
+Subject: patch 8.1.0208: file left behind after running individual test
+
+Problem:    File left behind after running individual test.
+Solution:   Delete the file.
+
+(cherry picked from commit 7624af02948de881eb5294fe5d266b948404d489)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/testdir/test_modeline.vim | 1 +
+ src/version.c                 | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/src/testdir/test_modeline.vim b/src/testdir/test_modeline.vim
+index e278c16..f02c68c 100644
+--- a/src/testdir/test_modeline.vim
++++ b/src/testdir/test_modeline.vim
+@@ -5,4 +5,5 @@ func Test_modeline_invalid()
+   call writefile(['vi:0', 'nothing'], 'Xmodeline')
+   call assert_fails('split Xmodeline', 'E518:')
+   bwipe!
++  call delete('Xmodeline')
+ endfunc
+diff --git a/src/version.c b/src/version.c
+index 3a009e7..05b04ac 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -1195,6 +1195,8 @@ static int included_patches[] =
+  */
+ static char *(extra_patches[]) =
+ {   /* Add your patch description below this line */
++/**/
++    "8.1.0208",
+ /**/
+     "8.1.0206",
+ /**/

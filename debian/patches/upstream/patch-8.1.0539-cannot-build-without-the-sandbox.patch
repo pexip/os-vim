@@ -1,0 +1,84 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Tue, 20 Nov 2018 13:32:36 +0100
+Subject: patch 8.1.0539: cannot build without the sandbox
+
+Problem:    Cannot build without the sandbox.
+Solution:   Set the secure option instead of using the sandbox.  Also restrict
+            the characters from 'spelllang' that are used for LANG.vim.
+            (suggested by Yasuhiro Matsumoto)
+
+(cherry picked from commit 82e8c92ebef5afcac0c0fdb706ff163f9b3366f7)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ runtime/doc/options.txt | 2 +-
+ src/buffer.c            | 4 ++--
+ src/option.c            | 9 ++++++---
+ src/version.c           | 2 ++
+ 4 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/runtime/doc/options.txt b/runtime/doc/options.txt
+index 2520cc3..d7a543a 100644
+--- a/runtime/doc/options.txt
++++ b/runtime/doc/options.txt
+@@ -6952,7 +6952,7 @@ A jump table for the options with a short description can be found at |Q_op|.
+ 
+ 	After this option has been set successfully, Vim will source the files
+ 	"spell/LANG.vim" in 'runtimepath'.  "LANG" is the value of 'spelllang'
+-	up to the first comma, dot or underscore.
++	up to the first character that is not an ASCII letter and not a dash.
+ 	Also see |set-spc-auto|.
+ 
+ 
+diff --git a/src/buffer.c b/src/buffer.c
+index 42f6db9..2bcb034 100644
+--- a/src/buffer.c
++++ b/src/buffer.c
+@@ -5476,11 +5476,11 @@ chk_modeline(
+ 		current_SID = SID_MODELINE;
+ #endif
+ 		// Make sure no risky things are executed as a side effect.
+-		++sandbox;
++		++secure;
+ 
+ 		retval = do_set(s, OPT_MODELINE | OPT_LOCAL | flags);
+ 
+-		--sandbox;
++		--secure;
+ #ifdef FEAT_EVAL
+ 		current_SID = save_SID;
+ #endif
+diff --git a/src/option.c b/src/option.c
+index 48bf9ce..1754109 100644
+--- a/src/option.c
++++ b/src/option.c
+@@ -7409,10 +7409,13 @@ did_set_string_option(
+ 	     * '.encoding'.
+ 	     */
+ 	    for (p = q; *p != NUL; ++p)
+-		if (vim_strchr((char_u *)"_.,", *p) != NULL)
++		if (!ASCII_ISALPHA(*p) && *p != '-')
+ 		    break;
+-	    vim_snprintf((char *)fname, 200, "spell/%.*s.vim", (int)(p - q), q);
+-	    source_runtime(fname, DIP_ALL);
++	    if (p > q)
++	    {
++		vim_snprintf((char *)fname, 200, "spell/%.*s.vim", (int)(p - q), q);
++		source_runtime(fname, DIP_ALL);
++	    }
+ 	}
+ #endif
+     }
+diff --git a/src/version.c b/src/version.c
+index 1c03403..c9c08c7 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -1195,6 +1195,8 @@ static int included_patches[] =
+  */
+ static char *(extra_patches[]) =
+ {   /* Add your patch description below this line */
++/**/
++    "8.1.0539",
+ /**/
+     "8.1.0538",
+ /**/
