@@ -1,0 +1,114 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Thu, 22 Jun 2017 14:16:31 +0200
+Subject: patch 8.0.0649: when opening a help file the filetype is set several
+ times
+
+Problem:    When opening a help file the filetype is set several times.
+Solution:   When setting the filetype to the same value from a modeline, don't
+            trigger FileType autocommands.  Don't set the filetype to "help"
+            when it's already set correctly.
+
+(cherry picked from commit 9049298f8d0bbc237b7c666c7ad6cdabe738e8fc)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ runtime/filetype.vim |  5 ++++-
+ src/ex_cmds.c        |  5 +++--
+ src/option.c         | 16 +++++++++++++---
+ src/version.c        |  2 ++
+ 4 files changed, 22 insertions(+), 6 deletions(-)
+
+diff --git a/runtime/filetype.vim b/runtime/filetype.vim
+index 13e2c04..352dd09 100644
+--- a/runtime/filetype.vim
++++ b/runtime/filetype.vim
+@@ -1,7 +1,7 @@
+ " Vim support file to detect file types
+ "
+ " Maintainer:	Bram Moolenaar <Bram@vim.org>
+-" Last Change:	2017 Jan 06
++" Last Change:	2017 Jun 20
+ 
+ " Listen very carefully, I will say this only once
+ if exists("did_load_filetypes")
+@@ -48,6 +48,9 @@ func! s:StarSetf(ft)
+   endif
+ endfunc
+ 
++" Vim help file
++au BufNewFile,BufRead $VIMRUNTIME/doc/*.txt	setf help
++
+ " Abaqus or Trasys
+ au BufNewFile,BufRead *.inp			call s:Check_inp()
+ 
+diff --git a/src/ex_cmds.c b/src/ex_cmds.c
+index 628d27b..f8893d4 100644
+--- a/src/ex_cmds.c
++++ b/src/ex_cmds.c
+@@ -6790,8 +6790,9 @@ fix_help_buffer(void)
+     char_u	*rt;
+     int		mustfree;
+ 
+-    /* set filetype to "help". */
+-    set_option_value((char_u *)"ft", 0L, (char_u *)"help", OPT_LOCAL);
++    /* Set filetype to "help" if still needed. */
++    if (STRCMP(curbuf->b_p_ft, "help") != 0)
++	set_option_value((char_u *)"ft", 0L, (char_u *)"help", OPT_LOCAL);
+ 
+ #ifdef FEAT_SYN_HL
+     if (!syntax_present(curwin))
+diff --git a/src/option.c b/src/option.c
+index 6f9610d..0986ef6 100644
+--- a/src/option.c
++++ b/src/option.c
+@@ -5865,6 +5865,9 @@ did_set_string_option(
+     /* set when changing an option that only requires a redraw in the GUI */
+     int		redraw_gui_only = FALSE;
+ #endif
++#ifdef FEAT_AUTOCMD
++    int		ft_changed = FALSE;
++#endif
+ 
+     /* Get the global option to compare with, otherwise we would have to check
+      * two values for all local options. */
+@@ -7257,6 +7260,8 @@ did_set_string_option(
+     {
+ 	if (!valid_filetype(*varp))
+ 	    errmsg = e_invarg;
++	else
++	    ft_changed = STRCMP(oldval, *varp) != 0;
+     }
+ #endif
+ 
+@@ -7370,10 +7375,15 @@ did_set_string_option(
+ # endif
+ 	else if (varp == &(curbuf->b_p_ft))
+ 	{
+-	    /* 'filetype' is set, trigger the FileType autocommand */
+-	    did_filetype = TRUE;
+-	    apply_autocmds(EVENT_FILETYPE, curbuf->b_p_ft,
++	    /* 'filetype' is set, trigger the FileType autocommand.
++	     * Skip this when called from a modeline and the filetype was
++	     * already set to this value. */
++	    if (!(opt_flags & OPT_MODELINE) || ft_changed)
++	    {
++		did_filetype = TRUE;
++		apply_autocmds(EVENT_FILETYPE, curbuf->b_p_ft,
+ 					       curbuf->b_fname, TRUE, curbuf);
++	    }
+ 	}
+ #endif
+ #ifdef FEAT_SPELL
+diff --git a/src/version.c b/src/version.c
+index 59ef8b2..a6c4879 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -776,6 +776,8 @@ static int included_patches[] =
+     706,
+ /**/
+     703,
++/**/
++    649,
+ /**/
+     550,
+ /**/

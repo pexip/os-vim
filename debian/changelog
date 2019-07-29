@@ -1,3 +1,47 @@
+vim (2:8.0.0197-4+deb9u3pexip1) pexip; urgency=medium
+
+  * New Debian release
+
+ -- Vincent Sanders <vince@pexip.com>  Mon, 29 Jul 2019 10:34:14 +0000
+
+vim (2:8.0.0197-4+deb9u3) stretch-security; urgency=medium
+
+  * Backport patch 8.1.0067 to fix loss of syntax highlighting (Closes: #930718)
+    + 8.1.0067: syntax highlighting not working when re-entering a buffer
+
+ -- James McCoy <jamessan@debian.org>  Fri, 21 Jun 2019 00:10:35 -0400
+
+vim (2:8.0.0197-4+deb9u2) stretch-security; urgency=high
+
+  * Backport patches to address CVE-2019-12735 (Closes: #930020)
+    + 8.0.0649: when opening a help file the filetype is set several times
+    + 8.0.0651: build failure without the auto command feature
+    + 8.1.0066: nasty autocommand causes using freed memory
+    + 8.1.0177: defining function in sandbox is inconsistent
+    + 8.1.0189: function defined in sandbox not tested
+    + 8.1.0205: invalid memory access with invalid modeline
+    + 8.1.0206: duplicate test function name
+    + 8.1.0208: file left behind after running individual test
+    + 8.1.0506: modelinen test fails when run by root
+    + 8.1.0538: evaluating a modeline might invoke using a shell command
+    + 8.1.0539: cannot build without the sandbox
+    + 8.1.0540: may evaluate insecure value when appending to option
+    + 8.1.0544: setting 'filetype' in a modeline causes an error
+    + 8.1.0546: modeline test with keymap fails
+    + 8.1.0547: modeline test with keymap still fails
+    + 8.1.0613: when executing an insecure function the secure flag is stuck
+    + 8.1.1046: the "secure" variable is used inconsistently
+    + 8.1.1365: source command doesn't check for the sandbox
+    + 8.1.1366: using expressions in a modeline is unsafe
+    + 8.1.1367: can set 'modelineexpr' in modeline
+    + 8.1.1368: modeline test fails with python but without pythonhome
+    + 8.1.1382: error when editing test files
+    + 8.1.1401: misspelled mkspellmem and makespellmem
+  * gbp.conf: Set debian-branch to debian/stretch
+  * gbp.conf: Set upstream-tag to v%(version)s
+
+ -- James McCoy <jamessan@debian.org>  Sun, 16 Jun 2019 13:06:40 -0400
+
 vim (2:8.0.0197-4+deb9u1pexip1) pexip; urgency=medium
 
   * Migrate to Stretch

@@ -1,0 +1,60 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Mon, 23 Jul 2018 04:49:23 +0200
+Subject: patch 8.1.0206: duplicate test function name
+
+Problem:    Duplicate test function name.
+Solution:   Rename both functions.
+
+(cherry picked from commit cd96eef3a869557bd3d2d4497861d87cb525db06)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/testdir/test_glob2regpat.vim | 4 ++--
+ src/testdir/test_modeline.vim    | 2 +-
+ src/version.c                    | 2 ++
+ 3 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/src/testdir/test_glob2regpat.vim b/src/testdir/test_glob2regpat.vim
+index fdf1794..e6e41f1 100644
+--- a/src/testdir/test_glob2regpat.vim
++++ b/src/testdir/test_glob2regpat.vim
+@@ -1,12 +1,12 @@
+ " Test glob2regpat()
+ 
+-func Test_invalid()
++func Test_glob2regpat_invalid()
+   call assert_fails('call glob2regpat(1.33)', 'E806:')
+   call assert_fails('call glob2regpat("}")', 'E219:')
+   call assert_fails('call glob2regpat("{")', 'E220:')
+ endfunc
+ 
+-func Test_valid()
++func Test_glob2regpat_valid()
+   call assert_equal('^foo\.', glob2regpat('foo.*'))
+   call assert_equal('^foo.$', glob2regpat('foo?'))
+   call assert_equal('\.vim$', glob2regpat('*.vim'))
+diff --git a/src/testdir/test_modeline.vim b/src/testdir/test_modeline.vim
+index 6e49577..e278c16 100644
+--- a/src/testdir/test_modeline.vim
++++ b/src/testdir/test_modeline.vim
+@@ -1,6 +1,6 @@
+ " Tests for parsing the modeline.
+ 
+-func Test_invalid()
++func Test_modeline_invalid()
+   " This was reading before allocated memory.
+   call writefile(['vi:0', 'nothing'], 'Xmodeline')
+   call assert_fails('split Xmodeline', 'E518:')
+diff --git a/src/version.c b/src/version.c
+index fc88f3d..3a009e7 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -1195,6 +1195,8 @@ static int included_patches[] =
+  */
+ static char *(extra_patches[]) =
+ {   /* Add your patch description below this line */
++/**/
++    "8.1.0206",
+ /**/
+     "8.1.0205",
+ /**/

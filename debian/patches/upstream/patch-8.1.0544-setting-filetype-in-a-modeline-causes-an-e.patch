@@ -1,0 +1,326 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Sun, 25 Nov 2018 02:18:29 +0100
+Subject: patch 8.1.0544: setting 'filetype' in a modeline causes an error
+
+Problem:    Setting 'filetype' in a modeline causes an error (Hirohito
+            Higashi).
+Solution:   Don't add the P_INSECURE flag when setting 'filetype' from a
+            modeline.  Also for 'syntax'.
+
+(cherry picked from commit 916a818cea5ba05a5f2117407674461b8bee6832)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/option.c                  | 84 +++++++++++++++++++++++++++++++------------
+ src/testdir/test_modeline.vim | 76 +++++++++++++++++++++++++++++++++++++++
+ src/version.c                 |  2 ++
+ 3 files changed, 140 insertions(+), 22 deletions(-)
+
+diff --git a/src/option.c b/src/option.c
+index d17c893..05e510e 100644
+--- a/src/option.c
++++ b/src/option.c
+@@ -3105,7 +3105,7 @@ static char *(p_scl_values[]) = {"yes", "no", "auto", NULL};
+ static void set_option_default(int, int opt_flags, int compatible);
+ static void set_options_default(int opt_flags);
+ static char_u *term_bg_default(void);
+-static void did_set_option(int opt_idx, int opt_flags, int new_value);
++static void did_set_option(int opt_idx, int opt_flags, int new_value, int value_checked);
+ static char_u *illegal_char(char_u *, int);
+ static int string_to_key(char_u *arg);
+ #ifdef FEAT_CMDWIN
+@@ -3125,7 +3125,7 @@ static long_u *insecure_flag(int opt_idx, int opt_flags);
+ #endif
+ static void set_string_option_global(int opt_idx, char_u **varp);
+ static char_u *set_string_option(int opt_idx, char_u *value, int opt_flags);
+-static char_u *did_set_string_option(int opt_idx, char_u **varp, int new_value_alloced, char_u *oldval, char_u *errbuf, int opt_flags);
++static char_u *did_set_string_option(int opt_idx, char_u **varp, int new_value_alloced, char_u *oldval, char_u *errbuf, int opt_flags, int *value_checked);
+ static char_u *set_chars_option(char_u **varp);
+ #ifdef FEAT_SYN_HL
+ static int int_cmp(const void *a, const void *b);
+@@ -4489,6 +4489,7 @@ do_set(
+ 	    else
+ 	    {
+ 		int value_is_replaced = !prepending && !adding && !removing;
++		int value_checked = FALSE;
+ 
+ 		if (flags & P_BOOL)		    /* boolean */
+ 		{
+@@ -5006,7 +5007,8 @@ do_set(
+ 			    // or 'filetype' autocommands may be triggered that can
+ 			    // cause havoc.
+ 			    errmsg = did_set_string_option(opt_idx, (char_u **)varp,
+-				    new_value_alloced, oldval, errbuf, opt_flags);
++				    new_value_alloced, oldval, errbuf,
++				    opt_flags, &value_checked);
+ 
+ 			    if (did_inc_secure)
+ 				--secure;
+@@ -5067,7 +5069,8 @@ do_set(
+ 		}
+ 
+ 		if (opt_idx >= 0)
+-		    did_set_option(opt_idx, opt_flags, value_is_replaced);
++		    did_set_option(
++			 opt_idx, opt_flags, value_is_replaced, value_checked);
+ 	    }
+ 
+ skip:
+@@ -5135,8 +5138,10 @@ theend:
+     static void
+ did_set_option(
+     int	    opt_idx,
+-    int	    opt_flags,	    /* possibly with OPT_MODELINE */
+-    int	    new_value)	    /* value was replaced completely */
++    int	    opt_flags,	    // possibly with OPT_MODELINE
++    int	    new_value,	    // value was replaced completely
++    int	    value_checked)  // value was checked to be safe, no need to set the
++			    // P_INSECURE flag.
+ {
+     long_u	*p;
+ 
+@@ -5146,11 +5151,11 @@ did_set_option(
+      * set the P_INSECURE flag.  Otherwise, if a new value is stored reset the
+      * flag. */
+     p = insecure_flag(opt_idx, opt_flags);
+-    if (secure
++    if (!value_checked && (secure
+ #ifdef HAVE_SANDBOX
+ 	    || sandbox != 0
+ #endif
+-	    || (opt_flags & OPT_MODELINE))
++	    || (opt_flags & OPT_MODELINE)))
+ 	*p = *p | P_INSECURE;
+     else if (new_value)
+ 	*p = *p & ~P_INSECURE;
+@@ -5807,6 +5812,7 @@ set_string_option(
+     char_u	*saved_oldval = NULL;
+ #endif
+     char_u	*r = NULL;
++    int		value_checked = FALSE;
+ 
+     if (options[opt_idx].var == NULL)	/* don't set hidden option */
+ 	return NULL;
+@@ -5831,8 +5837,8 @@ set_string_option(
+ 	    saved_oldval = vim_strsave(oldval);
+ #endif
+ 	if ((r = did_set_string_option(opt_idx, varp, TRUE, oldval, NULL,
+-							   opt_flags)) == NULL)
+-	    did_set_option(opt_idx, opt_flags, TRUE);
++					   opt_flags, &value_checked)) == NULL)
++	    did_set_option(opt_idx, opt_flags, TRUE, value_checked);
+ 
+ 	/* call autocomamnd after handling side effects */
+ #if defined(FEAT_AUTOCMD) && defined(FEAT_EVAL)
+@@ -5876,12 +5882,14 @@ valid_filetype(char_u *val)
+  */
+     static char_u *
+ did_set_string_option(
+-    int		opt_idx,		/* index in options[] table */
+-    char_u	**varp,			/* pointer to the option variable */
+-    int		new_value_alloced,	/* new value was allocated */
+-    char_u	*oldval,		/* previous value of the option */
+-    char_u	*errbuf,		/* buffer for errors, or NULL */
+-    int		opt_flags)		/* OPT_LOCAL and/or OPT_GLOBAL */
++    int		opt_idx,		// index in options[] table
++    char_u	**varp,			// pointer to the option variable
++    int		new_value_alloced,	// new value was allocated
++    char_u	*oldval,		// previous value of the option
++    char_u	*errbuf,		// buffer for errors, or NULL
++    int		opt_flags,		// OPT_LOCAL and/or OPT_GLOBAL
++    int		*value_checked)		// value was checked to be save, no
++					// need to set P_INSECURE
+ {
+     char_u	*errmsg = NULL;
+     char_u	*s, *p;
+@@ -5910,10 +5918,9 @@ did_set_string_option(
+ 	errmsg = e_secure;
+     }
+ 
+-    /* Check for a "normal" directory or file name in some options.  Disallow a
+-     * path separator (slash and/or backslash), wildcards and characters that
+-     * are often illegal in a file name. Be more permissive if "secure" is off.
+-     */
++    // Check for a "normal" directory or file name in some options.  Disallow a
++    // path separator (slash and/or backslash), wildcards and characters that
++    // are often illegal in a file name. Be more permissive if "secure" is off.
+     else if (((options[opt_idx].flags & P_NFNAME)
+ 		    && vim_strpbrk(*varp, (char_u *)(secure
+ 			    ? "/\\*?[|;&<>\r\n" : "/\\*?[<>\r\n")) != NULL)
+@@ -6293,9 +6300,23 @@ did_set_string_option(
+ 	if (!valid_filetype(*varp))
+ 	    errmsg = e_invarg;
+ 	else
+-	    /* load or unload key mapping tables */
++	{
++	    int	    secure_save = secure;
++
++	    // Reset the secure flag, since the value of 'keymap' has
++	    // been checked to be safe.
++	    secure = 0;
++
++	    // load or unload key mapping tables
+ 	    errmsg = keymap_init();
+ 
++	    secure = secure_save;
++
++	    // Since we check the value, there is no need to set P_INSECURE,
++	    // even when the value comes from a modeline.
++	    *value_checked = TRUE;
++	}
++
+ 	if (errmsg == NULL)
+ 	{
+ 	    if (*curbuf->b_p_keymap != NUL)
+@@ -7288,7 +7309,13 @@ did_set_string_option(
+ 	if (!valid_filetype(*varp))
+ 	    errmsg = e_invarg;
+ 	else
++	{
+ 	    value_changed = STRCMP(oldval, *varp) != 0;
++
++	    // Since we check the value, there is no need to set P_INSECURE,
++	    // even when the value comes from a modeline.
++	    *value_checked = TRUE;
++	}
+     }
+ #endif
+ 
+@@ -7298,7 +7325,13 @@ did_set_string_option(
+ 	if (!valid_filetype(*varp))
+ 	    errmsg = e_invarg;
+ 	else
++	{
+ 	    value_changed = STRCMP(oldval, *varp) != 0;
++
++	    // Since we check the value, there is no need to set P_INSECURE,
++	    // even when the value comes from a modeline.
++	    *value_checked = TRUE;
++	}
+     }
+ #endif
+ 
+@@ -7415,7 +7448,12 @@ did_set_string_option(
+ 	     * already set to this value. */
+ 	    if (!(opt_flags & OPT_MODELINE) || value_changed)
+ 	    {
+-		static int ft_recursive = 0;
++		static int  ft_recursive = 0;
++		int	    secure_save = secure;
++
++		// Reset the secure flag, since the value of 'filetype' has
++		// been checked to be safe.
++		secure = 0;
+ 
+ 		++ft_recursive;
+ 		did_filetype = TRUE;
+@@ -7427,6 +7465,8 @@ did_set_string_option(
+ 		/* Just in case the old "curbuf" is now invalid. */
+ 		if (varp != &(curbuf->b_p_ft))
+ 		    varp = NULL;
++
++		secure = secure_save;
+ 	    }
+ 	}
+ #endif
+diff --git a/src/testdir/test_modeline.vim b/src/testdir/test_modeline.vim
+index 3bde58d..c1eb991 100644
+--- a/src/testdir/test_modeline.vim
++++ b/src/testdir/test_modeline.vim
+@@ -6,7 +6,83 @@ func Test_modeline_invalid()
+   let modeline = &modeline
+   set modeline
+   call assert_fails('split Xmodeline', 'E518:')
++
+   let &modeline = modeline
+   bwipe!
+   call delete('Xmodeline')
+ endfunc
++
++func Test_modeline_filetype()
++  call writefile(['vim: set ft=c :', 'nothing'], 'Xmodeline_filetype')
++  let modeline = &modeline
++  set modeline
++  filetype plugin on
++  split Xmodeline_filetype
++  call assert_equal("c", &filetype)
++  call assert_equal(1, b:did_ftplugin)
++  call assert_equal("ccomplete#Complete", &ofu)
++
++  bwipe!
++  call delete('Xmodeline_filetype')
++  let &modeline = modeline
++  filetype plugin off
++endfunc
++
++func Test_modeline_syntax()
++  call writefile(['vim: set syn=c :', 'nothing'], 'Xmodeline_syntax')
++  let modeline = &modeline
++  set modeline
++  syntax enable
++  split Xmodeline_syntax
++  call assert_equal("c", &syntax)
++  call assert_equal("c", b:current_syntax)
++
++  bwipe!
++  call delete('Xmodeline_syntax')
++  let &modeline = modeline
++  syntax off
++endfunc
++
++func Test_modeline_keymap()
++  call writefile(['vim: set keymap=greek :', 'nothing'], 'Xmodeline_keymap')
++  let modeline = &modeline
++  set modeline
++  split Xmodeline_keymap
++  call assert_equal("greek", &keymap)
++  call assert_match('greek\|grk', b:keymap_name)
++
++  bwipe!
++  call delete('Xmodeline_keymap')
++  let &modeline = modeline
++  set keymap= iminsert=0 imsearch=-1
++endfunc
++
++func s:modeline_fails(what, text)
++  let fname = "Xmodeline_fails_" . a:what
++  call writefile(['vim: set ' . a:text . ' :', 'nothing'], fname)
++  let modeline = &modeline
++  set modeline
++  filetype plugin on
++  syntax enable
++  call assert_fails('split ' . fname, 'E474:')
++  call assert_equal("", &filetype)
++  call assert_equal("", &syntax)
++
++  bwipe!
++  call delete(fname)
++  let &modeline = modeline
++  filetype plugin off
++  syntax off
++endfunc
++
++func Test_modeline_filetype_fails()
++  call s:modeline_fails('filetype', 'ft=evil$CMD')
++endfunc
++
++func Test_modeline_syntax_fails()
++  call s:modeline_fails('syntax', 'syn=evil$CMD')
++endfunc
++
++func Test_modeline_keymap_fails()
++  call s:modeline_fails('keymap', 'keymap=evil$CMD')
++endfunc
+diff --git a/src/version.c b/src/version.c
+index 794e0e5..40d015e 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -1195,6 +1195,8 @@ static int included_patches[] =
+  */
+ static char *(extra_patches[]) =
+ {   /* Add your patch description below this line */
++/**/
++    "8.1.0544",
+ /**/
+     "8.1.0540",
+ /**/

@@ -1,0 +1,76 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Wed, 22 May 2019 22:38:25 +0200
+Subject: patch 8.1.1365: source command doesn't check for the sandbox
+
+Problem:    Source command doesn't check for the sandbox. (Armin Razmjou)
+Solution:   Check for the sandbox when sourcing a file.
+
+(cherry picked from commit 53575521406739cf20bbe4e384d88e7dca11f040)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/Makefile                |  1 +
+ src/getchar.c               |  6 ++++++
+ src/testdir/test_source.vim | 10 ++++++++++
+ src/version.c               |  2 ++
+ 4 files changed, 19 insertions(+)
+ create mode 100644 src/testdir/test_source.vim
+
+diff --git a/src/Makefile b/src/Makefile
+index 53683a5..b617b84 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -2159,6 +2159,7 @@ test_arglist \
+ 	test_set \
+ 	test_signs \
+ 	test_sort \
++	test_source \
+ 	test_source_utf8 \
+ 	test_smartindent \
+ 	test_startup \
+diff --git a/src/getchar.c b/src/getchar.c
+index 9adeafa..b95a5b2 100644
+--- a/src/getchar.c
++++ b/src/getchar.c
+@@ -1418,6 +1418,12 @@ openscript(
+ 	EMSG(_(e_nesting));
+ 	return;
+     }
++
++    // Disallow sourcing a file in the sandbox, the commands would be executed
++    // later, possibly outside of the sandbox.
++    if (check_secure())
++	return;
++
+ #ifdef FEAT_EVAL
+     if (ignore_script)
+ 	/* Not reading from script, also don't open one.  Warning message? */
+diff --git a/src/testdir/test_source.vim b/src/testdir/test_source.vim
+new file mode 100644
+index 0000000..42ac0c4
+--- /dev/null
++++ b/src/testdir/test_source.vim
+@@ -0,0 +1,10 @@
++" Tests for the :source command.
++
++func Test_source_sandbox()
++  new
++  call writefile(["Ohello\<Esc>"], 'Xsourcehello')
++  source! Xsourcehello | echo
++  call assert_equal('hello', getline(1))
++  call assert_fails('sandbox source! Xsourcehello', 'E48:')
++  bwipe!
++endfunc
+diff --git a/src/version.c b/src/version.c
+index 81ea1b4..e864c4e 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -1195,6 +1195,8 @@ static int included_patches[] =
+  */
+ static char *(extra_patches[]) =
+ {   /* Add your patch description below this line */
++/**/
++    "8.1.1365",
+ /**/
+     "8.1.1046",
+ /**/
