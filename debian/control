@@ -37,7 +37,7 @@ Build-Depends-Indep:
 Vcs-Git: https://anonscm.debian.org/cgit/pkg-vim/vim.git/
 Vcs-Browser: https://anonscm.debian.org/cgit/pkg-vim/vim.git
 Homepage: http://www.vim.org/
-XS-Pexip-Upstream: http://ftp.debian.org/debian/ stretch
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ buster
 
 Package: vim-common
 Priority: important
