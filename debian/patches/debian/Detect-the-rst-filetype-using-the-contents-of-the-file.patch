@@ -8,11 +8,11 @@ Closes: #382541
  1 file changed, 8 insertions(+)
 
 diff --git a/runtime/scripts.vim b/runtime/scripts.vim
-index 2763828..d3101c6 100644
+index ab66c0c..a755bc7 100644
 --- a/runtime/scripts.vim
 +++ b/runtime/scripts.vim
-@@ -332,6 +332,14 @@ else
-   elseif s:line1 =~ 'exec\s\+\S*scheme' || s:line2 =~ 'exec\s\+\S*scheme'
+@@ -356,6 +356,14 @@ else
+   elseif s:line1 =~# 'exec\s\+\S*scheme' || s:line2 =~# 'exec\s\+\S*scheme'
      set ft=scheme
  
 +  " rst files
@@ -24,5 +24,5 @@ index 2763828..d3101c6 100644
 +    set ft=rst
 +
    " Git output
-   elseif s:line1 =~ '^\(commit\|tree\|object\) \x\{40\}\>\|^tag \S\+$'
+   elseif s:line1 =~# '^\(commit\|tree\|object\) \x\{40\}\>\|^tag \S\+$'
      set ft=git

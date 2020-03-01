@@ -1,0 +1,2 @@
+Test-Command: ./debian/tests/variants --version
+Depends: @

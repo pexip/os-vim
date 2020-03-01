@@ -1,0 +1,13 @@
+debian/helpztags.1
+debian/policy/vim-policy.html/
+debian/policy/vim-policy.txt
+debian/tmplogo.*
+runtime/doc/*.html
+runtime/doc/*.log
+runtime/doc/doctags
+runtime/doc/tags
+runtime/doc/tags.ref
+src/auto/config.h
+src/auto/config.mk
+src/pixmaps
+src/runtime

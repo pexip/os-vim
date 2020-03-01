@@ -1,0 +1,54 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Thu, 23 May 2019 17:08:49 +0200
+Subject: patch 8.1.1367: can set 'modelineexpr' in modeline
+
+Problem:    can set 'modelineexpr' in modeline.
+Solution:   Add P_SECURE flag.
+
+(cherry picked from commit 7e800c6047c8a9cc3e5cbc019a4dc91ec36616b1)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/option.c                  | 2 +-
+ src/testdir/test_modeline.vim | 1 +
+ src/version.c                 | 2 ++
+ 3 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/option.c b/src/option.c
+index e1e89d5..e3f5f5d 100644
+--- a/src/option.c
++++ b/src/option.c
+@@ -1892,7 +1892,7 @@ static struct vimoption options[] =
+     {"modeline",    "ml",   P_BOOL|P_VIM,
+ 			    (char_u *)&p_ml, PV_ML,
+ 			    {(char_u *)FALSE, (char_u *)TRUE} SCTX_INIT},
+-    {"modelineexpr", "mle",  P_BOOL|P_VI_DEF,
++    {"modelineexpr", "mle",  P_BOOL|P_VI_DEF|P_SECURE,
+ 			    (char_u *)&p_mle, PV_NONE,
+ 			    {(char_u *)FALSE, (char_u *)0L} SCTX_INIT},
+     {"modelines",   "mls",  P_NUM|P_VI_DEF,
+diff --git a/src/testdir/test_modeline.vim b/src/testdir/test_modeline.vim
+index 101116c..89c06ba 100644
+--- a/src/testdir/test_modeline.vim
++++ b/src/testdir/test_modeline.vim
+@@ -119,6 +119,7 @@ func Test_modeline_fails_always()
+   call s:modeline_fails('makespellmem', 'makespellmem=Something()', 'E520:')
+   call s:modeline_fails('mzschemedll', 'mzschemedll=Something()', 'E520:')
+   call s:modeline_fails('mzschemegcdll', 'mzschemegcdll=Something()', 'E520:')
++  call s:modeline_fails('modelineexpr', 'modelineexpr', 'E520:')
+   call s:modeline_fails('omnifunc', 'omnifunc=Something()', 'E520:')
+   call s:modeline_fails('operatorfunc', 'operatorfunc=Something()', 'E520:')
+   call s:modeline_fails('perldll', 'perldll=Something()', 'E520:')
+diff --git a/src/version.c b/src/version.c
+index 2cbc426..0ce8831 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -791,6 +791,8 @@ static char *(features[]) =
+ 
+ static int included_patches[] =
+ {   /* Add new patch number below this line */
++/**/
++    1367,
+ /**/
+     1366,
+ /**/

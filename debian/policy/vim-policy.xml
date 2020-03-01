@@ -248,7 +248,7 @@ doc/vcscommand.txt</programlisting>
       <para> The following information should be made available for each
 	addon registered in the addon registry: <variablelist>
 
-	  <varlistentry> <term><emphasis>name</emphasis> (required
+	  <varlistentry> <term><emphasis>addon</emphasis> (required
 	      field)</term> <listitem> <para>short name of the addon,
 		will be used to refer to the addon (also in command line
 		tools, so beware of spaces, they can be annoying)

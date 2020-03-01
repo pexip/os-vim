@@ -1,0 +1,1 @@
+symlink_to_dir /usr/share/vim/vimfiles /etc/vim 2:8.1.0639-2~ vim-common

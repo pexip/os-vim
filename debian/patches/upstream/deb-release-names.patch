@@ -1,0 +1,58 @@
+From: James McCoy <jamessan@debian.org>
+Date: Sun, 21 Apr 2019 23:12:18 -0400
+Subject: Add Ubuntu's eoan and Debian's buster, bullseye, bookworm releases
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ runtime/syntax/debchangelog.vim | 4 ++--
+ runtime/syntax/debsources.vim   | 7 ++++---
+ 2 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/runtime/syntax/debchangelog.vim b/runtime/syntax/debchangelog.vim
+index 4ca4c29..9d6dfe9 100644
+--- a/runtime/syntax/debchangelog.vim
++++ b/runtime/syntax/debchangelog.vim
+@@ -3,7 +3,7 @@
+ " Maintainer:  Debian Vim Maintainers
+ " Former Maintainers: Gerfried Fuchs <alfie@ist.org>
+ "                     Wichert Akkerman <wakkerma@debian.org>
+-" Last Change: 2019 Jan 26
++" Last Change: 2019 Apr 21
+ " URL: https://salsa.debian.org/vim-team/vim-debian/blob/master/syntax/debchangelog.vim
+ 
+ " Standard syntax initialization
+@@ -21,7 +21,7 @@ let s:binNMU='binary-only=yes'
+ syn match debchangelogName	contained "^[[:alnum:]][[:alnum:].+-]\+ "
+ exe 'syn match debchangelogFirstKV	contained "; \('.s:urgency.'\|'.s:binNMU.'\)"'
+ exe 'syn match debchangelogOtherKV	contained ", \('.s:urgency.'\|'.s:binNMU.'\)"'
+-syn match debchangelogTarget	contained "\v %(frozen|unstable|sid|%(testing|%(old)=stable)%(-proposed-updates|-security)=|experimental|squeeze-%(backports%(-sloppy)=|volatile|lts|security)|%(wheezy|jessie)%(-backports%(-sloppy)=|-security)=|stretch%(-backports|-security)=|%(devel|precise|trusty|vivid|wily|xenial|yakkety|zesty|artful|bionic|cosmic|disco)%(-%(security|proposed|updates|backports|commercial|partner))=)+"
++syn match debchangelogTarget	contained "\v %(frozen|unstable|sid|%(testing|%(old)=stable)%(-proposed-updates|-security)=|experimental|%(squeeze|wheezy|jessie)-%(backports%(-sloppy)=|lts|security)|stretch%(-backports%(-sloppy)=|-security)=|buster%(-backports|-security)=|bullseye|%(devel|precise|trusty|vivid|wily|xenial|yakkety|zesty|artful|bionic|cosmic|disco|eoan)%(-%(security|proposed|updates|backports|commercial|partner))=)+"
+ syn match debchangelogVersion	contained "(.\{-})"
+ syn match debchangelogCloses	contained "closes:\_s*\(bug\)\=#\=\_s\=\d\+\(,\_s*\(bug\)\=#\=\_s\=\d\+\)*"
+ syn match debchangelogLP	contained "\clp:\s\+#\d\+\(,\s*#\d\+\)*"
+diff --git a/runtime/syntax/debsources.vim b/runtime/syntax/debsources.vim
+index 4b21941..f90476f 100644
+--- a/runtime/syntax/debsources.vim
++++ b/runtime/syntax/debsources.vim
+@@ -2,7 +2,7 @@
+ " Language:     Debian sources.list
+ " Maintainer:   Debian Vim Maintainers
+ " Former Maintainer: Matthijs Mohlmann <matthijs@cacholong.nl>
+-" Last Change: 2018 Oct 30
++" Last Change: 2019 Apr 21
+ " URL: https://salsa.debian.org/vim-team/vim-debian/blob/master/syntax/debsources.vim
+ 
+ " Standard syntax initialization
+@@ -23,9 +23,10 @@ let s:cpo = &cpo
+ set cpo-=C
+ let s:supported = [
+       \ 'oldstable', 'stable', 'testing', 'unstable', 'experimental',
+-      \ 'wheezy', 'jessie', 'stretch', 'sid', 'rc-buggy',
++      \ 'wheezy', 'jessie', 'stretch', 'buster', 'bullseye', 'bookworm',
++      \ 'sid', 'rc-buggy',
+       \
+-      \ 'trusty', 'xenial', 'bionic', 'cosmic', 'disco', 'devel'
++      \ 'trusty', 'xenial', 'bionic', 'cosmic', 'disco', 'eoan', 'devel'
+       \ ]
+ let s:unsupported = [
+       \ 'buzz', 'rex', 'bo', 'hamm', 'slink', 'potato',

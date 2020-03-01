@@ -1,0 +1,71 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Fri, 24 May 2019 17:33:01 +0200
+Subject: patch 8.1.1382: error when editing test file
+
+Problem:    Error when editing test file.
+Solution:   Remove part of modeline.
+
+(cherry picked from commit 3020a87cb121123abf1e9a1eca0eddac241fc481)
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/testdir/test49.in          | 2 +-
+ src/testdir/test49.vim         | 3 +--
+ src/testdir/test_vimscript.vim | 1 -
+ src/version.c                  | 2 ++
+ 4 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/testdir/test49.in b/src/testdir/test49.in
+index a0c9e0d..79f13f6 100644
+--- a/src/testdir/test49.in
++++ b/src/testdir/test49.in
+@@ -5,7 +5,7 @@ test49.failed, try to add one or more "G"s at the line ending in "test.out"
+ 
+ STARTTEST
+ :so small.vim
+-:se nocp nomore viminfo+=nviminfo modelineexpr
++:se nocp nomore viminfo+=nviminfo
+ :lang mess C
+ :so test49.vim
+ :" Go back to this file and append the results from register r.
+diff --git a/src/testdir/test49.vim b/src/testdir/test49.vim
+index 97088f0..7393ec4 100644
+--- a/src/testdir/test49.vim
++++ b/src/testdir/test49.vim
+@@ -1,6 +1,6 @@
+ " Vim script language tests
+ " Author:	Servatius Brandt <Servatius.Brandt@fujitsu-siemens.com>
+-" Last Change:	2019 Jan 13
++" Last Change:	2019 May 24
+ 
+ "-------------------------------------------------------------------------------
+ " Test environment							    {{{1
+@@ -9005,5 +9005,4 @@ Xcheck 50443995
+ "-------------------------------------------------------------------------------
+ " Modelines								    {{{1
+ " vim: ts=8 sw=4 tw=80 fdm=marker
+-" vim: fdt=substitute(substitute(foldtext(),\ '\\%(^+--\\)\\@<=\\(\\s*\\)\\(.\\{-}\\)\:\ \\%(\"\ \\)\\=\\(Test\ \\d*\\)\:\\s*',\ '\\3\ (\\2)\:\ \\1',\ \"\"),\ '\\(Test\\s*\\)\\(\\d\\)\\D\\@=',\ '\\1\ \\2',\ "")
+ "-------------------------------------------------------------------------------
+diff --git a/src/testdir/test_vimscript.vim b/src/testdir/test_vimscript.vim
+index 9de0a62..24379ed 100644
+--- a/src/testdir/test_vimscript.vim
++++ b/src/testdir/test_vimscript.vim
+@@ -1444,5 +1444,4 @@ endfunc
+ "-------------------------------------------------------------------------------
+ " Modelines								    {{{1
+ " vim: ts=8 sw=4 tw=80 fdm=marker
+-" vim: fdt=substitute(substitute(foldtext(),\ '\\%(^+--\\)\\@<=\\(\\s*\\)\\(.\\{-}\\)\:\ \\%(\"\ \\)\\=\\(Test\ \\d*\\)\:\\s*',\ '\\3\ (\\2)\:\ \\1',\ \"\"),\ '\\(Test\\s*\\)\\(\\d\\)\\D\\@=',\ '\\1\ \\2',\ "")
+ "-------------------------------------------------------------------------------
+diff --git a/src/version.c b/src/version.c
+index 90acd77..a0ca945 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -791,6 +791,8 @@ static char *(features[]) =
+ 
+ static int included_patches[] =
+ {   /* Add new patch number below this line */
++/**/
++    1382,
+ /**/
+     1368,
+ /**/

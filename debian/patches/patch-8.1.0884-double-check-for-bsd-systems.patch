@@ -1,0 +1,36 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Fri, 8 Feb 2019 23:09:48 +0100
+Subject: patch 8.1.0884: double check for bsd systems
+
+Problem:    Double check for bsd systems.
+Solution:   Delete the old line.
+---
+ src/testdir/test_functions.vim | 1 -
+ src/version.c                  | 2 ++
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/testdir/test_functions.vim b/src/testdir/test_functions.vim
+index e75a896..69e6ce0 100644
+--- a/src/testdir/test_functions.vim
++++ b/src/testdir/test_functions.vim
+@@ -1237,7 +1237,6 @@ func Test_platform_name()
+   if has('unix') && executable('uname')
+     let uname = system('uname')
+     call assert_equal(uname =~? 'BeOS', has('beos'))
+-    call assert_equal(uname =~? 'BSD\|DragonFly', has('bsd'))
+     " GNU userland on BSD kernels (e.g., GNU/kFreeBSD) don't have BSD defined
+     call assert_equal(uname =~? '\%(GNU/k\w\+\)\@<!BSD\|DragonFly', has('bsd'))
+     call assert_equal(uname =~? 'HP-UX', has('hpux'))
+diff --git a/src/version.c b/src/version.c
+index f5f9439..46f63e7 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -791,6 +791,8 @@ static char *(features[]) =
+ 
+ static int included_patches[] =
+ {   /* Add new patch number below this line */
++/**/
++    884,
+ /**/
+     878,
+ /**/

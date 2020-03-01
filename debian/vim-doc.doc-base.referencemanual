@@ -7,5 +7,5 @@ Abstract: The Vim reference manual
  each mode as well as all configurable options.
 
 Format: html
-Index: /usr/share/doc/vim-doc/html/index.html
-Files: /usr/share/doc/vim-doc/html/*.html
+Index: /usr/share/doc/vim/html/index.html
+Files: /usr/share/doc/vim/html/*.html
