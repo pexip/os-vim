@@ -15,15 +15,15 @@ Signed-off-by: James McCoy <jamessan@debian.org>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/runtime/doc/options.txt b/runtime/doc/options.txt
-index c9e2b0b..c269fea 100644
+index 8b655dc..e03af4f 100644
 --- a/runtime/doc/options.txt
 +++ b/runtime/doc/options.txt
-@@ -5392,7 +5392,7 @@ A jump table for the options with a short description can be found at |Q_op|.
+@@ -5155,7 +5155,7 @@ A jump table for the options with a short description can be found at |Q_op|.
  
  				   *'modeline'* *'ml'* *'nomodeline'* *'noml'*
  'modeline' 'ml'		boolean	(Vim default: on (off for root),
 -				 Vi default: off)
 +				 Debian: off, Vi default: off)
  			local to buffer
- 						*'modelines'* *'mls'*
- 'modelines' 'mls'	number	(default 5)
+ 	If 'modeline' is on 'modelines' gives the number of lines that is
+ 	checked for set commands.  If 'modeline' is off or 'modelines' is zero

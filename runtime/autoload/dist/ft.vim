@@ -1,7 +1,7 @@
 " Vim functions for file type detection
 "
 " Maintainer:	Bram Moolenaar <Bram@vim.org>
-" Last Change:	2019 Jan 18
+" Last Change:	2020 Aug 17
 
 " These functions are moved here from runtime/filetype.vim to make startup
 " faster.
@@ -197,7 +197,7 @@ func dist#ft#FTe()
     exe 'setf ' . g:filetype_euphoria
   else
     let n = 1
-    while n < 100 && n < line("$")
+    while n < 100 && n <= line("$")
       if getline(n) =~ "^\\s*\\(<'\\|'>\\)\\s*$"
 	setf specman
 	return
@@ -211,7 +211,7 @@ endfunc
 " Distinguish between HTML, XHTML and Django
 func dist#ft#FThtml()
   let n = 1
-  while n < 10 && n < line("$")
+  while n < 10 && n <= line("$")
     if getline(n) =~ '\<DTD\s\+XHTML\s'
       setf xhtml
       return
@@ -222,13 +222,13 @@ func dist#ft#FThtml()
     endif
     let n = n + 1
   endwhile
-  setf html
+  setf FALLBACK html
 endfunc
 
 " Distinguish between standard IDL and MS-IDL
 func dist#ft#FTidl()
   let n = 1
-  while n < 50 && n < line("$")
+  while n < 50 && n <= line("$")
     if getline(n) =~ '^\s*import\s\+"\(unknwn\|objidl\)\.idl"'
       setf msidl
       return
@@ -298,7 +298,7 @@ endfunc
 
 func dist#ft#FTmms()
   let n = 1
-  while n < 10
+  while n < 20
     let line = getline(n)
     if line =~ '^\s*\(%\|//\)' || line =~ '^\*'
       setf mmix
@@ -325,7 +325,7 @@ endfunc
 
 func dist#ft#FTmm()
   let n = 1
-  while n < 10
+  while n < 20
     let line = getline(n)
     if line =~ '^\s*\(#\s*\(include\|import\)\>\|@import\>\|/\*\)'
       setf objcpp
@@ -362,6 +362,10 @@ func dist#ft#FTinc()
       setf aspvbs
     elseif lines =~ "<?"
       setf php
+    " Pascal supports // comments but they're vary rarely used for file
+    " headers so assume POV-Ray
+    elseif lines =~ '^\s*\%({\|(\*\)' || lines =~? s:ft_pascal_keywords
+      setf pascal
     else
       call dist#ft#FTasmsyntax()
       if exists("b:asmsyntax")
@@ -408,6 +412,9 @@ func dist#ft#FTprogress_asm()
   setf progress
 endfunc
 
+let s:ft_pascal_comments = '^\s*\%({\|(\*\|//\)'
+let s:ft_pascal_keywords = '^\s*\%(program\|unit\|library\|uses\|begin\|procedure\|function\|const\|type\|var\)\>'
+
 func dist#ft#FTprogress_pascal()
   if exists("g:filetype_p")
     exe "setf " . g:filetype_p
@@ -419,8 +426,7 @@ func dist#ft#FTprogress_pascal()
   let lnum = 1
   while lnum <= 10 && lnum < line('$')
     let line = getline(lnum)
-    if line =~ '^\s*\(program\|unit\|procedure\|function\|const\|type\|var\)\>'
-	\ || line =~ '^\s*{' || line =~ '^\s*(\*'
+    if line =~ s:ft_pascal_comments || line =~? s:ft_pascal_keywords
       setf pascal
       return
     elseif line !~ '^\s*$' || line =~ '^/\*'
@@ -431,6 +437,19 @@ func dist#ft#FTprogress_pascal()
     let lnum = lnum + 1
   endw
   setf progress
+endfunc
+
+func dist#ft#FTpp()
+  if exists("g:filetype_pp")
+    exe "setf " . g:filetype_pp
+  else
+    let line = getline(nextnonblank(1))
+    if line =~ s:ft_pascal_comments || line =~? s:ft_pascal_keywords
+      setf pascal
+    else
+      setf puppet
+    endif
+  endif
 endfunc
 
 func dist#ft#FTr()
@@ -575,7 +594,7 @@ endfunc
 let s:ft_rules_udev_rules_pattern = '^\s*\cudev_rules\s*=\s*"\([^"]\{-1,}\)/*".*'
 func dist#ft#FTRules()
   let path = expand('<amatch>:p')
-  if path =~ '^/\(etc/udev/\%(rules\.d/\)\=.*\.rules\|lib/udev/\%(rules\.d/\)\=.*\.rules\)$'
+  if path =~ '/\(etc/udev/\%(rules\.d/\)\=.*\.rules\|\%(usr/\)\=lib/udev/\%(rules\.d/\)\=.*\.rules\)$'
     setf udevrules
     return
   endif
@@ -699,7 +718,7 @@ endfunc
 
 func dist#ft#FTxml()
   let n = 1
-  while n < 100 && n < line("$")
+  while n < 100 && n <= line("$")
     let line = getline(n)
     " DocBook 4 or DocBook 5.
     let is_docbook4 = line =~ '<!DOCTYPE.*DocBook'
@@ -725,7 +744,7 @@ endfunc
 
 func dist#ft#FTy()
   let n = 1
-  while n < 100 && n < line("$")
+  while n < 100 && n <= line("$")
     let line = getline(n)
     if line =~ '^\s*%'
       setf yacc

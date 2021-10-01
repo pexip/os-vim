@@ -4,18 +4,29 @@ Subject: patch 8.2.3403: memory leak for :retab with invalid argument
 
 Problem:    Memory leak for :retab with invalid argument.
 Solution:   Free the memory.  Make error messages consistent.
-(cherry picked from commit 2ddb89f8a94425cda1e5491efc80c1ccccb6e08e)
 ---
- src/ex_cmds.c | 10 ++++++++--
- src/option.c  |  3 +++
+ src/indent.c  | 13 +++++++++++--
  src/version.c |  1 +
- 3 files changed, 12 insertions(+), 2 deletions(-)
+ 2 files changed, 12 insertions(+), 2 deletions(-)
 
-diff --git a/src/ex_cmds.c b/src/ex_cmds.c
-index 08d71e4..3200173 100644
---- a/src/ex_cmds.c
-+++ b/src/ex_cmds.c
-@@ -714,12 +714,18 @@ ex_retab(exarg_T *eap)
+diff --git a/src/indent.c b/src/indent.c
+index 9209a39..a43413c 100644
+--- a/src/indent.c
++++ b/src/indent.c
+@@ -70,9 +70,12 @@ tabstop_set(char_u *var, int **array)
+     {
+ 	int n = atoi((char *)cp);
+ 
++	// Catch negative values, overflow and ridiculous big values.
+ 	if (n < 0 || n > 9999)
+ 	{
+ 	    semsg(_(e_invarg2), cp);
++	    vim_free(*array);
++	    *array = NULL;
+ 	    return FAIL;
+ 	}
+ 	(*array)[t++] = n;
+@@ -1584,12 +1587,18 @@ ex_retab(exarg_T *eap)
      else
  	new_ts_str = vim_strnsave(new_ts_str, eap->arg - new_ts_str);
  #else
@@ -36,28 +47,11 @@ index 08d71e4..3200173 100644
      if (new_ts == 0)
  	new_ts = curbuf->b_p_ts;
  #endif
-diff --git a/src/option.c b/src/option.c
-index 3ebd443..12d903f 100644
---- a/src/option.c
-+++ b/src/option.c
-@@ -12859,9 +12859,12 @@ tabstop_set(char_u *var, int **array)
-     {
- 	int n = atoi((char *)cp);
- 
-+	// Catch negative values, overflow and ridiculous big values.
- 	if (n < 0 || n > 9999)
- 	{
- 	    semsg(_(e_invarg2), cp);
-+	    vim_free(*array);
-+	    *array = NULL;
- 	    return FAIL;
- 	}
- 	(*array)[t++] = n;
 diff --git a/src/version.c b/src/version.c
-index bd19aac..cfe1486 100644
+index c5617f6..c3c64d5 100644
 --- a/src/version.c
 +++ b/src/version.c
-@@ -2581,6 +2581,7 @@ static int included_patches[] =
+@@ -5632,6 +5632,7 @@ static int included_patches[] =
  static char *(extra_patches[]) =
  {   /* Add your patch description below this line */
      "8.2.3402",

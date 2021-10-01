@@ -5,98 +5,19 @@ Subject: patch 8.2.3402: invalid memory access when using :retab with large
 
 Problem:    Invalid memory access when using :retab with large value.
 Solution:   Check the number is positive.
-(cherry picked from commit b7081e135a16091c93f6f5f7525a5c58fb7ca9f9)
 ---
- src/ex_cmds.c              |  2 +-
- src/option.c               | 46 +++++++++++++++++++++++++++-------------------
+ src/indent.c               | 34 +++++++++++++++++++++-------------
+ src/option.c               | 12 ++++++------
+ src/optionstr.c            |  4 ++--
  src/testdir/test_retab.vim |  3 +++
  src/version.c              |  1 +
- 4 files changed, 32 insertions(+), 20 deletions(-)
+ 5 files changed, 33 insertions(+), 21 deletions(-)
 
-diff --git a/src/ex_cmds.c b/src/ex_cmds.c
-index 681ef42..08d71e4 100644
---- a/src/ex_cmds.c
-+++ b/src/ex_cmds.c
-@@ -698,7 +698,7 @@ ex_retab(exarg_T *eap)
- 
- #ifdef FEAT_VARTABS
-     new_ts_str = eap->arg;
--    if (!tabstop_set(eap->arg, &new_vts_array))
-+    if (tabstop_set(eap->arg, &new_vts_array) == FAIL)
- 	return;
-     while (vim_isdigit(*(eap->arg)) || *(eap->arg) == ',')
- 	++(eap->arg);
-diff --git a/src/option.c b/src/option.c
-index 4d067c0..3ebd443 100644
---- a/src/option.c
-+++ b/src/option.c
-@@ -5612,9 +5612,9 @@ didset_options2(void)
- #endif
- #ifdef FEAT_VARTABS
-     vim_free(curbuf->b_p_vsts_array);
--    tabstop_set(curbuf->b_p_vsts, &curbuf->b_p_vsts_array);
-+    (void)tabstop_set(curbuf->b_p_vsts, &curbuf->b_p_vsts_array);
-     vim_free(curbuf->b_p_vts_array);
--    tabstop_set(curbuf->b_p_vts,  &curbuf->b_p_vts_array);
-+    (void)tabstop_set(curbuf->b_p_vts,  &curbuf->b_p_vts_array);
- #endif
- }
- 
-@@ -7551,7 +7551,7 @@ did_set_string_option(
- 	    if (errmsg == NULL)
- 	    {
- 		int *oldarray = curbuf->b_p_vsts_array;
--		if (tabstop_set(*varp, &(curbuf->b_p_vsts_array)))
-+		if (tabstop_set(*varp, &(curbuf->b_p_vsts_array)) == OK)
- 		{
- 		    if (oldarray)
- 			vim_free(oldarray);
-@@ -7590,7 +7590,7 @@ did_set_string_option(
- 	    {
- 		int *oldarray = curbuf->b_p_vts_array;
- 
--		if (tabstop_set(*varp, &(curbuf->b_p_vts_array)))
-+		if (tabstop_set(*varp, &(curbuf->b_p_vts_array)) == OK)
- 		{
- 		    vim_free(oldarray);
- #ifdef FEAT_FOLDING
-@@ -11395,7 +11395,7 @@ buf_copy_options(buf_T *buf, int flags)
- #ifdef FEAT_VARTABS
- 	    buf->b_p_vsts = vim_strsave(p_vsts);
- 	    if (p_vsts && p_vsts != empty_option)
--		tabstop_set(p_vsts, &buf->b_p_vsts_array);
-+		(void)tabstop_set(p_vsts, &buf->b_p_vsts_array);
- 	    else
- 		buf->b_p_vsts_array = 0;
- 	    buf->b_p_vsts_nopaste = p_vsts_nopaste
-@@ -11524,7 +11524,7 @@ buf_copy_options(buf_T *buf, int flags)
- 		buf->b_p_isk = save_p_isk;
- #ifdef FEAT_VARTABS
- 		if (p_vts && p_vts != empty_option && !buf->b_p_vts_array)
--		    tabstop_set(p_vts, &buf->b_p_vts_array);
-+		    (void)tabstop_set(p_vts, &buf->b_p_vts_array);
- 		else
- 		    buf->b_p_vts_array = NULL;
- #endif
-@@ -11537,7 +11537,7 @@ buf_copy_options(buf_T *buf, int flags)
- #ifdef FEAT_VARTABS
- 		buf->b_p_vts = vim_strsave(p_vts);
- 		if (p_vts && p_vts != empty_option && !buf->b_p_vts_array)
--		    tabstop_set(p_vts, &buf->b_p_vts_array);
-+		    (void)tabstop_set(p_vts, &buf->b_p_vts_array);
- 		else
- 		    buf->b_p_vts_array = NULL;
- #endif
-@@ -12435,7 +12435,7 @@ paste_option_changed(void)
- 	    if (buf->b_p_vsts_array)
- 		vim_free(buf->b_p_vsts_array);
- 	    if (buf->b_p_vsts && buf->b_p_vsts != empty_option)
--		tabstop_set(buf->b_p_vsts, &buf->b_p_vsts_array);
-+		(void)tabstop_set(buf->b_p_vsts, &buf->b_p_vsts_array);
- 	    else
- 		buf->b_p_vsts_array = 0;
- #endif
-@@ -12807,18 +12807,19 @@ check_ff_value(char_u *p)
+diff --git a/src/indent.c b/src/indent.c
+index a9d406e..9209a39 100644
+--- a/src/indent.c
++++ b/src/indent.c
+@@ -18,18 +18,19 @@
  /*
   * Set the integer values corresponding to the string setting of 'vartabstop'.
   * "array" will be set, caller must free it if needed.
@@ -108,9 +29,9 @@ index 4d067c0..3ebd443 100644
 -    int valcount = 1;
 -    int t;
 -    char_u *cp;
-+    int		valcount = 1;
-+    int		t;
-+    char_u	*cp;
++    int	    valcount = 1;
++    int	    t;
++    char_u  *cp;
  
      if (var[0] == NUL || (var[0] == '0' && var[1] == NUL))
      {
@@ -120,7 +41,7 @@ index 4d067c0..3ebd443 100644
      }
  
      for (cp = var; *cp != NUL; ++cp)
-@@ -12832,8 +12833,8 @@ tabstop_set(char_u *var, int **array)
+@@ -43,8 +44,8 @@ tabstop_set(char_u *var, int **array)
  		if (cp != end)
  		    emsg(_(e_positive));
  		else
@@ -131,7 +52,7 @@ index 4d067c0..3ebd443 100644
  	    }
  	}
  
-@@ -12844,26 +12845,33 @@ tabstop_set(char_u *var, int **array)
+@@ -55,26 +56,33 @@ tabstop_set(char_u *var, int **array)
  	    ++valcount;
  	    continue;
  	}
@@ -141,7 +62,7 @@ index 4d067c0..3ebd443 100644
 +	return FAIL;
      }
  
-     *array = (int *)alloc((unsigned) ((valcount + 1) * sizeof(int)));
+     *array = ALLOC_MULT(int, valcount + 1);
      if (*array == NULL)
 -	return FALSE;
 +	return FAIL;
@@ -151,6 +72,7 @@ index 4d067c0..3ebd443 100644
      for (cp = var; *cp != NUL;)
      {
 -	(*array)[t++] = atoi((char *)cp);
+-	while (*cp  != NUL && *cp != ',')
 +	int n = atoi((char *)cp);
 +
 +	if (n < 0 || n > 9999)
@@ -159,7 +81,7 @@ index 4d067c0..3ebd443 100644
 +	    return FAIL;
 +	}
 +	(*array)[t++] = n;
- 	while (*cp  != NUL && *cp != ',')
++	while (*cp != NUL && *cp != ',')
  	    ++cp;
  	if (*cp != NUL)
  	    ++cp;
@@ -170,11 +92,94 @@ index 4d067c0..3ebd443 100644
  }
  
  /*
+@@ -1560,7 +1568,7 @@ ex_retab(exarg_T *eap)
+ 
+ #ifdef FEAT_VARTABS
+     new_ts_str = eap->arg;
+-    if (!tabstop_set(eap->arg, &new_vts_array))
++    if (tabstop_set(eap->arg, &new_vts_array) == FAIL)
+ 	return;
+     while (vim_isdigit(*(eap->arg)) || *(eap->arg) == ',')
+ 	++(eap->arg);
+diff --git a/src/option.c b/src/option.c
+index b4893a1..94986bf 100644
+--- a/src/option.c
++++ b/src/option.c
+@@ -2347,9 +2347,9 @@ didset_options2(void)
+ #endif
+ #ifdef FEAT_VARTABS
+     vim_free(curbuf->b_p_vsts_array);
+-    tabstop_set(curbuf->b_p_vsts, &curbuf->b_p_vsts_array);
++    (void)tabstop_set(curbuf->b_p_vsts, &curbuf->b_p_vsts_array);
+     vim_free(curbuf->b_p_vts_array);
+-    tabstop_set(curbuf->b_p_vts,  &curbuf->b_p_vts_array);
++    (void)tabstop_set(curbuf->b_p_vts,  &curbuf->b_p_vts_array);
+ #endif
+ }
+ 
+@@ -5808,7 +5808,7 @@ buf_copy_options(buf_T *buf, int flags)
+ 	    buf->b_p_vsts = vim_strsave(p_vsts);
+ 	    COPY_OPT_SCTX(buf, BV_VSTS);
+ 	    if (p_vsts && p_vsts != empty_option)
+-		tabstop_set(p_vsts, &buf->b_p_vsts_array);
++		(void)tabstop_set(p_vsts, &buf->b_p_vsts_array);
+ 	    else
+ 		buf->b_p_vsts_array = 0;
+ 	    buf->b_p_vsts_nopaste = p_vsts_nopaste
+@@ -5968,7 +5968,7 @@ buf_copy_options(buf_T *buf, int flags)
+ 		buf->b_p_isk = save_p_isk;
+ #ifdef FEAT_VARTABS
+ 		if (p_vts && p_vts != empty_option && !buf->b_p_vts_array)
+-		    tabstop_set(p_vts, &buf->b_p_vts_array);
++		    (void)tabstop_set(p_vts, &buf->b_p_vts_array);
+ 		else
+ 		    buf->b_p_vts_array = NULL;
+ #endif
+@@ -5983,7 +5983,7 @@ buf_copy_options(buf_T *buf, int flags)
+ 		buf->b_p_vts = vim_strsave(p_vts);
+ 		COPY_OPT_SCTX(buf, BV_VTS);
+ 		if (p_vts && p_vts != empty_option && !buf->b_p_vts_array)
+-		    tabstop_set(p_vts, &buf->b_p_vts_array);
++		    (void)tabstop_set(p_vts, &buf->b_p_vts_array);
+ 		else
+ 		    buf->b_p_vts_array = NULL;
+ #endif
+@@ -6676,7 +6676,7 @@ paste_option_changed(void)
+ 	    if (buf->b_p_vsts_array)
+ 		vim_free(buf->b_p_vsts_array);
+ 	    if (buf->b_p_vsts && buf->b_p_vsts != empty_option)
+-		tabstop_set(buf->b_p_vsts, &buf->b_p_vsts_array);
++		(void)tabstop_set(buf->b_p_vsts, &buf->b_p_vsts_array);
+ 	    else
+ 		buf->b_p_vsts_array = 0;
+ #endif
+diff --git a/src/optionstr.c b/src/optionstr.c
+index 8f3f0c5..24657fd 100644
+--- a/src/optionstr.c
++++ b/src/optionstr.c
+@@ -2180,7 +2180,7 @@ did_set_string_option(
+ 	    if (errmsg == NULL)
+ 	    {
+ 		int *oldarray = curbuf->b_p_vsts_array;
+-		if (tabstop_set(*varp, &(curbuf->b_p_vsts_array)))
++		if (tabstop_set(*varp, &(curbuf->b_p_vsts_array)) == OK)
+ 		{
+ 		    if (oldarray)
+ 			vim_free(oldarray);
+@@ -2219,7 +2219,7 @@ did_set_string_option(
+ 	    {
+ 		int *oldarray = curbuf->b_p_vts_array;
+ 
+-		if (tabstop_set(*varp, &(curbuf->b_p_vts_array)))
++		if (tabstop_set(*varp, &(curbuf->b_p_vts_array)) == OK)
+ 		{
+ 		    vim_free(oldarray);
+ #ifdef FEAT_FOLDING
 diff --git a/src/testdir/test_retab.vim b/src/testdir/test_retab.vim
-index f11a32b..e7b8946 100644
+index b792da5..c7190aa 100644
 --- a/src/testdir/test_retab.vim
 +++ b/src/testdir/test_retab.vim
-@@ -74,4 +74,7 @@ endfunc
+@@ -75,6 +75,9 @@ endfunc
  func Test_retab_error()
    call assert_fails('retab -1',  'E487:')
    call assert_fails('retab! -1', 'E487:')
@@ -182,11 +187,13 @@ index f11a32b..e7b8946 100644
 +  call assert_fails('ret 10000', 'E475:')
 +  call assert_fails('ret 80000000000000000000', 'E475:')
  endfunc
+ 
+ " vim: shiftwidth=2 sts=2 expandtab
 diff --git a/src/version.c b/src/version.c
-index 6bac28e..bd19aac 100644
+index 8159289..c5617f6 100644
 --- a/src/version.c
 +++ b/src/version.c
-@@ -2580,6 +2580,7 @@ static int included_patches[] =
+@@ -5631,6 +5631,7 @@ static int included_patches[] =
   */
  static char *(extra_patches[]) =
  {   /* Add your patch description below this line */

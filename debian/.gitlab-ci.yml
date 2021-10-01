@@ -14,6 +14,6 @@
     - cd ../deb-packages/vim/vim-"$UPSTREAM_VERSION"
     - sudo -u ci dpkg-buildpackage -us -uc
 
-test:buster:
+test:bullseye:
   <<: *build
-  image: debian:buster
+  image: debian:bullseye

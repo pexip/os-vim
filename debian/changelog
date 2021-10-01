@@ -1,27 +1,235 @@
-vim (2:8.1.0875-5+deb10u2) buster; urgency=medium
+vim (2:8.2.2434-3+deb11u1) bullseye; urgency=medium
 
-  * Revert unintentional inclusion of v8.2.3489, which is only relevant to Vim
-    8.2.3110 and later.
+  * Switch gbp.conf and CI to bullseye
+  * Remove vim-gtk alternatives during vim-gtk -> vim-gtk3 transition
+    (Closes: #993766)
+  * Backport patches 8.2.3402 and 8.2.3403 to fix heap overflow in :retab
+    (Closes: #994076, CVE-2021-3770)
+  * Backport 8.2.3409 to fix heap overflow (Closes: #994498, CVE-2021-3778)
+  * Backport patch 8.2.3428 to fix use after free (Closes: #994497,
+    CVE-2021-3796)
 
- -- James McCoy <jamessan@debian.org>  Sat, 25 Dec 2021 10:48:51 -0500
+ -- James McCoy <jamessan@debian.org>  Thu, 30 Sep 2021 21:51:08 -0400
 
-vim (2:8.1.0875-5+deb10u1) buster; urgency=medium
+vim (2:8.2.2434-3) unstable; urgency=medium
 
-  * Change gbp.conf and salsa config to use buster
-  * Backport 8.1.0881 and 8.1.0883 to fix CVE-2019-20807
-    + 8.1.0881: can execute shell commands in rvim through interfaces
-    + 8.1.0883: missing some changes for Ex commands
-  * Backport patches 8.1.0936, 8.2.3402, and 8.2.3403 to fix CVE-2021-3770
-    (Closes: #994076)
-    + 8.1.0936: may leak memory when using 'vartabstop'
-    + 8.2.3402: invalid memory access when using :retab with large value
-    + 8.2.3403: memory leak for :retab with invalid argument
-  * Backport v8.2.3409 to fix CVE-2021-3778 (Closes: #994498)
-    + 8.2.3409: reading beyond end of line with invalid utf-8 character
-  * Backport v8.2.3428 to fix CVE-2021-3796 (Closes: #994497)
-    + 8.2.3428: using freed memory when replacing
+  * Add pkg.vim.noruby Build-Profile
+  * Disable ruby interpreter on alpha and ia64 (Closes: #983308)
+  * Re-enable ruby for vim-gtk3 on Ubuntu, since it is no longer in main
 
- -- James McCoy <jamessan@debian.org>  Sun, 26 Sep 2021 09:29:21 -0400
+ -- James McCoy <jamessan@debian.org>  Mon, 01 Mar 2021 21:58:09 -0500
+
+vim (2:8.2.2434-2) unstable; urgency=medium
+
+  * Only enable sound support for GUI builds (Closes: #982856)
+
+ -- James McCoy <jamessan@debian.org>  Sat, 20 Feb 2021 13:46:51 -0500
+
+vim (2:8.2.2434-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.2.2434
+    + 8.2.2428: Fix handling of focus events when 'ttymouse' is unset.
+      (Closes: #980449)
+
+ -- James McCoy <jamessan@debian.org>  Sat, 30 Jan 2021 23:47:07 -0500
+
+vim (2:8.2.2367-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.2.2367
+    + 8.2.2367: Fix test failures on armel/armhf/mipsel
+
+ -- James McCoy <jamessan@debian.org>  Sun, 17 Jan 2021 10:53:54 -0500
+
+vim (2:8.2.2344-2) unstable; urgency=medium
+
+  * rules: Add dummy command to test target to fix make error when
+    DEB_BUILD_OPTIONS=nocheck
+
+ -- James McCoy <jamessan@debian.org>  Thu, 14 Jan 2021 22:25:21 -0500
+
+vim (2:8.2.2344-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.2.2344
+    + ftplugin/spec.vim: Fix missing ":let"  (Closes: #977429)
+    + syntax/cabal.vim: Add build-tools-depends keyword  (Closes: #973548)
+  * rules: Sanitize locale-related environment variables (Closes: #973943)
+
+ -- James McCoy <jamessan@debian.org>  Thu, 14 Jan 2021 21:40:26 -0500
+
+vim (2:8.2.1913-1) unstable; urgency=medium
+
+  [ James McCoy ]
+  * Merge upstream tag v8.2.1913
+    + syntax/sh.vim: Highlight "local var" appropriately when /bin/sh is dash.
+      (Closes: #796282)
+    + plugin/netrwPlugin.vim: Fix directory navigation with
+      g:netrw_liststyle=3 and g:netrw_list_hide='^\..*'.  (Closes: #942549)
+    + 8.2.1909: Remove the limit on items in 'statusline'  (Closes: #688258)
+    + 8.2.1912: Fix test failures with Python 3 >= 3.9 (Closes: #972777)
+  * rules: Provide path to vim when building vim.pot
+  * Add procps and cscope to (autopkg)test Depends
+  * d/tests: Use dpkg-query rather than dpkg-parsechangelog to get upstream version
+  * d/tests: Use runtime/ from source tree
+  * d/tests: Force TERM=xterm when running upstreamtest
+  * Stop installing vim2html.pl
+  * Stop installing README.txt files in vim-runtime
+  * Lintian
+    + Add national-encoding overrides for files intentionally in non-UTF8
+      encodings
+    + Add package-contains-documentation-outside-usr-share-doc overrides for
+      builtin help
+    + Rename binary-without-manpage override to no-manual-page
+    + Rename manpage-without-executable override to spare-manual-page
+    + Override repeated-path-segment for dvorak plugin
+    + Add package-contains-documentation-outside-usr-share-doc override for
+      rgb.txt
+
+  [ Pino Toscano ]
+  * Remove unused XPM icons.
+  * Remove do not ship gvim.svg in /usr/share/pixmaps.
+
+ -- James McCoy <jamessan@debian.org>  Tue, 27 Oct 2020 21:38:24 -0400
+
+vim (2:8.2.0716-3) unstable; urgency=medium
+
+  * Version the vim/gvim/etc Provides for the vim binary packages.  This
+    allows versioned Depends on vim to be satisfied by any of the binary
+    packages instead of trying to install Package: vim.  (Closes: #960119)
+
+ -- James McCoy <jamessan@debian.org>  Mon, 11 May 2020 22:37:13 -0400
+
+vim (2:8.2.0716-2) unstable; urgency=medium
+
+  * Build vim-basic for arch-all builds, needed for install targets
+
+ -- James McCoy <jamessan@debian.org>  Sat, 09 May 2020 11:27:39 -0400
+
+vim (2:8.2.0716-1) unstable; urgency=medium
+
+  * Merge upstream tag v8.2.0716
+    + syntax/make.vim: Fix mis-highlighting of targets that start with the
+      word "overrule".  (Closes: #958993)
+  * rules: Switch to dh
+  * Remove src/po/vim.pot during clean
+
+ -- James McCoy <jamessan@debian.org>  Sat, 09 May 2020 09:20:09 -0400
+
+vim (2:8.2.0510-1) unstable; urgency=medium
+
+  * Merge upstream tag v8.2.0510
+    + 8.2.0444: Improve reliability of Test_swap_prompt_splitwin
+    + 8.2.0447: Improve reliability of Test_terminal_scroll
+    + 8.2.0454: Improve reliability of Test_state
+    + 8.2.0456, 8.2.0461, 8.2.0470: Improve reliability of Test_confirm_cmd
+    + 8.2.0462: Fix invalid assertion in Test_popup_and_previewwindow_dump
+    + 8.2.0474: Allow ":write" to overwrite an existing file when used via
+      BufWriteCmd, fixing breakage of plugins like vim-gnupg
+  * Add lintian overrides for manpage-without-executable
+  * Remove obsolete vim-common.preinst
+
+ -- James McCoy <jamessan@debian.org>  Sat, 04 Apr 2020 23:20:13 -0400
+
+vim (2:8.2.0439-1) unstable; urgency=medium
+
+  * Merge upstream tag v8.2.0439
+    + 8.2.0398: Fix FTBFS due to Test_profile_func() failure
+    + 8.2.0436: Fix FTBFS in test_vim9_disassemble.vim due to type mismatches
+      in format strings
+
+ -- James McCoy <jamessan@debian.org>  Mon, 23 Mar 2020 23:21:40 -0400
+
+vim (2:8.2.0397-1) unstable; urgency=medium
+
+  * Merge upstream tag v8.2.0397
+    + 8.2.0382: Fix Test_terminal_in_popup failures by disabling the ruler
+    + syntax/resolv.vim: Refresh list of known options.  (Closes: #626371)
+
+ -- James McCoy <jamessan@debian.org>  Tue, 17 Mar 2020 08:31:45 -0400
+
+vim (2:8.2.0378-1) unstable; urgency=medium
+
+  * Merge upstream tag v8.2.0378
+    + 8.2.0374: Fix test failures on 32-bit archs.  (Closes: #953742)
+
+ -- James McCoy <jamessan@debian.org>  Fri, 13 Mar 2020 23:40:47 -0400
+
+vim (2:8.2.0368-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.2.0368
+    + New "vim9script" syntax available for scripts, c.f. ":help vim9-script"
+    + syntax/debchangelog.vim: Stop highlighting space before "UNRELEASED" as
+      an error (Closes: #944781)
+    + syntax/markdown.vim: Don't treat a bare "<" as the start of an HTML tag.
+      (Closes: #892172)
+    + syntax/resolv.vim: Highlight IPv6 addresses (Closes: #626371)
+    + 8.2.0271: Correctly format 64-bit numbers for status messages in
+      vim-tiny on 32-bit systems (Closes: #951380)
+  * Declare compliance with Policy 4.5.0, no changes needed
+  * Build-Depend on debhelper-compat (= 12)
+
+ -- James McCoy <jamessan@debian.org>  Tue, 10 Mar 2020 22:54:00 -0400
+
+vim (2:8.1.2269-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.1.2269
+    + 8.1.2261: Disable modifyOtherKeys while in Insert mode when 'noesckeys'
+      is set. (Closes: #944132)
+
+ -- James McCoy <jamessan@debian.org>  Sat, 09 Nov 2019 07:59:40 -0500
+
+vim (2:8.1.2244-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.1.2244
+    + syntax/debchangelog.vim: Highlight unsupported releases differently than
+      supported releases.  (Closes: #847933)
+    + "mouse" feature is now always enabled.
+    + Improve support for chorded mappings in xterm, when xterm's
+      modifyOtherKeys mode is enabled, c.f. :help modifyOtherKeys.
+  * Revert "Move /usr/bin/vim.* into /usr/libexec/vim/"
+    (Closes: #943328, #942225).  The change broke user preferences for
+    alternatives and sensible-editor.
+  * Add /var/lib/addons to 'runtimepath' at build time (Closes: #943967)
+  * Use dh_missing instead of dh_install --list-missing (Closes: #942277)
+
+ -- James McCoy <jamessan@debian.org>  Sun, 03 Nov 2019 20:52:36 -0500
+
+vim (2:8.1.2136-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.1.2136
+    + Farsi support was removed
+    + syntax/debcontrol.vim: Recognize "Files-Excluded(-<component>)" fields
+      (Closes: #932894)
+    + Swap files are automatically deleted if the file was unmodified and the
+      process which generated the swap file isn't running.  (Closes: #375989)
+    + Fix incorrect over-indenting when auto-indent is enabled for XML files.
+      (Closes: #918672)
+    + Fix indentation of bash scripts with nested if blocks.  (Closes:
+      #939369)
+    + New popup window support, via the "popup_*()" APIs
+    + New sound support, via the "sound_*()" APIs
+    + "localmap", "visual", "visualextra", "visualedit", "user_commands",
+      "multi_byte", "cmdline_compl", "insert_expand", "modify_fname",
+      and "comments" features are now always enabled.
+    + Fix test_compiler.vim failure when locale isn't available.  (Closes:
+      #917859)
+  * control:
+    + Remove obsolete versioned Build-Depends on dpkg-dev
+  * rules:
+    + Use dh_install --list-missing
+  * Turn vim-gtk into a transitional package to vim-gtk3  (Closes: #930576
+    since the IA__gdk_drawable_get_size assertions don't happen in the GTK3
+    build)
+  * Declare compliance with Policy 4.4.1, no changes needed
+  * Move /usr/bin/vim.* into /usr/libexec/vim/
+  * autopkgtest:
+    + Mark the "$variant --version" tests superficial
+    + Add new tests which run the build time tests against the installed
+      binary/runtime.  Mark it flaky for now, since there are some tests which
+      are more prone to fail in the LXC environment.
+    + Run autopkgtests as a dedicated user, to avoid false negative failures
+      with upstream tests which check permissions
+
+ -- James McCoy <jamessan@debian.org>  Fri, 11 Oct 2019 21:37:58 -0400
 
 vim (2:8.1.0875-5) unstable; urgency=medium
 
