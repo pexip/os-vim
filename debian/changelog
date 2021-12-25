@@ -1,3 +1,28 @@
+vim (2:8.1.0875-5+deb10u2) buster; urgency=medium
+
+  * Revert unintentional inclusion of v8.2.3489, which is only relevant to Vim
+    8.2.3110 and later.
+
+ -- James McCoy <jamessan@debian.org>  Sat, 25 Dec 2021 10:48:51 -0500
+
+vim (2:8.1.0875-5+deb10u1) buster; urgency=medium
+
+  * Change gbp.conf and salsa config to use buster
+  * Backport 8.1.0881 and 8.1.0883 to fix CVE-2019-20807
+    + 8.1.0881: can execute shell commands in rvim through interfaces
+    + 8.1.0883: missing some changes for Ex commands
+  * Backport patches 8.1.0936, 8.2.3402, and 8.2.3403 to fix CVE-2021-3770
+    (Closes: #994076)
+    + 8.1.0936: may leak memory when using 'vartabstop'
+    + 8.2.3402: invalid memory access when using :retab with large value
+    + 8.2.3403: memory leak for :retab with invalid argument
+  * Backport v8.2.3409 to fix CVE-2021-3778 (Closes: #994498)
+    + 8.2.3409: reading beyond end of line with invalid utf-8 character
+  * Backport v8.2.3428 to fix CVE-2021-3796 (Closes: #994497)
+    + 8.2.3428: using freed memory when replacing
+
+ -- James McCoy <jamessan@debian.org>  Sun, 26 Sep 2021 09:29:21 -0400
+
 vim (2:8.1.0875-5) unstable; urgency=medium
 
   * gbp.conf: Set debian-tag to debian/%(version)s

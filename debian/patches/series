@@ -14,3 +14,10 @@ patch-8.1.1367-can-set-modelineexpr-in-modeline.patch
 patch-8.1.1368-modeline-test-fails-with-python-but-withou.patch
 patch-8.1.1382-error-when-editing-test-file.patch
 patch-8.1.1401-misspelled-mkspellmem-as-makespellmem.patch
+upstream/patch-8.1.0881-can-execute-shell-commands-in-rvim-through.patch
+upstream/patch-8.1.0883-missing-some-changes-for-Ex-commands.patch
+upstream/patch-8.1.0936-may-leak-memory-when-using-vartabstop.patch
+upstream/patch-8.2.3402-invalid-memory-access-when-using-retab-wit.patch
+upstream/patch-8.2.3403-memory-leak-for-retab-with-invalid-argumen.patch
+upstream/patch-8.2.3409-reading-beyond-end-of-line-with-invalid-ut.patch
+upstream/patch-8.2.3428-using-freed-memory-when-replacing.patch

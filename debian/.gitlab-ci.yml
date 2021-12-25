@@ -14,14 +14,6 @@
     - cd ../deb-packages/vim/vim-"$UPSTREAM_VERSION"
     - sudo -u ci dpkg-buildpackage -us -uc
 
-test:unstable:
+test:buster:
   <<: *build
-  image: debian:unstable
-
-test:testing:
-  <<: *build
-  image: debian:testing
-
-test:ubuntu-devel:
-  <<: *build
-  image: ubuntu:devel
+  image: debian:buster
