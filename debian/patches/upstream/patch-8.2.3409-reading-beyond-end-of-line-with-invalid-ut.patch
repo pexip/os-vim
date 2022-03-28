@@ -1,0 +1,58 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Tue, 7 Sep 2021 19:26:53 +0200
+Subject: patch 8.2.3409: reading beyond end of line with invalid utf-8
+ character
+
+Problem:    Reading beyond end of line with invalid utf-8 character.
+Solution:   Check for NUL when advancing.
+(cherry picked from commit 65b605665997fad54ef39a93199e305af2fe4d7f)
+---
+ src/regexp_nfa.c                 |  3 ++-
+ src/testdir/test_regexp_utf8.vim | 10 ++++++++++
+ src/version.c                    |  1 +
+ 3 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/src/regexp_nfa.c b/src/regexp_nfa.c
+index 031a6cf..b9562c6 100644
+--- a/src/regexp_nfa.c
++++ b/src/regexp_nfa.c
+@@ -5414,7 +5414,8 @@ find_match_text(colnr_T startcol, int regstart, char_u *match_text)
+ 		match = FALSE;
+ 		break;
+ 	    }
+-	    len2 += MB_CHAR2LEN(c2);
++	    len2 += enc_utf8 ? utf_ptr2len(rex.line + col + len2)
++							     : MB_CHAR2LEN(c2);
+ 	}
+ 	if (match
+ 		/* check that no composing char follows */
+diff --git a/src/testdir/test_regexp_utf8.vim b/src/testdir/test_regexp_utf8.vim
+index 98b9e73..75485dc 100644
+--- a/src/testdir/test_regexp_utf8.vim
++++ b/src/testdir/test_regexp_utf8.vim
+@@ -206,3 +206,13 @@ func Test_large_class()
+   call assert_equal(1, "\u3042" =~# '[\u3000-\u4000]')
+   set re=0
+ endfunc
++
++func Test_match_invalid_byte()
++  call writefile(0z630a.765d30aa0a.2e0a.790a.4030, 'Xinvalid')
++  new
++  source Xinvalid
++  bwipe!
++  call delete('Xinvalid')
++endfunc
++
++" vim: shiftwidth=2 sts=2 expandtab
+diff --git a/src/version.c b/src/version.c
+index cfe1486..a3eca1e 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -2582,6 +2582,7 @@ static char *(extra_patches[]) =
+ {   /* Add your patch description below this line */
+     "8.2.3402",
+     "8.2.3403",
++    "8.2.3409",
+ /**/
+     NULL
+ };

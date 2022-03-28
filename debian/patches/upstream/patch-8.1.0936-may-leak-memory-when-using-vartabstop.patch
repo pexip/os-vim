@@ -1,0 +1,95 @@
+From: Bram Moolenaar <Bram@vim.org>
+Date: Sat, 16 Feb 2019 19:05:11 +0100
+Subject: patch 8.1.0936: may leak memory when using 'vartabstop'
+
+Problem:    May leak memory when using 'vartabstop'. (Kuang-che Wu)
+Solution:   Fix handling allocated memory for 'vartabstop'. (closes #3976)
+(cherry picked from commit 55c77cf2ea9c15e1ec75d1faf702ec3c9e325271)
+---
+ src/buffer.c  |  4 +---
+ src/option.c  | 13 +++++++++----
+ src/version.c |  2 ++
+ 3 files changed, 12 insertions(+), 7 deletions(-)
+
+diff --git a/src/buffer.c b/src/buffer.c
+index 2c5c282..590a63c 100644
+--- a/src/buffer.c
++++ b/src/buffer.c
+@@ -2170,9 +2170,7 @@ free_buf_options(
+ 	vim_free(buf->b_p_vsts_array);
+     buf->b_p_vsts_array = NULL;
+     clear_string_option(&buf->b_p_vts);
+-    if (buf->b_p_vts_array)
+-	vim_free(buf->b_p_vts_array);
+-    buf->b_p_vts_array = NULL;
++    VIM_CLEAR(buf->b_p_vts_array);
+ #endif
+ #ifdef FEAT_KEYMAP
+     clear_string_option(&buf->b_p_keymap);
+diff --git a/src/option.c b/src/option.c
+index e3f5f5d..4d067c0 100644
+--- a/src/option.c
++++ b/src/option.c
+@@ -5611,7 +5611,9 @@ didset_options2(void)
+     (void)check_clipboard_option();
+ #endif
+ #ifdef FEAT_VARTABS
++    vim_free(curbuf->b_p_vsts_array);
+     tabstop_set(curbuf->b_p_vsts, &curbuf->b_p_vsts_array);
++    vim_free(curbuf->b_p_vts_array);
+     tabstop_set(curbuf->b_p_vts,  &curbuf->b_p_vts_array);
+ #endif
+ }
+@@ -7587,14 +7589,14 @@ did_set_string_option(
+ 	    if (errmsg == NULL)
+ 	    {
+ 		int *oldarray = curbuf->b_p_vts_array;
++
+ 		if (tabstop_set(*varp, &(curbuf->b_p_vts_array)))
+ 		{
+-		    if (oldarray)
+-			vim_free(oldarray);
++		    vim_free(oldarray);
+ #ifdef FEAT_FOLDING
+ 		    if (foldmethodIsIndent(curwin))
+ 			foldUpdateAll(curwin);
+-#endif /* FEAT_FOLDING */
++#endif
+ 		}
+ 		else
+ 		    errmsg = e_invarg;
+@@ -12800,10 +12802,11 @@ check_ff_value(char_u *p)
+     return check_opt_strings(p, p_ff_values, FALSE);
+ }
+ 
+-#ifdef FEAT_VARTABS
++#if defined(FEAT_VARTABS) || defined(PROTO)
+ 
+ /*
+  * Set the integer values corresponding to the string setting of 'vartabstop'.
++ * "array" will be set, caller must free it if needed.
+  */
+     int
+ tabstop_set(char_u *var, int **array)
+@@ -12846,6 +12849,8 @@ tabstop_set(char_u *var, int **array)
+     }
+ 
+     *array = (int *)alloc((unsigned) ((valcount + 1) * sizeof(int)));
++    if (*array == NULL)
++	return FALSE;
+     (*array)[0] = valcount;
+ 
+     t = 1;
+diff --git a/src/version.c b/src/version.c
+index 6d29f39..6bac28e 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -807,6 +807,8 @@ static int included_patches[] =
+     1046,
+ /**/
+     948,
++/**/
++    936,
+ /**/
+     884,
+ /**/
