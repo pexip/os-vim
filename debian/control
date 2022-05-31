@@ -41,7 +41,7 @@ Build-Depends-Indep:
 Vcs-Git: https://salsa.debian.org/vim-team/vim.git
 Vcs-Browser: https://salsa.debian.org/vim-team/vim
 Homepage: https://www.vim.org/
-XS-Pexip-Upstream: http://ftp.debian.org/debian/ buster
+XS-Pexip-Upstream: http://deb.debian.org/debian/ bullseye
 
 Package: vim-common
 Priority: important
