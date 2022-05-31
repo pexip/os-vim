@@ -29,24 +29,21 @@
 
 /*
  * Clipboard support for the console.
- * Don't include this when building the GUI version, the functions in
- * gui_mac.c are used then.  TODO: remove those instead?
- * But for MacVim we do need these ones.
  */
-#if defined(FEAT_CLIPBOARD) && (!defined(FEAT_GUI_ENABLED) || defined(FEAT_GUI_MACVIM))
+#if defined(FEAT_CLIPBOARD)
 
 /* Used to identify clipboard data copied from Vim. */
 
 NSString *VimPboardType = @"VimPboardType";
 
     void
-clip_mch_lose_selection(VimClipboard *cbd UNUSED)
+clip_mch_lose_selection(Clipboard_T *cbd UNUSED)
 {
 }
 
 
     int
-clip_mch_own_selection(VimClipboard *cbd UNUSED)
+clip_mch_own_selection(Clipboard_T *cbd UNUSED)
 {
     /* This is called whenever there is a new selection and 'guioptions'
      * contains the "a" flag (automatically copy selection).  Return TRUE, else
@@ -58,7 +55,7 @@ clip_mch_own_selection(VimClipboard *cbd UNUSED)
 
 
     void
-clip_mch_request_selection(VimClipboard *cbd)
+clip_mch_request_selection(Clipboard_T *cbd)
 {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 
@@ -148,7 +145,7 @@ releasepool:
  * Send the current selection to the clipboard.
  */
     void
-clip_mch_set_selection(VimClipboard *cbd)
+clip_mch_set_selection(Clipboard_T *cbd)
 {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 
