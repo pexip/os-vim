@@ -3,12 +3,12 @@
 
 " This only works with "iconv".
 if !has('iconv')
-  finish
+  throw 'Skipped: iconv feature missing'
 endif
 
 source screendump.vim
 if !CanRunVimInTerminal()
-  finish
+  throw 'Skipped: cannot make screendumps'
 endif
 
 " This Vim is running with 'encoding' "utf-8", the Vim in the terminal is
@@ -35,3 +35,5 @@ func Test_termencoding_euc_jp()
   call delete('Xeuc_jp.txt')
   call delete('XTest_tenc_euc_jp')
 endfunc
+
+" vim: shiftwidth=2 sts=2 expandtab

@@ -1,0 +1,27 @@
+#!/bin/sh
+set -e
+
+variant=gtk
+
+# remove /usr/bin/vim.variant as alternative for /usr/bin/vim
+
+remove_variant_alternative () {
+  for i in vi view ex editor rvim rview vimdiff vim; do
+    update-alternatives --remove $i /usr/bin/vim.$variant
+  done
+  remove_gui_variant_alternative
+}
+
+remove_gui_variant_alternative () {
+  for i in eview evim gview gvimdiff rgview rgvim gvim; do
+    update-alternatives --remove $i /usr/bin/vim.$variant
+  done
+}
+
+if [ "$1" = "upgrade" ]; then
+  remove_variant_alternative
+fi
+
+#DEBHELPER#
+
+exit 0

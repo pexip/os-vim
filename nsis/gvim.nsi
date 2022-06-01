@@ -39,13 +39,18 @@ Unicode true
 # Uncomment the next line if you want to include VisVim extension:
 #!define HAVE_VIS_VIM
 
-# Comment the following line to create a multilanguage installer:
+# Comment the following line to create an English-only installer:
 !define HAVE_MULTI_LANG
 
 # Uncomment the next line if you want to create a 64-bit installer.
 #!define WIN64
 
 !include gvim_version.nsh	# for version number
+
+# Definition of Patch for Vim
+!ifndef PATCHLEVEL
+  !define PATCHLEVEL 0
+!endif
 
 # ----------- No configurable settings below this line -----------
 
@@ -169,10 +174,22 @@ Page custom SetCustom ValidateCustom
     !include "lang\german.nsi"
     !include "lang\italian.nsi"
     !include "lang\japanese.nsi"
+    !include "lang\russian.nsi"
     !include "lang\simpchinese.nsi"
     !include "lang\tradchinese.nsi"
+    !include "lang\turkish.nsi"
 !endif
 
+##########################################################
+# Version resources
+
+VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" "Vim"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "Vim Developers"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalTrademarks" "Vim"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "Copyright (C) 1996"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "Vi Improved - A Text Editor"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "${VER_MAJOR}.${VER_MINOR}.${PATCHLEVEL}.0"
+VIProductVersion "${VER_MAJOR}.${VER_MINOR}.${PATCHLEVEL}.0"
 
 # Global variables
 Var vim_dialog
@@ -322,14 +339,17 @@ Section "$(str_section_exe)" id_section_exe
 
 	SetOutPath $0
 	File /oname=gvim.exe ${VIMSRC}\gvim_ole.exe
+!if /FileExists "${VIMSRC}\vim${BIT}.dll"
+	File ${VIMSRC}\vim${BIT}.dll
+!endif
 	File /oname=install.exe ${VIMSRC}\installw32.exe
-	File /oname=uninstal.exe ${VIMSRC}\uninstalw32.exe
+	File /oname=uninstall.exe ${VIMSRC}\uninstallw32.exe
 	File ${VIMSRC}\vimrun.exe
 	File /oname=tee.exe ${VIMSRC}\teew32.exe
 	File /oname=xxd.exe ${VIMSRC}\xxdw32.exe
 	File ..\vimtutor.bat
 	File ..\README.txt
-	File ..\uninstal.txt
+	File ..\uninstall.txt
 	File ${VIMRT}\*.vim
 	File ${VIMRT}\rgb.txt
 
@@ -354,40 +374,10 @@ Section "$(str_section_exe)" id_section_exe
 	File ${VIMRT}\indent\*.*
 
 	SetOutPath $0\macros
-	File ${VIMRT}\macros\*.*
-	SetOutPath $0\macros\hanoi
-	File ${VIMRT}\macros\hanoi\*.*
-	SetOutPath $0\macros\life
-	File ${VIMRT}\macros\life\*.*
-	SetOutPath $0\macros\maze
-	File ${VIMRT}\macros\maze\*.*
-	SetOutPath $0\macros\urm
-	File ${VIMRT}\macros\urm\*.*
+	File /r ${VIMRT}\macros\*.*
 
-	SetOutPath $0\pack\dist\opt\dvorak\dvorak
-	File ${VIMRT}\pack\dist\opt\dvorak\dvorak\*.*
-	SetOutPath $0\pack\dist\opt\dvorak\plugin
-	File ${VIMRT}\pack\dist\opt\dvorak\plugin\*.*
-
-	SetOutPath $0\pack\dist\opt\editexisting\plugin
-	File ${VIMRT}\pack\dist\opt\editexisting\plugin\*.*
-
-	SetOutPath $0\pack\dist\opt\justify\plugin
-	File ${VIMRT}\pack\dist\opt\justify\plugin\*.*
-
-	SetOutPath $0\pack\dist\opt\matchit\doc
-	File ${VIMRT}\pack\dist\opt\matchit\doc\*.*
-	SetOutPath $0\pack\dist\opt\matchit\plugin
-	File ${VIMRT}\pack\dist\opt\matchit\plugin\*.*
-
-	SetOutPath $0\pack\dist\opt\shellmenu\plugin
-	File ${VIMRT}\pack\dist\opt\shellmenu\plugin\*.*
-
-	SetOutPath $0\pack\dist\opt\swapmouse\plugin
-	File ${VIMRT}\pack\dist\opt\swapmouse\plugin\*.*
-
-	SetOutPath $0\pack\dist\opt\termdebug\plugin
-	File ${VIMRT}\pack\dist\opt\termdebug\plugin\*.*
+	SetOutPath $0\pack
+	File /r ${VIMRT}\pack\*.*
 
 	SetOutPath $0\plugin
 	File ${VIMRT}\plugin\*.*
@@ -698,6 +688,15 @@ SectionEnd
 	${EndIf}
 !macroend
 
+!macro LoadDefaultVimrc out_var reg_value default_value
+	ClearErrors
+	ReadRegStr ${out_var} HKLM "${UNINST_REG_KEY_VIM}" ${reg_value}
+	${If} ${Errors}
+	${OrIf} ${out_var} == ""
+	  StrCpy ${out_var} ${default_value}
+	${EndIf}
+!macroend
+
 Function .onInit
 !ifdef HAVE_MULTI_LANG
   # Select a language (or read from the registry).
@@ -729,10 +728,10 @@ Function .onInit
 !endif
   ${EndIf}
 
-# Load the selections from the registry (if any).
   ${If} ${RunningX64}
     SetRegView 64
   ${EndIf}
+  # Load the selections from the registry (if any).
   !insertmacro LoadSectionSelection ${id_section_console}    "select_console"
   !insertmacro LoadSectionSelection ${id_section_batch}      "select_batch"
   !insertmacro LoadSectionSelection ${id_section_desktop}    "select_desktop"
@@ -747,6 +746,10 @@ Function .onInit
 !ifdef HAVE_NLS
   !insertmacro LoadSectionSelection ${id_section_nls}        "select_nls"
 !endif
+  # Load the default _vimrc settings from the registry (if any).
+  !insertmacro LoadDefaultVimrc $vim_compat_stat "vim_compat" "all"
+  !insertmacro LoadDefaultVimrc $vim_keymap_stat "vim_keyremap" "default"
+  !insertmacro LoadDefaultVimrc $vim_mouse_stat "vim_mouse" "default"
   ${If} ${RunningX64}
     SetRegView lastused
   ${EndIf}
@@ -810,17 +813,11 @@ Function SetCustom
 	${NSD_CB_AddString} $vim_nsd_compat $(str_msg_compat_defaults)
 	${NSD_CB_AddString} $vim_nsd_compat $(str_msg_compat_all)
 
-	# Default selection
-	${If} $vim_compat_stat == ""
-	  ReadRegStr $3 HKLM "${UNINST_REG_KEY_VIM}" "vim_compat"
-	${Else}
-	  StrCpy $3 $vim_compat_stat
-	${EndIf}
-	${If} $3 == "defaults"
+	${If} $vim_compat_stat == "defaults"
 	  StrCpy $4 2
-	${ElseIf} $3 == "vim"
+	${ElseIf} $vim_compat_stat == "vim"
 	  StrCpy $4 1
-	${ElseIf} $3 == "vi"
+	${ElseIf} $vim_compat_stat == "vi"
 	  StrCpy $4 0
 	${Else} # default
 	  StrCpy $4 3
@@ -839,13 +836,7 @@ Function SetCustom
 	${NSD_CB_AddString} $vim_nsd_keymap $(str_msg_keymap_default)
 	${NSD_CB_AddString} $vim_nsd_keymap $(str_msg_keymap_windows)
 
-	# Default selection
-	${If} $vim_keymap_stat == ""
-	  ReadRegStr $3 HKLM "${UNINST_REG_KEY_VIM}" "vim_keyremap"
-	${Else}
-	  StrCpy $3 $vim_keymap_stat
-	${EndIf}
-	${If} $3 == "windows"
+	${If} $vim_keymap_stat == "windows"
 	  StrCpy $4 1
 	${Else} # default
 	  StrCpy $4 0
@@ -865,15 +856,9 @@ Function SetCustom
 	${NSD_CB_AddString} $vim_nsd_mouse $(str_msg_mouse_windows)
 	${NSD_CB_AddString} $vim_nsd_mouse $(str_msg_mouse_unix)
 
-	# Default selection
-	${If} $vim_mouse_stat == ""
-	  ReadRegStr $3 HKLM "${UNINST_REG_KEY_VIM}" "vim_mouse"
-	${Else}
-	  StrCpy $3 $vim_mouse_stat
-	${EndIf}
-	${If} $3 == "xterm"
+	${If} $vim_mouse_stat == "xterm"
 	  StrCpy $4 2
-	${ElseIf} $3 == "windows"
+	${ElseIf} $vim_mouse_stat == "windows"
 	  StrCpy $4 1
 	${Else} # default
 	  StrCpy $4 0
@@ -967,7 +952,7 @@ Section "un.$(str_unsection_register)" id_unsection_register
 
 	# delete the context menu entry and batch files
 	DetailPrint "$(str_msg_unregistering)"
-	nsExec::Exec "$0\uninstal.exe -nsis"
+	nsExec::Exec "$0\uninstall.exe -nsis"
 	Pop $3
 
 	# We may have been put to the background when uninstall did something.
@@ -1126,7 +1111,9 @@ Section "un.$(str_unsection_rootdir)" id_unsection_rootdir
 	Call un.GetParent
 	Pop $0
 
-	Delete $0\_vimrc
+	${IfNot} ${Silent}
+	  Delete $0\_vimrc
+	${Endif}
 	RMDir $0
 SectionEnd
 

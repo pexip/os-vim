@@ -3,9 +3,10 @@
 set encoding=utf-8
 scriptencoding utf-8
 
-if !exists("+linebreak") || !has("conceal") || !has("signs")
-  finish
-endif
+source check.vim
+CheckOption linebreak
+CheckFeature conceal
+CheckFeature signs
 
 source view_util.vim
 
@@ -268,4 +269,6 @@ func Test_chinese_char_on_wrap_column()
   let lines = s:screen_lines([1, 10], winwidth(0))
   call s:compare_lines(expect, lines)
   call s:close_windows()
-endfu
+endfunc
+
+" vim: shiftwidth=2 sts=2 expandtab

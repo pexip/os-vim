@@ -3,7 +3,7 @@ Upstream-Name: vim
 Source: https://github.com/vim/vim
 
 Files: *
-Copyright: 2001-2017 Bram Moolenaar <Bram@vim.org>
+Copyright: 2001-2021 Bram Moolenaar <Bram@vim.org>
            2006 Benji Fisher <benji@member.ams.org>
            1999-2016 Charles E. Campbell, Jr. <drchip@campbellfamily.biz>
            2003 Fred Barnes
@@ -34,21 +34,24 @@ Comment: No license options are exercised.  See https://bugs.debian.org/384019
  exercised.
 
 Files: runtime/syntax/cmake.vim
+       runtime/syntax/elm.vim
+       runtime/syntax/proto.vim
        runtime/syntax/tpp.vim
        runtime/indent/cmake.vim
+       runtime/indent/elm.vim
 Copyright: Andy Cedilnik <andy.cedilnik@kitware.com>
            Karthik Krishnan <kartik.krishnan@kitware.com>
            Dimitri Merejkowsky <d.merej@gmail.com>
            Gerfried Fuchs <alfie@ist.org>
+           Joseph Hager <ajhager@gmail.com>
+           2008 Google Inc.
 License: BSD-3-clause
 
 Files: runtime/ftplugin/wast.vim
        runtime/indent/wast.vim
        runtime/syntax/json.vim
-       runtime/syntax/proto.vim
        runtime/syntax/wast.vim
 Copyright: 2013, Jeroen Ruigrok van der Werven, Eli Parra
-           2008 Google Inc.
            2016 rhysd
 License: Expat
 
@@ -73,7 +76,7 @@ Files: src/libvterm/*
 Copyright: 2008 Paul Evans <leonerd@leonerd.org.uk>
 License: Expat
 
-Files: src/regexp.c
+Files: src/regexp_bt.c
 Copyright: 1986 University of Toronto
 License: Vim-Regexp
 
@@ -122,6 +125,14 @@ License: LGPL-2.1+
 Files: src/xdiff/xhistogram.c
 Copyright: 2010 Google Inc. and other copyright owners as documented in JGit's IP log
 License: EDL-1
+
+Files: runtime/ftplugin/swift.vim
+       runtime/ftplugin/swiftgyb.vim
+       runtime/syntax/sil.vim
+       runtime/syntax/swift.vim
+       runtime/syntax/swiftgyb.vim
+Copyright: 2014-2020 Apple Inc. and the Swift project authors
+License: Apache
 
 License: Vim
  I)  There are no restrictions on distributing unmodified copies of Vim except

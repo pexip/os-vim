@@ -13,10 +13,10 @@ Signed-off-by: James McCoy <jamessan@debian.org>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/runtime/autoload/dist/ft.vim b/runtime/autoload/dist/ft.vim
-index de45faa..6a4294c 100644
+index 1ac74b5..4bb8917 100644
 --- a/runtime/autoload/dist/ft.vim
 +++ b/runtime/autoload/dist/ft.vim
-@@ -665,7 +665,7 @@ func dist#ft#FTtex()
+@@ -684,7 +684,7 @@ func dist#ft#FTtex()
      call cursor(1,1)
      let firstNC = search('^\s*[^[:space:]%]', 'c', 1000)
      if firstNC " Check the next thousand lines for a LaTeX or ConTeXt keyword.

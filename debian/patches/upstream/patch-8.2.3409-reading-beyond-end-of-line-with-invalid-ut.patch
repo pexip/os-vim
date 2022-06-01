@@ -5,18 +5,17 @@ Subject: patch 8.2.3409: reading beyond end of line with invalid utf-8
 
 Problem:    Reading beyond end of line with invalid utf-8 character.
 Solution:   Check for NUL when advancing.
-(cherry picked from commit 65b605665997fad54ef39a93199e305af2fe4d7f)
 ---
- src/regexp_nfa.c                 |  3 ++-
- src/testdir/test_regexp_utf8.vim | 10 ++++++++++
- src/version.c                    |  1 +
- 3 files changed, 13 insertions(+), 1 deletion(-)
+ src/regexp_nfa.c                 | 3 ++-
+ src/testdir/test_regexp_utf8.vim | 8 ++++++++
+ src/version.c                    | 1 +
+ 3 files changed, 11 insertions(+), 1 deletion(-)
 
 diff --git a/src/regexp_nfa.c b/src/regexp_nfa.c
-index 031a6cf..b9562c6 100644
+index 064d90a..46604bd 100644
 --- a/src/regexp_nfa.c
 +++ b/src/regexp_nfa.c
-@@ -5414,7 +5414,8 @@ find_match_text(colnr_T startcol, int regstart, char_u *match_text)
+@@ -5479,7 +5479,8 @@ find_match_text(colnr_T startcol, int regstart, char_u *match_text)
  		match = FALSE;
  		break;
  	    }
@@ -25,16 +24,15 @@ index 031a6cf..b9562c6 100644
 +							     : MB_CHAR2LEN(c2);
  	}
  	if (match
- 		/* check that no composing char follows */
+ 		// check that no composing char follows
 diff --git a/src/testdir/test_regexp_utf8.vim b/src/testdir/test_regexp_utf8.vim
-index 98b9e73..75485dc 100644
+index a7d1020..58386ac 100644
 --- a/src/testdir/test_regexp_utf8.vim
 +++ b/src/testdir/test_regexp_utf8.vim
-@@ -206,3 +206,13 @@ func Test_large_class()
-   call assert_equal(1, "\u3042" =~# '[\u3000-\u4000]')
-   set re=0
+@@ -558,4 +558,12 @@ func Test_match_char_class_upper()
+   bwipe!
  endfunc
-+
+ 
 +func Test_match_invalid_byte()
 +  call writefile(0z630a.765d30aa0a.2e0a.790a.4030, 'Xinvalid')
 +  new
@@ -43,12 +41,12 @@ index 98b9e73..75485dc 100644
 +  call delete('Xinvalid')
 +endfunc
 +
-+" vim: shiftwidth=2 sts=2 expandtab
+ " vim: shiftwidth=2 sts=2 expandtab
 diff --git a/src/version.c b/src/version.c
-index cfe1486..a3eca1e 100644
+index c3c64d5..b34d74a 100644
 --- a/src/version.c
 +++ b/src/version.c
-@@ -2582,6 +2582,7 @@ static char *(extra_patches[]) =
+@@ -5633,6 +5633,7 @@ static char *(extra_patches[]) =
  {   /* Add your patch description below this line */
      "8.2.3402",
      "8.2.3403",

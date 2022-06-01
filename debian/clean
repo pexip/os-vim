@@ -9,5 +9,7 @@ runtime/doc/tags
 runtime/doc/tags.ref
 src/auto/config.h
 src/auto/config.mk
+src/po/vim.pot
 src/pixmaps
 src/runtime
+*-stamp

@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+if [ -z "$AUTOPKGTEST_NORMAL_USER" ]; then
+  adduser --quiet --disabled-login --gecos '' vim-ci
+  AUTOPKGTEST_NORMAL_USER=vim-ci
+fi
+
+cp -a "$(pwd)" "$AUTOPKGTEST_TMP"/vim
+chown -R "$AUTOPKGTEST_NORMAL_USER" "$AUTOPKGTEST_TMP"/vim
+runuser -u "$AUTOPKGTEST_NORMAL_USER" -- env TERM=xterm make -C "$AUTOPKGTEST_TMP"/vim/src/testdir VIMPROG="$1" SCRIPTSOURCE="$(pwd)"/runtime
