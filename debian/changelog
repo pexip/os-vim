@@ -1,6 +1,7 @@
 vim (2:8.2.2434-3+deb11u1pexip1) pexip; urgency=medium
 
   * Initial bullseye build
+  * Disable two tests which fail in the CI sbuild environment.
 
  -- Mark Hymers <mark.hymers@pexip.com>  Thu, 02 Jun 2022 14:43:02 +0100
 

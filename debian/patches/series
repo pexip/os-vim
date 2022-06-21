@@ -6,3 +6,4 @@ upstream/patch-8.2.3402-invalid-memory-access-when-using-retab-wit.patch
 upstream/patch-8.2.3403-memory-leak-for-retab-with-invalid-argumen.patch
 upstream/patch-8.2.3409-reading-beyond-end-of-line-with-invalid-ut.patch
 upstream/patch-8.2.3428-using-freed-memory-when-replacing.patch
+pexip_failing_tests
