@@ -1,3 +1,9 @@
+vim (2:8.2.2434-3+deb11u1pexip2) pexip-bullseye; urgency=medium
+
+  * Main bullseye build
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Fri, 24 Jun 2022 14:05:01 +0100
+
 vim (2:8.2.2434-3+deb11u1pexip1) pexip; urgency=medium
 
   * Initial bullseye build
