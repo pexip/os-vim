@@ -1,3 +1,9 @@
+vim (2:8.2.2434-3+deb11u1pexip3) pexip-bullseye; urgency=medium
+
+  * Bullseye rebuild for ARM64 inclusion
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Mon, 05 Sep 2022 10:36:14 +0100
+
 vim (2:8.2.2434-3+deb11u1pexip2) pexip-bullseye; urgency=medium
 
   * Main bullseye build
