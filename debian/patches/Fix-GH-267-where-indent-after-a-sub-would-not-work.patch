@@ -1,0 +1,22 @@
+From: Andy Lester <andy@petdance.com>
+Date: Tue, 26 Apr 2022 20:07:43 -0500
+Subject: Fix GH#267 where indent after a sub would not work
+
+Closes: #1034529
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ runtime/indent/perl.vim | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/runtime/indent/perl.vim b/runtime/indent/perl.vim
+index 4c91fa1..bd2a1a9 100644
+--- a/runtime/indent/perl.vim
++++ b/runtime/indent/perl.vim
+@@ -133,6 +133,7 @@ function! GetPerlIndent()
+                         \ || synid == "perlHereDoc"
+                         \ || synid == "perlBraces"
+                         \ || synid == "perlStatementIndirObj"
++                        \ || synid == "perlSubDeclaration"
+                         \ || synid =~ "^perlFiledescStatement"
+                         \ || synid =~ '^perl\(Sub\|Block\|Package\)Fold'
+                 let brace = strpart(line, bracepos, 1)

@@ -23,7 +23,8 @@ endif
 func StopShellInTerminal(buf)
   call term_sendkeys(a:buf, "exit\r")
   let job = term_getjob(a:buf)
-  call WaitFor({-> job_status(job) == "dead"})
+  call WaitForAssert({-> assert_equal("dead", job_status(job))})
+  call TermWait(a:buf)
 endfunc
 
 " Wrapper around term_wait() to allow more time for re-runs of flaky tests
@@ -140,6 +141,9 @@ func StopVimInTerminal(buf, kill = 1)
 
   call assert_equal("running", term_getstatus(a:buf))
 
+  " Wait for all the pending updates to terminal to complete
+  call TermWait(a:buf)
+
   " CTRL-O : works both in Normal mode and Insert mode to start a command line.
   " In Command-line it's inserted, the CTRL-U removes it again.
   call term_sendkeys(a:buf, "\<C-O>:\<C-U>qa!\<cr>")
@@ -160,7 +164,7 @@ endfunc
 " number.
 func Run_shell_in_terminal(options)
   if has('win32')
-    let buf = term_start([&shell,'/k'], a:options)
+    let buf = term_start([&shell, '/k'], a:options)
   else
     let buf = term_start(&shell, a:options)
   endif
@@ -176,7 +180,16 @@ func Run_shell_in_terminal(options)
   let string = string({'job': buf->term_getjob()})
   call assert_match("{'job': 'process \\d\\+ run'}", string)
 
+  " On slower systems it may take a bit of time before the shell is ready to
+  " accept keys.  This mainly matters when using term_sendkeys() next.
+  call TermWait(buf)
+
   return buf
+endfunc
+
+" Return concatenated lines in terminal.
+func Term_getlines(buf, lines)
+  return join(map(a:lines, 'term_getline(a:buf, v:val)'), '')
 endfunc
 
 

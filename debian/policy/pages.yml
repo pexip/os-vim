@@ -1,0 +1,20 @@
+pages:
+  stage: publish
+  image: debian:unstable
+  needs: []
+  before_script:
+    - apt-get -q update
+    - env DEBIAN_FRONTEND=noninteractive apt-get -q -y install docbook-utils docbook-xml make lynx
+  script:
+    - make -C debian/policy
+    - mkdir -p public
+    - cp -r debian/policy/vim-policy.txt public/
+    - cp -r debian/policy/vim-policy.html/* public/
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "debian/sid"'
+      changes:
+        - debian/policy/**/*
+      when: always
+  artifacts:
+    paths:
+      - public

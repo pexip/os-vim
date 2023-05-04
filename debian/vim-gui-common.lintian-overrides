@@ -1,5 +1,5 @@
 # Provided by gvim (virtual) packages
-vim-gui-common binary: desktop-command-not-in-package usr/share/applications/gvim.desktop gvim
+vim-gui-common binary: desktop-command-not-in-package gvim [usr/share/applications/gvim.desktop]
 
 # Provided by gvim (virtual) packages
 vim-gui-common binary: spare-manual-page

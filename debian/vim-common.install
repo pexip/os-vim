@@ -1,0 +1,22 @@
+debian/helpztags                                 usr/bin/
+debian/runtime/debian.vim                        usr/share/vim/${env:VIMCUR}/
+debian/runtime/vimrc                             etc/vim/
+usr/share/applications/vim.desktop
+usr/share/icons/
+usr/share/man/da/man1/vim.1
+usr/share/man/da/man1/vimdiff.1
+usr/share/man/de/man1/vim.1
+usr/share/man/fr/man1/vim.1
+usr/share/man/fr/man1/vimdiff.1
+usr/share/man/it/man1/vim.1
+usr/share/man/it/man1/vimdiff.1
+usr/share/man/ja/man1/vim.1
+usr/share/man/ja/man1/vimdiff.1
+usr/share/man/man1/vim.1
+usr/share/man/man1/vimdiff.1
+usr/share/man/pl/man1/vim.1
+usr/share/man/pl/man1/vimdiff.1
+usr/share/man/ru/man1/vim.1
+usr/share/man/ru/man1/vimdiff.1
+usr/share/man/tr/man1/vim.1
+usr/share/man/tr/man1/vimdiff.1

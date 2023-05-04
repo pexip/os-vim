@@ -16,7 +16,7 @@ func Test_swap_directory()
 	      \ 'line 2 Abcdefghij',
 	      \ 'line 3 Abcdefghij',
 	      \ 'end of testfile']
-  call writefile(content, 'Xtest1')
+  call writefile(content, 'Xtest1', 'D')
 
   "  '.', swap file in the same directory as file
   set dir=.,~
@@ -30,7 +30,7 @@ func Test_swap_directory()
   " './dir', swap file in a directory relative to the file
   set dir=./Xtest2,.,~
 
-  call mkdir("Xtest2")
+  call mkdir("Xtest2", 'R')
   edit Xtest1
   call assert_equal([], glob(swfname, 1, 1, 1))
   let swfname = "Xtest2/Xtest1.swp"
@@ -40,7 +40,7 @@ func Test_swap_directory()
   " 'dir', swap file in directory relative to the current dir
   set dir=Xtest.je,~
 
-  call mkdir("Xtest.je")
+  call mkdir("Xtest.je", 'R')
   call writefile(content, 'Xtest2/Xtest3')
   edit Xtest2/Xtest3
   call assert_equal(["Xtest2/Xtest3"], glob("Xtest2/*", 1, 1, 1))
@@ -49,9 +49,6 @@ func Test_swap_directory()
   call assert_equal([swfname], glob("Xtest.je/*", 1, 1, 1))
 
   set dir&
-  call delete("Xtest1")
-  call delete("Xtest2", "rf")
-  call delete("Xtest.je", "rf")
 endfunc
 
 func Test_swap_group()
@@ -113,8 +110,19 @@ func Test_swapinfo()
   w
   let fname = s:swapname()
   call assert_match('Xswapinfo', fname)
-  let info = fname->swapinfo()
 
+  " Check the tail appears in the list from swapfilelist().  The path depends
+  " on the system.
+  let tail = fnamemodify(fname, ":t")->fnameescape()
+  let nr = 0
+  for name in swapfilelist()
+    if name =~ tail .. '$'
+      let nr += 1
+    endif
+  endfor
+  call assert_equal(1, nr, 'not found in ' .. string(swapfilelist()))
+
+  let info = fname->swapinfo()
   let ver = printf('VIM %d.%d', v:version / 100, v:version % 100)
   call assert_equal(ver, info.version)
 
@@ -135,7 +143,7 @@ func Test_swapinfo()
   let info = swapinfo('doesnotexist')
   call assert_equal('Cannot open file', info.error)
 
-  call writefile(['burp'], 'Xnotaswapfile')
+  call writefile(['burp'], 'Xnotaswapfile', 'D')
   let info = swapinfo('Xnotaswapfile')
   call assert_equal('Cannot read file', info.error)
   call delete('Xnotaswapfile')
@@ -143,7 +151,6 @@ func Test_swapinfo()
   call writefile([repeat('x', 10000)], 'Xnotaswapfile')
   let info = swapinfo('Xnotaswapfile')
   call assert_equal('Not a swap file', info.error)
-  call delete('Xnotaswapfile')
 endfunc
 
 func Test_swapname()
@@ -191,7 +198,7 @@ func Test_swapfile_delete()
   " Close the file and recreate the swap file.
   " Now editing the file will run into the process still existing
   quit
-  call writefile(swapfile_bytes, swapfile_name)
+  call writefile(swapfile_bytes, swapfile_name, 'D')
   let s:swap_choice = 'e'
   let s:swapname = ''
   split XswapfileText
@@ -201,8 +208,8 @@ func Test_swapfile_delete()
   " This test won't work as root because root can successfully run kill(1, 0)
   if !IsRoot()
     " Write the swapfile with a modified PID, now it will be automatically
-    " deleted. Process one should never be Vim.
-    let swapfile_bytes[24:27] = 0z01000000
+    " deleted. Process 0x3fffffff most likely does not exist.
+    let swapfile_bytes[24:27] = 0zffffff3f
     call writefile(swapfile_bytes, swapfile_name)
     let s:swapname = ''
     split XswapfileText
@@ -219,7 +226,6 @@ func Test_swapfile_delete()
   call assert_equal(fnamemodify(swapfile_name, ':t'), fnamemodify(s:swapname, ':t'))
 
   call delete('XswapfileText')
-  call delete(swapfile_name)
   augroup test_swapfile_delete
     autocmd!
   augroup END
@@ -233,8 +239,7 @@ func Test_swap_recover()
     autocmd SwapExists * let v:swapchoice = 'r'
   augroup END
 
-
-  call mkdir('Xswap')
+  call mkdir('Xswap', 'R')
   let $Xswap = 'foo'  " Check for issue #4369.
   set dir=Xswap//
   " Create a valid swapfile by editing a file.
@@ -247,7 +252,7 @@ func Test_swap_recover()
 
   " Close the file and recreate the swap file.
   quit
-  call writefile(swapfile_bytes, swapfile_name)
+  call writefile(swapfile_bytes, swapfile_name, 'D')
   " Edit the file again. This triggers recovery.
   try
     split Xswap/text
@@ -259,9 +264,6 @@ func Test_swap_recover()
   call assert_equal(['one', 'two', 'three'], getline(1, 3))
   quit!
 
-  call delete('Xswap/text')
-  call delete(swapfile_name)
-  call delete('Xswap', 'd')
   unlet $Xswap
   set dir&
   augroup test_swap_recover
@@ -289,7 +291,7 @@ func Test_swap_recover_ext()
   " Close and delete the file and recreate the swap file.
   quit
   call delete('Xtest.scr')
-  call writefile(swapfile_bytes, swapfile_name)
+  call writefile(swapfile_bytes, swapfile_name, 'D')
   " Edit the file again. This triggers recovery.
   try
     split Xtest.scr
@@ -302,7 +304,6 @@ func Test_swap_recover_ext()
   quit!
 
   call delete('Xtest.scr')
-  call delete(swapfile_name)
   augroup test_swap_recover_ext
     autocmd!
   augroup END
@@ -330,7 +331,7 @@ func Test_swap_split_win()
   " Close and delete the file and recreate the swap file.
   quit
   call delete('Xtest.scr')
-  call writefile(swapfile_bytes, swapfile_name)
+  call writefile(swapfile_bytes, swapfile_name, 'D')
   " Split edit the file again. This should fail to open the window
   try
     split Xtest.scr
@@ -341,7 +342,6 @@ func Test_swap_split_win()
   call assert_equal(1, winnr('$'))
 
   call delete('Xtest.scr')
-  call delete(swapfile_name)
 
   augroup test_swap_splitwin
       autocmd!
@@ -353,13 +353,14 @@ endfunc
 func Test_swap_prompt_splitwin()
   CheckRunVimInTerminal
 
-  call writefile(['foo bar'], 'Xfile1')
+  call writefile(['foo bar'], 'Xfile1', 'D')
   edit Xfile1
   preserve  " should help to make sure the swap file exists
 
   let buf = RunVimInTerminal('', {'rows': 20})
   call term_sendkeys(buf, ":set nomore\n")
   call term_sendkeys(buf, ":set noruler\n")
+
   call term_sendkeys(buf, ":split Xfile1\n")
   call TermWait(buf)
   call WaitForAssert({-> assert_match('^\[O\]pen Read-Only, (E)dit anyway, (R)ecover, (Q)uit, (A)bort: $', term_getline(buf, 20))})
@@ -371,14 +372,28 @@ func Test_swap_prompt_splitwin()
   call TermWait(buf)
   call WaitForAssert({-> assert_match('^1$', term_getline(buf, 20))})
   call StopVimInTerminal(buf)
+
+  " This caused Vim to crash when typing "q" at the swap file prompt.
+  let buf = RunVimInTerminal('-c "au bufadd * let foo_w = wincol()"', {'rows': 18})
+  call term_sendkeys(buf, ":e Xfile1\<CR>")
+  call WaitForAssert({-> assert_match('More', term_getline(buf, 18))})
+  call term_sendkeys(buf, " ")
+  call WaitForAssert({-> assert_match('^\[O\]pen Read-Only, (E)dit anyway, (R)ecover, (Q)uit, (A)bort:', term_getline(buf, 18))})
+  call term_sendkeys(buf, "q")
+  call TermWait(buf)
+  " check that Vim is still running
+  call term_sendkeys(buf, ":echo 'hello'\<CR>")
+  call WaitForAssert({-> assert_match('^hello', term_getline(buf, 18))})
+  call term_sendkeys(buf, ":%bwipe!\<CR>")
+  call StopVimInTerminal(buf)
+
   %bwipe!
-  call delete('Xfile1')
 endfunc
 
 func Test_swap_symlink()
   CheckUnix
 
-  call writefile(['text'], 'Xtestfile')
+  call writefile(['text'], 'Xtestfile', 'D')
   silent !ln -s -f Xtestfile Xtestlink
 
   set dir=.
@@ -389,18 +404,16 @@ func Test_swap_symlink()
   call assert_match('Xtestfile\.swp$', s:swapname())
   bwipe!
 
-  call mkdir('Xswapdir')
+  call mkdir('Xswapdir', 'R')
   exe 'set dir=' . getcwd() . '/Xswapdir//'
 
   " Check that this also works when 'directory' ends with '//'
   edit Xtestlink
-  call assert_match('Xtestfile\.swp$', s:swapname())
+  call assert_match('Xswapdir[/\\]%.*testdir%Xtestfile\.swp$', s:swapname())
   bwipe!
 
   set dir&
-  call delete('Xtestfile')
   call delete('Xtestlink')
-  call delete('Xswapdir', 'rf')
 endfunc
 
 func s:get_unused_pid(base)
@@ -452,7 +465,7 @@ func Test_swap_auto_delete()
   " Change the process ID to avoid the "still running" warning.
   let swapfile_bytes[24:27] = s:pid_to_blob(s:get_unused_pid(
         \ s:blob_to_pid(swapfile_bytes[24:27])))
-  call writefile(swapfile_bytes, swapfile_name)
+  call writefile(swapfile_bytes, swapfile_name, 'D')
   edit Xtest.scr
   " will end up using the same swap file after deleting the existing one
   call assert_equal(swapfile_name, swapname('%'))
@@ -476,11 +489,88 @@ func Test_swap_auto_delete()
   bwipe!
 
   call delete('Xtest.scr')
-  call delete(swapfile_name)
   augroup test_swap_recover_ext
     autocmd!
   augroup END
   augroup! test_swap_recover_ext
+endfunc
+
+" Test for renaming a buffer when the swap file is deleted out-of-band
+func Test_missing_swap_file()
+  CheckUnix
+  new Xfile2
+  call delete(swapname(''))
+  call assert_fails('file Xfile3', 'E301:')
+  call assert_equal('Xfile3', bufname())
+  call assert_true(bufexists('Xfile2'))
+  call assert_true(bufexists('Xfile3'))
+  %bw!
+endfunc
+
+" Test for :preserve command
+func Test_preserve()
+  new Xfile4
+  setlocal noswapfile
+  call assert_fails('preserve', 'E313:')
+  bw!
+endfunc
+
+" Test for the v:swapchoice variable
+func Test_swapchoice()
+  call writefile(['aaa', 'bbb'], 'Xfile5', 'D')
+  edit Xfile5
+  preserve
+  let swapfname = swapname('')
+  let b = readblob(swapfname)
+  bw!
+  call writefile(b, swapfname, 'D')
+
+  autocmd! SwapExists
+
+  " Test for v:swapchoice = 'o' (readonly)
+  augroup test_swapchoice
+    autocmd!
+    autocmd SwapExists * let v:swapchoice = 'o'
+  augroup END
+  edit Xfile5
+  call assert_true(&readonly)
+  call assert_equal(['aaa', 'bbb'], getline(1, '$'))
+  %bw!
+  call assert_true(filereadable(swapfname))
+
+  " Test for v:swapchoice = 'a' (abort)
+  augroup test_swapchoice
+    autocmd!
+    autocmd SwapExists * let v:swapchoice = 'a'
+  augroup END
+  try
+    edit Xfile5
+  catch /^Vim:Interrupt$/
+  endtry
+  call assert_equal('', @%)
+  call assert_true(bufexists('Xfile5'))
+  %bw!
+  call assert_true(filereadable(swapfname))
+
+  " Test for v:swapchoice = 'd' (delete)
+  augroup test_swapchoice
+    autocmd!
+    autocmd SwapExists * let v:swapchoice = 'd'
+  augroup END
+  edit Xfile5
+  call assert_equal('Xfile5', @%)
+  %bw!
+  call assert_false(filereadable(swapfname))
+
+  call delete(swapfname)
+  augroup test_swapchoice
+    autocmd!
+  augroup END
+  augroup! test_swapchoice
+endfunc
+
+func Test_no_swap_file()
+  call assert_equal("\nNo swap file", execute('swapname'))
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

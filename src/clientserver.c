@@ -34,7 +34,7 @@ server_to_input_buf(char_u *str)
     //  The last but one parameter of replace_termcodes() is TRUE so that the
     //  <lt> sequence is recognised - needed for a real backslash.
     p_cpo = (char_u *)"Bk";
-    str = replace_termcodes((char_u *)str, &ptr, REPTERM_DO_LT, NULL);
+    str = replace_termcodes(str, &ptr, REPTERM_DO_LT, NULL);
     p_cpo = cpo_save;
 
     if (*ptr != NUL)	// trailing CTRL-V results in nothing
@@ -55,7 +55,7 @@ server_to_input_buf(char_u *str)
 	// buffer.
 	typebuf_was_filled = TRUE;
     }
-    vim_free((char_u *)ptr);
+    vim_free(ptr);
 }
 
 /*
@@ -69,6 +69,10 @@ eval_client_expr_to_string(char_u *expr)
     int		save_ro = redir_off;
     funccal_entry_T funccal_entry;
     int		did_save_funccal = FALSE;
+
+#if defined(FEAT_EVAL)
+    ch_log(NULL, "eval_client_expr_to_string(\"%s\")", expr);
+#endif
 
     // Evaluate the expression at the toplevel, don't use variables local to
     // the calling function. Except when in debug mode.
@@ -86,7 +90,7 @@ eval_client_expr_to_string(char_u *expr)
     // to be typed.  Do generate errors so that try/catch works.
     ++emsg_silent;
 
-    res = eval_to_string(expr, TRUE);
+    res = eval_to_string(expr, TRUE, FALSE);
 
     debug_break_level = save_dbl;
     redir_off = save_ro;
@@ -119,7 +123,7 @@ sendToLocalVim(char_u *cmd, int asExpr, char_u **result)
 	{
 	    if (ret == NULL)
 	    {
-		char	*err = _(e_invexprmsg);
+		char	*err = _(e_invalid_expression_received);
 		size_t	len = STRLEN(cmd) + STRLEN(err) + 5;
 		char_u	*msg;
 
@@ -153,22 +157,22 @@ serverConvert(
     char_u	*res = data;
 
     *tofree = NULL;
-    if (client_enc != NULL && p_enc != NULL)
-    {
-	vimconv_T	vimconv;
+    if (client_enc == NULL || p_enc == NULL)
+	return res;
 
-	vimconv.vc_type = CONV_NONE;
-	if (convert_setup(&vimconv, client_enc, p_enc) != FAIL
-					      && vimconv.vc_type != CONV_NONE)
-	{
-	    res = string_convert(&vimconv, data, NULL);
-	    if (res == NULL)
-		res = data;
-	    else
-		*tofree = res;
-	}
-	convert_setup(&vimconv, NULL, NULL);
+    vimconv_T	vimconv;
+
+    vimconv.vc_type = CONV_NONE;
+    if (convert_setup(&vimconv, client_enc, p_enc) != FAIL
+	    && vimconv.vc_type != CONV_NONE)
+    {
+	res = string_convert(&vimconv, data, NULL);
+	if (res == NULL)
+	    res = data;
+	else
+	    *tofree = res;
     }
+    convert_setup(&vimconv, NULL, NULL);
     return res;
 }
 #endif
@@ -187,38 +191,38 @@ static char_u *build_drop_cmd(int filec, char **filev, int tabs, int sendReply);
     void
 exec_on_server(mparm_T *parmp)
 {
-    if (parmp->serverName_arg == NULL || *parmp->serverName_arg != NUL)
+    if (parmp->serverName_arg != NULL && *parmp->serverName_arg == NUL)
+	return;
+
+# ifdef MSWIN
+    // Initialise the client/server messaging infrastructure.
+    serverInitMessaging();
+# endif
+
+    /*
+     * When a command server argument was found, execute it.  This may
+     * exit Vim when it was successful.  Otherwise it's executed further
+     * on.  Remember the encoding used here in "serverStrEnc".
+     */
+    if (parmp->serverArg)
     {
-# ifdef MSWIN
-	// Initialise the client/server messaging infrastructure.
-	serverInitMessaging();
-# endif
-
-	/*
-	 * When a command server argument was found, execute it.  This may
-	 * exit Vim when it was successful.  Otherwise it's executed further
-	 * on.  Remember the encoding used here in "serverStrEnc".
-	 */
-	if (parmp->serverArg)
-	{
-	    cmdsrv_main(&parmp->argc, parmp->argv,
-				    parmp->serverName_arg, &parmp->serverStr);
-	    parmp->serverStrEnc = vim_strsave(p_enc);
-	}
-
-	// If we're still running, get the name to register ourselves.
-	// On Win32 can register right now, for X11 need to setup the
-	// clipboard first, it's further down.
-	parmp->servername = serverMakeName(parmp->serverName_arg,
-							      parmp->argv[0]);
-# ifdef MSWIN
-	if (parmp->servername != NULL)
-	{
-	    serverSetName(parmp->servername);
-	    vim_free(parmp->servername);
-	}
-# endif
+	cmdsrv_main(&parmp->argc, parmp->argv,
+		parmp->serverName_arg, &parmp->serverStr);
+	parmp->serverStrEnc = vim_strsave(p_enc);
     }
+
+    // If we're still running, get the name to register ourselves.
+    // On Win32 can register right now, for X11 need to setup the
+    // clipboard first, it's further down.
+    parmp->servername = serverMakeName(parmp->serverName_arg,
+	    parmp->argv[0]);
+# ifdef MSWIN
+    if (parmp->servername != NULL)
+    {
+	serverSetName(parmp->servername);
+	vim_free(parmp->servername);
+    }
+# endif
 }
 
 /*
@@ -420,12 +424,10 @@ cmdsrv_main(
 	     * For --remote-wait: Wait until the server did edit each
 	     * file.  Also detect that the server no longer runs.
 	     */
-	    if (ret >= 0 && argtype == ARGTYPE_EDIT_WAIT)
+	    if (argtype == ARGTYPE_EDIT_WAIT)
 	    {
 		int	numFiles = *argc - i - 1;
-		int	j;
 		char_u  *done = alloc(numFiles);
-		char_u  *p;
 # ifdef FEAT_GUI_MSWIN
 		NOTIFYICONDATA ni;
 		int	count = 0;
@@ -450,6 +452,8 @@ cmdsrv_main(
 		vim_memset(done, 0, numFiles);
 		while (memchr(done, 0, numFiles) != NULL)
 		{
+		    char_u  *p;
+		    int	    j;
 # ifdef MSWIN
 		    p = serverGetReply(srv, NULL, TRUE, TRUE, 0);
 		    if (p == NULL)
@@ -459,6 +463,7 @@ cmdsrv_main(
 			break;
 # endif
 		    j = atoi((char *)p);
+		    vim_free(p);
 		    if (j >= 0 && j < numFiles)
 		    {
 # ifdef FEAT_GUI_MSWIN
@@ -651,7 +656,7 @@ build_drop_cmd(
     ga_concat(&ga, (char_u *)":");
     if (inicmd != NULL)
     {
-	// Can't use <CR> after "inicmd", because an "startinsert" would cause
+	// Can't use <CR> after "inicmd", because a "startinsert" would cause
 	// the following commands to be inserted as text.  Use a "|",
 	// hopefully "inicmd" does allow this...
 	ga_concat(&ga, inicmd);
@@ -709,7 +714,7 @@ check_connection(void)
     make_connection();
     if (X_DISPLAY == NULL)
     {
-	emsg(_("E240: No connection to the X server"));
+	emsg(_(e_no_connection_to_x_server));
 	return FAIL;
     }
     return OK;
@@ -759,7 +764,7 @@ remote_common(typval_T *argvars, typval_T *rettv, int expr)
 	    vim_free(r);
 	}
 	else
-	    semsg(_("E241: Unable to send to %s"), server_name);
+	    semsg(_(e_unable_to_send_to_str), server_name);
 	return;
     }
 
@@ -793,7 +798,16 @@ f_remote_expr(typval_T *argvars UNUSED, typval_T *rettv)
 {
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = NULL;
+
 #ifdef FEAT_CLIENTSERVER
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_string_arg(argvars, 1) == FAIL
+		|| check_for_opt_string_arg(argvars, 2) == FAIL
+		|| (argvars[2].v_type != VAR_UNKNOWN
+		    && check_for_opt_number_arg(argvars, 3) == FAIL)))
+	return;
+
     remote_common(argvars, rettv, TRUE);
 #endif
 }
@@ -805,6 +819,9 @@ f_remote_expr(typval_T *argvars UNUSED, typval_T *rettv)
 f_remote_foreground(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
 {
 #ifdef FEAT_CLIENTSERVER
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
 # ifdef MSWIN
     // On Win32 it's done in this application.
     {
@@ -837,17 +854,18 @@ f_remote_peek(typval_T *argvars UNUSED, typval_T *rettv)
 # endif
     char_u	*serverid;
 
+    rettv->vval.v_number = -1;
     if (check_restricted() || check_secure())
-    {
-	rettv->vval.v_number = -1;
 	return;
-    }
+
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_opt_string_arg(argvars, 1) == FAIL))
+	return;
+
     serverid = tv_get_string_chk(&argvars[0]);
     if (serverid == NULL)
-    {
-	rettv->vval.v_number = -1;
 	return;		// type error; errmsg already given
-    }
 # ifdef MSWIN
     sscanf((const char *)serverid, SCANF_HEX_LONG_U, &n);
     if (n == 0)
@@ -887,8 +905,14 @@ f_remote_read(typval_T *argvars UNUSED, typval_T *rettv)
     char_u	*r = NULL;
 
 #ifdef FEAT_CLIENTSERVER
-    char_u	*serverid = tv_get_string_chk(&argvars[0]);
+    char_u	*serverid;
 
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_opt_number_arg(argvars, 1) == FAIL))
+	return;
+
+    serverid = tv_get_string_chk(&argvars[0]);
     if (serverid != NULL && !check_restricted() && !check_secure())
     {
 	int timeout = 0;
@@ -910,7 +934,7 @@ f_remote_read(typval_T *argvars UNUSED, typval_T *rettv)
 		|| serverReadReply(X_DISPLAY, serverStrToWin(serverid),
 						       &r, FALSE, timeout) < 0)
 # endif
-	    emsg(_("E277: Unable to read a server reply"));
+	    emsg(_(e_unable_to_read_server_reply));
     }
 #endif
     rettv->v_type = VAR_STRING;
@@ -925,7 +949,14 @@ f_remote_send(typval_T *argvars UNUSED, typval_T *rettv)
 {
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = NULL;
+
 #ifdef FEAT_CLIENTSERVER
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_string_arg(argvars, 1) == FAIL
+		|| check_for_opt_string_arg(argvars, 2) == FAIL))
+	return;
+
     remote_common(argvars, rettv, FALSE);
 #endif
 }
@@ -937,12 +968,16 @@ f_remote_send(typval_T *argvars UNUSED, typval_T *rettv)
 f_remote_startserver(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
 {
 #ifdef FEAT_CLIENTSERVER
-    char_u	*server = tv_get_string_chk(&argvars[0]);
+    char_u	*server;
 
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
+    server = tv_get_string_chk(&argvars[0]);
     if (server == NULL)
 	return;		// type error; errmsg already given
     if (serverName != NULL)
-	emsg(_("E941: already started a server"));
+	emsg(_(e_already_started_server));
     else
     {
 # ifdef FEAT_X11
@@ -953,7 +988,7 @@ f_remote_startserver(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
 # endif
     }
 #else
-    emsg(_("E942: +clientserver feature not available"));
+    emsg(_(e_clientserver_feature_not_available));
 #endif
 }
 
@@ -962,14 +997,23 @@ f_server2client(typval_T *argvars UNUSED, typval_T *rettv)
 {
 #ifdef FEAT_CLIENTSERVER
     char_u	buf[NUMBUFLEN];
-    char_u	*server = tv_get_string_chk(&argvars[0]);
-    char_u	*reply = tv_get_string_buf_chk(&argvars[1], buf);
+    char_u	*server;
+    char_u	*reply;
 
     rettv->vval.v_number = -1;
-    if (server == NULL || reply == NULL)
-	return;
     if (check_restricted() || check_secure())
 	return;
+
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_string_arg(argvars, 1) == FAIL))
+	return;
+
+    server = tv_get_string_chk(&argvars[0]);
+    reply = tv_get_string_buf_chk(&argvars[1], buf);
+    if (server == NULL || reply == NULL)
+	return;
+
 # ifdef FEAT_X11
     if (check_connection() == FAIL)
 	return;
@@ -977,7 +1021,7 @@ f_server2client(typval_T *argvars UNUSED, typval_T *rettv)
 
     if (serverSendReply(server, reply) < 0)
     {
-	emsg(_("E258: Unable to send to client"));
+	emsg(_(e_unable_to_send_to_client));
 	return;
     }
     rettv->vval.v_number = 0;

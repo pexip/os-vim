@@ -1,4 +1,4 @@
-*os_vms.txt*    For Vim version 8.2.  Last change: 2021 Jan 04
+*os_vms.txt*    For Vim version 9.0.  Last change: 2022 Nov 25
 
 
 		  VIM REFERENCE MANUAL
@@ -203,7 +203,7 @@ You can check that everything is at the right place with the :version command.
 
 Example LOGIN.COM: >
 
- 	$ define/nolog VIM DKA0:[UTIL.VIM81]
+	$ define/nolog VIM DKA0:[UTIL.VIM81]
 	$ vi*m :== mcr VIM:VIM.EXE
 	$ gv*im:== spawn/nowait/input=NLA0 mcr VIM:VIM.EXE -g -GEOMETRY 80x40
 	$ set disp/create/node=192.168.10.202/trans=tcpip
@@ -331,10 +331,10 @@ features, it is worth to choose non GUI executables.
 8.1 Backspace/delete
 
 There are backspace/delete key inconsistencies with VMS.
-:fixdel doesn't do the trick, but the solution is: >
+:fixdel doesn't do the trick, but the solution is (without "<" in 'cpo'): >
 
-	:inoremap ^? ^H		" for terminal mode
-	:inoremap <Del> ^H	" for gui mode
+	:inoremap <C-?> <C-H>	" for terminal mode
+	:inoremap <Del> <C-H>	" for gui mode
 
 Read more in ch: 8.6 (Terminal problems).
 (Bruce Hunsaker <BNHunsaker@chq.byu.edu> Vim 5.3)
@@ -458,17 +458,10 @@ Ins, Del buttons etc., except Backspace in GUI mode.  To solve it, add to
 
 Vim will also recognize that they are fast terminals.
 
-If you have some annoying line jumping on the screen between windows add to
-your .vimrc file: >
-
-	set ttyfast	" set fast terminal
-
-Note: if you're using Vim on remote host or through a very slow connection, it's
-recommended to avoid the fast terminal option with: >
+If you're using Vim on remote host or through a very slow connection, you
+might want to reset fast terminal option with: >
 
 	set nottyfast   " set terminal to slow mode
-
-(Zoltan Arpadffy, Vim 5.6)
 
 
 8.7 Hex-editing and other external tools
@@ -603,13 +596,13 @@ program to the new diff on VMS.  Add this to your .vimrc file: >
 	function MyDiff()
 	   let opt = ""
 	   if &diffopt =~ "icase"
-	     let opt = opt . "-i "
+	     let opt = opt .. "-i "
 	   endif
 	   if &diffopt =~ "iwhite"
-	     let opt = opt . "-b "
+	     let opt = opt .. "-b "
 	   endif
-	   silent execute "!mc GNU:diff.exe -a " . opt . v:fname_in . " " .  v:fname_new .
-		\  " > " . v:fname_out
+	   silent execute "!mc GNU:diff.exe -a " .. opt .. v:fname_in .. " " ..  v:fname_new ..
+		\  " > " .. v:fname_out
 	endfunction
       endif
 
@@ -767,12 +760,12 @@ GNU_TOOLS.ZIP package downloadable from http://www.polarhome.com/vim/
 
 Version 8.2
 - make all changes needed for clean compile build of v8.2 on VMS on all platforms
-- fix the call mkdir bug (vicente_polo@yahoo.es) 
+- fix the call mkdir bug (vicente_polo@yahoo.es)
 - test on VSI OpenVMS Alpha and Itanium platforms
 - added LUA support
 - added XPM support - Motif GUI with toolbar on all platforms
-- XPM v3.4.11 libraries for IA64, AXP and VAX are added 
-- start integrating the new test scripts 
+- XPM v3.4.11 libraries for IA64, AXP and VAX are added
+- start integrating the new test scripts
 
 Version 8.1
 - make necessary changes to build v8.1 on VMS

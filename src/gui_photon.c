@@ -34,7 +34,6 @@
 # define PhImage_t	int
 #endif
 
-#define ARRAY_LENGTH(a) (sizeof(a) / sizeof(a[0]))
 #define RGB(r, g, b) PgRGB(r, g, b)
 
 #define EVENT_BUFFER_SIZE sizeof(PhEvent_t) + 1000
@@ -362,7 +361,8 @@ gui_ph_handle_window_cb(PtWidget_t *widget, void *data, PtCallbackInfo_t *info)
     PhWindowEvent_t *we = info->cbdata;
     ushort_t *width, *height;
 
-    switch (we->event_f) {
+    switch (we->event_f)
+    {
 	case Ph_WM_CLOSE:
 	    gui_shell_closed();
 	    break;
@@ -488,7 +488,7 @@ gui_ph_handle_keyboard(PtWidget_t *widget, void *data, PtCallbackInfo_t *info)
 		    if (key->key_cap >= Pk_KP_Enter && key->key_cap <= Pk_KP_9
 			    && (key->key_mods & Pk_KM_Num_Lock))
 		    {
-			// FIXME: For now, just map the key to a ascii value
+			// FIXME: For now, just map the key to an ascii value
 			// (see <photon/PkKeyDef.h>)
 			ch = key->key_cap - 0xf080;
 		    }
@@ -993,19 +993,19 @@ gui_ph_pg_add_buffer(char *name)
     char **new_titles = NULL;
 
     new_titles = ALLOC_MULT(char *, (num_panels + 1));
-    if (new_titles != NULL)
-    {
-	if (num_panels > 0)
-	    memcpy(new_titles, panel_titles, num_panels * sizeof(char **));
+    if (new_titles == NULL)
+	return;
 
-	new_titles[ num_panels++ ] = name;
+    if (num_panels > 0)
+	memcpy(new_titles, panel_titles, num_panels * sizeof(char **));
 
-	PtSetResource(gui.vimPanelGroup, Pt_ARG_PG_PANEL_TITLES, new_titles,
-		num_panels);
+    new_titles[ num_panels++ ] = name;
 
-	vim_free(panel_titles);
-	panel_titles = new_titles;
-    }
+    PtSetResource(gui.vimPanelGroup, Pt_ARG_PG_PANEL_TITLES, new_titles,
+	    num_panels);
+
+    vim_free(panel_titles);
+    panel_titles = new_titles;
 }
 
     static void
@@ -1902,21 +1902,21 @@ mch_set_mouse_shape(int shape)
     void
 gui_mch_mousehide(int hide)
 {
-    if (gui.pointer_hidden != hide)
-    {
-	gui.pointer_hidden = hide;
+    if (gui.pointer_hidden == hide)
+	return;
+
+    gui.pointer_hidden = hide;
 #ifdef FEAT_MOUSESHAPE
-	if (hide)
-	    PtSetResource(gui.vimTextArea, Pt_ARG_CURSOR_TYPE,
-		    Ph_CURSOR_NONE, 0);
-	else
-	    mch_set_mouse_shape(last_shape);
-#else
+    if (hide)
 	PtSetResource(gui.vimTextArea, Pt_ARG_CURSOR_TYPE,
-		(hide == MOUSE_SHOW) ? GUI_PH_MOUSE_TYPE : Ph_CURSOR_NONE,
-		0);
+		Ph_CURSOR_NONE, 0);
+    else
+	mch_set_mouse_shape(last_shape);
+#else
+    PtSetResource(gui.vimTextArea, Pt_ARG_CURSOR_TYPE,
+	    (hide == MOUSE_SHOW) ? GUI_PH_MOUSE_TYPE : Ph_CURSOR_NONE,
+	    0);
 #endif
-    }
 }
 
     void
@@ -2956,7 +2956,7 @@ gui_mch_get_font(char_u *vim_font_name, int report_error)
     }
 
     if (report_error)
-	semsg(e_font, vim_font_name);
+	semsg(e_unknown_font_str, vim_font_name);
 
     return FAIL;
 }

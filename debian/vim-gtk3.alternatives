@@ -1,0 +1,114 @@
+Name: editor
+Link: /usr/bin/editor
+Alternative: /usr/bin/vim.gtk3
+Dependents:
+ /usr/share/man/man1/editor.1.gz editor.1.gz /usr/share/man/man1/vim.1.gz
+ /usr/share/man/da/man1/editor.1.gz editor.da.1.gz /usr/share/man/da/man1/vim.1.gz
+ /usr/share/man/de/man1/editor.1.gz editor.de.1.gz /usr/share/man/de/man1/vim.1.gz
+ /usr/share/man/fr/man1/editor.1.gz editor.fr.1.gz /usr/share/man/fr/man1/vim.1.gz
+ /usr/share/man/it/man1/editor.1.gz editor.it.1.gz /usr/share/man/it/man1/vim.1.gz
+ /usr/share/man/ja/man1/editor.1.gz editor.ja.1.gz /usr/share/man/ja/man1/vim.1.gz
+ /usr/share/man/pl/man1/editor.1.gz editor.pl.1.gz /usr/share/man/pl/man1/vim.1.gz
+ /usr/share/man/ru/man1/editor.1.gz editor.ru.1.gz /usr/share/man/ru/man1/vim.1.gz
+ /usr/share/man/tr/man1/editor.1.gz editor.tr.1.gz /usr/share/man/tr/man1/vim.1.gz
+Priority: 50
+
+Name: eview
+Link: /usr/bin/eview
+Alternative: /usr/bin/vim.gtk3
+Priority: 50
+
+Name: evim
+Link: /usr/bin/evim
+Alternative: /usr/bin/vim.gtk3
+Priority: 50
+
+Name: ex
+Link: /usr/bin/ex
+Alternative: /usr/bin/vim.gtk3
+Dependents:
+ /usr/share/man/man1/ex.1.gz ex.1.gz /usr/share/man/man1/vim.1.gz
+ /usr/share/man/da/man1/ex.1.gz ex.da.1.gz /usr/share/man/da/man1/vim.1.gz
+ /usr/share/man/de/man1/ex.1.gz ex.de.1.gz /usr/share/man/de/man1/vim.1.gz
+ /usr/share/man/fr/man1/ex.1.gz ex.fr.1.gz /usr/share/man/fr/man1/vim.1.gz
+ /usr/share/man/it/man1/ex.1.gz ex.it.1.gz /usr/share/man/it/man1/vim.1.gz
+ /usr/share/man/ja/man1/ex.1.gz ex.ja.1.gz /usr/share/man/ja/man1/vim.1.gz
+ /usr/share/man/pl/man1/ex.1.gz ex.pl.1.gz /usr/share/man/pl/man1/vim.1.gz
+ /usr/share/man/ru/man1/ex.1.gz ex.ru.1.gz /usr/share/man/ru/man1/vim.1.gz
+ /usr/share/man/tr/man1/ex.1.gz ex.tr.1.gz /usr/share/man/tr/man1/vim.1.gz
+Priority: 50
+
+Name: gview
+Link: /usr/bin/gview
+Alternative: /usr/bin/vim.gtk3
+Priority: 50
+
+Name: gvim
+Link: /usr/bin/gvim
+Alternative: /usr/bin/vim.gtk3
+Priority: 50
+
+Name: gvimdiff
+Link: /usr/bin/gvimdiff
+Alternative: /usr/bin/vim.gtk3
+Priority: 50
+
+Name: rgview
+Link: /usr/bin/rgview
+Alternative: /usr/bin/vim.gtk3
+Priority: 50
+
+Name: rgvim
+Link: /usr/bin/rgvim
+Alternative: /usr/bin/vim.gtk3
+Priority: 50
+
+Name: rview
+Link: /usr/bin/rview
+Alternative: /usr/bin/vim.gtk3
+Priority: 50
+
+Name: rvim
+Link: /usr/bin/rvim
+Alternative: /usr/bin/vim.gtk3
+Priority: 50
+
+Name: vi
+Link: /usr/bin/vi
+Alternative: /usr/bin/vim.gtk3
+Dependents:
+ /usr/share/man/man1/vi.1.gz vi.1.gz /usr/share/man/man1/vim.1.gz
+ /usr/share/man/da/man1/vi.1.gz vi.da.1.gz /usr/share/man/da/man1/vim.1.gz
+ /usr/share/man/de/man1/vi.1.gz vi.de.1.gz /usr/share/man/de/man1/vim.1.gz
+ /usr/share/man/fr/man1/vi.1.gz vi.fr.1.gz /usr/share/man/fr/man1/vim.1.gz
+ /usr/share/man/it/man1/vi.1.gz vi.it.1.gz /usr/share/man/it/man1/vim.1.gz
+ /usr/share/man/ja/man1/vi.1.gz vi.ja.1.gz /usr/share/man/ja/man1/vim.1.gz
+ /usr/share/man/pl/man1/vi.1.gz vi.pl.1.gz /usr/share/man/pl/man1/vim.1.gz
+ /usr/share/man/ru/man1/vi.1.gz vi.ru.1.gz /usr/share/man/ru/man1/vim.1.gz
+ /usr/share/man/tr/man1/vi.1.gz vi.tr.1.gz /usr/share/man/tr/man1/vim.1.gz
+Priority: 50
+
+Name: view
+Link: /usr/bin/view
+Alternative: /usr/bin/vim.gtk3
+Dependents:
+ /usr/share/man/man1/view.1.gz view.1.gz /usr/share/man/man1/vim.1.gz
+ /usr/share/man/da/man1/view.1.gz view.da.1.gz /usr/share/man/da/man1/vim.1.gz
+ /usr/share/man/de/man1/view.1.gz view.de.1.gz /usr/share/man/de/man1/vim.1.gz
+ /usr/share/man/fr/man1/view.1.gz view.fr.1.gz /usr/share/man/fr/man1/vim.1.gz
+ /usr/share/man/it/man1/view.1.gz view.it.1.gz /usr/share/man/it/man1/vim.1.gz
+ /usr/share/man/ja/man1/view.1.gz view.ja.1.gz /usr/share/man/ja/man1/vim.1.gz
+ /usr/share/man/pl/man1/view.1.gz view.pl.1.gz /usr/share/man/pl/man1/vim.1.gz
+ /usr/share/man/ru/man1/view.1.gz view.ru.1.gz /usr/share/man/ru/man1/vim.1.gz
+ /usr/share/man/tr/man1/view.1.gz view.tr.1.gz /usr/share/man/tr/man1/vim.1.gz
+Priority: 50
+
+Name: vim
+Link: /usr/bin/vim
+Alternative: /usr/bin/vim.gtk3
+Priority: 50
+
+Name: vimdiff
+Link: /usr/bin/vimdiff
+Alternative: /usr/bin/vim.gtk3
+Priority: 50

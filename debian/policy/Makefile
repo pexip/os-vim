@@ -7,10 +7,6 @@ INSTALL_STUFF =			\
 
 all: html text
 
-# to be used on alioth for updating policy linked by pkg-vim project page
-install: all
-	cp -r $(INSTALL_STUFF) ~/pkg-vim/htdocs/
-
 html: vim-policy.html/index.html
 text: vim-policy.txt
 
@@ -24,8 +20,4 @@ vim-policy.txt: vim-policy.xml *.xml
 clean:
 	$(RM) -rf $(INSTALL_STUFF)
 
-upload_web: all
-	scp -rC $(INSTALL_STUFF) alioth.debian.org:/srv/home/groups/pkg-vim/htdocs/
-
-.PHONY: html text upload_web
-
+.PHONY: html text

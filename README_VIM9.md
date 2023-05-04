@@ -2,18 +2,17 @@
 
 # What is Vim9?
 
-This is an experimental side of [Vim](https://github.com/vim/vim).
-It explores ways of making Vim script faster and better.
+This is a new syntax for Vim script that was introduced with Vim 9.0.
+It intends making Vim script faster and better.
 
-WARNING: The Vim9 script features are still under development, anything can
-break!
 
 # Why Vim9?
 
 ## 1. FASTER VIM SCRIPT
 
 The third item on the poll results of 2018, after popup windows and text
-properties, is faster Vim script.  So how do we do that?
+properties, both of which have been implemented, is faster Vim script.
+So how do we do that?
 
 I have been throwing some ideas around, and soon came to the conclusion
 that the current way functions are called and executed, with
@@ -45,14 +44,16 @@ full code is below):
 | Vim old | 5.018541 |
 | Python  | 0.369598 |
 | Lua     | 0.078817 |
+| LuaJit  | 0.004245 |
 | Vim new | 0.073595 |
 
 That looks very promising!  It's just one example, but it shows how much
 we can gain, and also that Vim script can be faster than builtin
 interfaces.
 
-In practice the script would not do something useless as counting but change
-the text.  For example, reindent all the lines:
+LuaJit is much faster at Lua-only instructions.  In practice the script would
+not do something useless counting, but change the text.  For example,
+reindent all the lines:
 
 ``` vim
   let totallen = 0
@@ -64,12 +65,17 @@ the text.  For example, reindent all the lines:
 
 | how     | time in sec |
 | --------| -------- |
-| Vim old | 0.853752 |
-| Python  | 0.304584 |
-| Lua     | 0.286573 |
-| Vim new | 0.190276 |
+| Vim old | 0.578598 |
+| Python  | 0.152040 |
+| Lua     | 0.164917 |
+| LuaJit  | 0.128400 |
+| Vim new | 0.079692 |
+
+[These times were measured on a different system by Dominique Pelle]
 
 The differences are smaller, but Vim 9 script is clearly the fastest.
+Using LuaJIT is only a little bit faster than plain Lua here, clearly the call
+back to the Vim code is costly.
 
 How does Vim9 script work?  The function is first compiled into a sequence of
 instructions.  Each instruction has one or two parameters and a stack is
@@ -330,7 +336,7 @@ let start = reltime()
 echo Python()
 echo 'Python: ' .. reltimestr(reltime(start))
 bwipe!
- 
+
 new
 call setline(1, range(100000))
 let start = reltime()

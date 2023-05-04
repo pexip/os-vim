@@ -29,14 +29,6 @@ CFLAGS += \
 	-DFEAT_HUGE
 else
 
-# Vim 'big' build
-ifeq ($(BUILD),big)
-CFLAGS += \
-	-DFEAT_BROWSE \
-	-DFEAT_MOUSE \
-	-DFEAT_BIG
-else
-
 # Vim 'normal' build
 ifeq ($(BUILD),normal)
 CFLAGS +=\
@@ -45,9 +37,9 @@ CFLAGS +=\
 	-DFEAT_NORMAL
 else
 
-# Vim 'small' build
+# Vim 'small' build - now an alias for 'tiny'
 ifeq ($(BUILD),small)
-CFLAGS += -DFEAT_SMALL
+CFLAGS += -DFEAT_TINY
 else
 
 # Vim 'tiny' build
@@ -68,7 +60,8 @@ ifeq ($(UNM),AROS)
 LDFLAGS = -DHAVE_FSYNC -ldebug
 else
 ifeq ($(UNM),MorphOS)
-LDFLAGS = -ldebug -noixemul
+CFLAGS += -noixemul
+LDFLAGS = -ldebug -lm -noixemul
 endif
 endif
 endif
@@ -80,6 +73,7 @@ endif
 
 # Common sources
 SRC += \
+	alloc.c \
 	arabic.c \
 	arglist.c \
 	autocmd.c \
@@ -117,6 +111,7 @@ SRC += \
 	fileio.c \
 	filepath.c \
 	findfile.c \
+	float.c \
 	fold.c \
 	getchar.c \
 	hardcopy.c \
@@ -129,6 +124,7 @@ SRC += \
 	json.c \
 	list.c \
 	locale.c \
+	logfile.c \
 	main.c \
 	mark.c \
 	map.c \
@@ -161,6 +157,7 @@ SRC += \
 	spell.c \
 	spellfile.c \
 	spellsuggest.c \
+	strings.c \
 	syntax.c \
 	tag.c \
 	term.c \
@@ -177,8 +174,12 @@ SRC += \
 	userfunc.c \
 	version.c \
 	viminfo.c \
+	vim9class.c \
+	vim9cmds.c \
 	vim9compile.c \
 	vim9execute.c \
+	vim9expr.c \
+	vim9instr.c \
 	vim9script.c \
 	vim9type.c \
 	window.c \

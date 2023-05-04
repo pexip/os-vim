@@ -17,7 +17,7 @@
 
 static long	    sound_id = 0;
 
-typedef struct soundcb_S soundcb_T;
+// soundcb_T is typdef'ed in proto/sound.pro
 
 struct soundcb_S {
     callback_T	snd_callback;
@@ -54,20 +54,42 @@ get_sound_callback(typval_T *arg)
 
     soundcb = ALLOC_ONE(soundcb_T);
     if (soundcb == NULL)
-	free_callback(&callback);
-    else
     {
-	soundcb->snd_next = first_callback;
-	first_callback = soundcb;
-	set_callback(&soundcb->snd_callback, &callback);
+	free_callback(&callback);
+	return NULL;
     }
+
+    soundcb->snd_next = first_callback;
+    first_callback = soundcb;
+    set_callback(&soundcb->snd_callback, &callback);
+    if (callback.cb_free_name)
+	vim_free(callback.cb_name);
     return soundcb;
+}
+
+/*
+ * Call "soundcb" with proper parameters.
+ */
+    void
+call_sound_callback(soundcb_T *soundcb, long snd_id, int result)
+{
+    typval_T	argv[3];
+    typval_T	rettv;
+
+    argv[0].v_type = VAR_NUMBER;
+    argv[0].vval.v_number = snd_id;
+    argv[1].v_type = VAR_NUMBER;
+    argv[1].vval.v_number = result;
+    argv[2].v_type = VAR_UNKNOWN;
+
+    call_callback(&soundcb->snd_callback, -1, &rettv, 2, argv);
+    clear_tv(&rettv);
 }
 
 /*
  * Delete "soundcb" from the list of pending callbacks.
  */
-    static void
+    void
 delete_sound_callback(soundcb_T *soundcb)
 {
     soundcb_T	*p;
@@ -89,7 +111,7 @@ delete_sound_callback(soundcb_T *soundcb)
 #if defined(HAVE_CANBERRA) || defined(PROTO)
 
 /*
- * Sound implementation for Linux/Unix/Mac using libcanberra.
+ * Sound implementation for Linux/Unix using libcanberra.
  */
 # include <canberra.h>
 
@@ -152,74 +174,67 @@ has_sound_callback_in_queue(void)
 invoke_sound_callback(void)
 {
     soundcb_queue_T *scb;
-    typval_T	    argv[3];
-    typval_T	    rettv;
-
 
     while (callback_queue != NULL)
     {
 	scb = callback_queue;
 	callback_queue = scb->scb_next;
 
-	argv[0].v_type = VAR_NUMBER;
-	argv[0].vval.v_number = scb->scb_id;
-	argv[1].v_type = VAR_NUMBER;
-	argv[1].vval.v_number = scb->scb_result;
-	argv[2].v_type = VAR_UNKNOWN;
-
-	call_callback(&scb->scb_callback->snd_callback, -1, &rettv, 2, argv);
-	clear_tv(&rettv);
+	call_sound_callback(scb->scb_callback, scb->scb_id, scb->scb_result);
 
 	delete_sound_callback(scb->scb_callback);
 	vim_free(scb);
     }
-    redraw_after_callback(TRUE);
+    redraw_after_callback(TRUE, FALSE);
 }
 
     static void
 sound_play_common(typval_T *argvars, typval_T *rettv, int playfile)
 {
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
     if (context == NULL)
 	ca_context_create(&context);
-    if (context != NULL)
+    if (context == NULL)
+	return;
+
+    soundcb_T	*soundcb = get_sound_callback(&argvars[1]);
+    int		res = CA_ERROR_INVALID;
+
+    ++sound_id;
+    if (soundcb == NULL)
     {
-	soundcb_T	*soundcb = get_sound_callback(&argvars[1]);
-	int		res = CA_ERROR_INVALID;
-
-	++sound_id;
-	if (soundcb == NULL)
-	{
-	    res = ca_context_play(context, sound_id,
-		    playfile ? CA_PROP_MEDIA_FILENAME : CA_PROP_EVENT_ID,
-						    tv_get_string(&argvars[0]),
-		    CA_PROP_CANBERRA_CACHE_CONTROL, "volatile",
-		    NULL);
-	}
-	else
-	{
-	    static ca_proplist *proplist = NULL;
-
-	    ca_proplist_create(&proplist);
-	    if (proplist != NULL)
-	    {
-		if (playfile)
-		    ca_proplist_sets(proplist, CA_PROP_MEDIA_FILENAME,
-					   (char *)tv_get_string(&argvars[0]));
-		else
-		    ca_proplist_sets(proplist, CA_PROP_EVENT_ID,
-					   (char *)tv_get_string(&argvars[0]));
-		ca_proplist_sets(proplist, CA_PROP_CANBERRA_CACHE_CONTROL,
-			"volatile");
-		res = ca_context_play_full(context, sound_id, proplist,
-						      sound_callback, soundcb);
-		if (res != CA_SUCCESS)
-		    delete_sound_callback(soundcb);
-
-		ca_proplist_destroy(proplist);
-	    }
-	}
-	rettv->vval.v_number = res == CA_SUCCESS ? sound_id : 0;
+	res = ca_context_play(context, sound_id,
+		playfile ? CA_PROP_MEDIA_FILENAME : CA_PROP_EVENT_ID,
+		tv_get_string(&argvars[0]),
+		CA_PROP_CANBERRA_CACHE_CONTROL, "volatile",
+		NULL);
     }
+    else
+    {
+	static ca_proplist *proplist = NULL;
+
+	ca_proplist_create(&proplist);
+	if (proplist != NULL)
+	{
+	    if (playfile)
+		ca_proplist_sets(proplist, CA_PROP_MEDIA_FILENAME,
+			(char *)tv_get_string(&argvars[0]));
+	    else
+		ca_proplist_sets(proplist, CA_PROP_EVENT_ID,
+			(char *)tv_get_string(&argvars[0]));
+	    ca_proplist_sets(proplist, CA_PROP_CANBERRA_CACHE_CONTROL,
+		    "volatile");
+	    res = ca_context_play_full(context, sound_id, proplist,
+		    sound_callback, soundcb);
+	    if (res != CA_SUCCESS)
+		delete_sound_callback(soundcb);
+
+	    ca_proplist_destroy(proplist);
+	}
+    }
+    rettv->vval.v_number = res == CA_SUCCESS ? sound_id : 0;
 }
 
     void
@@ -243,6 +258,9 @@ f_sound_playfile(typval_T *argvars, typval_T *rettv)
     void
 f_sound_stop(typval_T *argvars, typval_T *rettv UNUSED)
 {
+    if (in_vim9script() && check_for_number_arg(argvars, 0) == FAIL)
+	return;
+
     if (context != NULL)
 	ca_context_cancel(context, tv_get_number(&argvars[0]));
 }
@@ -253,11 +271,10 @@ f_sound_stop(typval_T *argvars, typval_T *rettv UNUSED)
     void
 f_sound_clear(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
 {
-    if (context != NULL)
-    {
-	ca_context_destroy(context);
-	context = NULL;
-    }
+    if (context == NULL)
+	return;
+    ca_context_destroy(context);
+    context = NULL;
 }
 
 # if defined(EXITFREE) || defined(PROTO)
@@ -301,27 +318,18 @@ sound_wndproc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	    for (p = first_callback; p != NULL; p = p->snd_next)
 		if (p->snd_device_id == (MCIDEVICEID) lParam)
 		{
-		    typval_T	argv[3];
-		    typval_T	rettv;
 		    char	buf[32];
 
 		    vim_snprintf(buf, sizeof(buf), "close sound%06ld",
 								p->snd_id);
 		    mciSendString(buf, NULL, 0, 0);
 
-		    argv[0].v_type = VAR_NUMBER;
-		    argv[0].vval.v_number = p->snd_id;
-		    argv[1].v_type = VAR_NUMBER;
-		    argv[1].vval.v_number =
-					wParam == MCI_NOTIFY_SUCCESSFUL ? 0
-				      : wParam == MCI_NOTIFY_ABORTED ? 1 : 2;
-		    argv[2].v_type = VAR_UNKNOWN;
-
-		    call_callback(&p->snd_callback, -1, &rettv, 2, argv);
-		    clear_tv(&rettv);
+		    long result =   wParam == MCI_NOTIFY_SUCCESSFUL ? 0
+				  : wParam == MCI_NOTIFY_ABORTED ? 1 : 2;
+		    call_sound_callback(p, p->snd_id, result);
 
 		    delete_sound_callback(p);
-		    redraw_after_callback(TRUE);
+		    redraw_after_callback(TRUE, FALSE);
 
 		}
 	    break;
@@ -331,7 +339,7 @@ sound_wndproc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 }
 
     static HWND
-sound_window()
+sound_window(void)
 {
     if (g_hWndSound == NULL)
     {
@@ -351,14 +359,16 @@ f_sound_playevent(typval_T *argvars, typval_T *rettv)
 {
     WCHAR	    *wp;
 
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
     wp = enc_to_utf16(tv_get_string(&argvars[0]), NULL);
     if (wp == NULL)
 	return;
 
-    PlaySoundW(wp, NULL, SND_ASYNC | SND_ALIAS);
+    if (PlaySoundW(wp, NULL, SND_ASYNC | SND_ALIAS))
+	rettv->vval.v_number = ++sound_id;
     free(wp);
-
-    rettv->vval.v_number = ++sound_id;
 }
 
     void
@@ -371,6 +381,9 @@ f_sound_playfile(typval_T *argvars, typval_T *rettv)
     soundcb_T	*soundcb;
     char	buf[32];
     MCIERROR	err;
+
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
 
     esc = vim_strsave_shellescape(tv_get_string(&argvars[0]), FALSE, FALSE);
 
@@ -419,9 +432,13 @@ failure:
     void
 f_sound_stop(typval_T *argvars, typval_T *rettv UNUSED)
 {
-    long    id = tv_get_number(&argvars[0]);
+    long    id;
     char    buf[32];
 
+    if (in_vim9script() && check_for_number_arg(argvars, 0) == FAIL)
+	return;
+
+    id = tv_get_number(&argvars[0]);
     vim_snprintf(buf, sizeof(buf), "stop sound%06ld", id);
     mciSendString(buf, NULL, 0, NULL);
 }
@@ -444,6 +461,64 @@ sound_free(void)
 }
 # endif
 
-#endif // MSWIN
+#elif defined(MACOS_X_DARWIN)
+
+// Sound implementation for macOS.
+    static void
+sound_play_common(typval_T *argvars, typval_T *rettv, bool playfile)
+{
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
+    char_u *sound_name = tv_get_string(&argvars[0]);
+    soundcb_T *soundcb = get_sound_callback(&argvars[1]);
+
+    ++sound_id;
+
+    bool play_success = sound_mch_play(sound_name, sound_id, soundcb, playfile);
+    if (!play_success && soundcb)
+    {
+	delete_sound_callback(soundcb);
+    }
+    rettv->vval.v_number = play_success ? sound_id : 0;
+}
+
+    void
+f_sound_playevent(typval_T *argvars, typval_T *rettv)
+{
+    sound_play_common(argvars, rettv, false);
+}
+
+    void
+f_sound_playfile(typval_T *argvars, typval_T *rettv)
+{
+    sound_play_common(argvars, rettv, true);
+}
+
+    void
+f_sound_stop(typval_T *argvars, typval_T *rettv UNUSED)
+{
+    if (in_vim9script() && check_for_number_arg(argvars, 0) == FAIL)
+	return;
+    sound_mch_stop(tv_get_number(&argvars[0]));
+}
+
+    void
+f_sound_clear(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
+{
+    sound_mch_clear();
+}
+
+#if defined(EXITFREE) || defined(PROTO)
+    void
+sound_free(void)
+{
+    sound_mch_free();
+    while (first_callback != NULL)
+	delete_sound_callback(first_callback);
+}
+#endif
+
+#endif // MACOS_X_DARWIN
 
 #endif  // FEAT_SOUND
