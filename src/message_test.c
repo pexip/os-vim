@@ -49,6 +49,15 @@ test_trunc_string(void)
     char_u  *buf; /*allocated every time to find uninit errors */
     char_u  *s;
 
+    // Should not write anything to destination if buflen is 0.
+    trunc_string((char_u *)"", NULL, 1, 0);
+
+    // Truncating an empty string does nothing.
+    buf = alloc(1);
+    trunc_string((char_u *)"", buf, 1, 1);
+    assert(buf[0] == NUL);
+    vim_free(buf);
+
     // in place
     buf = alloc(40);
     STRCPY(buf, "text");
@@ -112,9 +121,40 @@ test_trunc_string(void)
 }
 
 /*
+ * Test trunc_string() with mbyte chars.
+ */
+    static void
+test_trunc_string_mbyte(void)
+{
+    char_u  *buf; // allocated every time to find uninit errors
+    char_u  *s;
+
+    buf = alloc(40);
+    s = vim_strsave((char_u *)"Ä text tha just fits");
+    trunc_string(s, buf, 20, 40);
+    assert(STRCMP(buf, "Ä text tha just fits") == 0);
+    vim_free(buf);
+    vim_free(s);
+
+    buf = alloc(40);
+    s = vim_strsave((char_u *)"a text ÄÖÜä nott fits");
+    trunc_string(s, buf, 20, 40);
+    assert(STRCMP(buf, "a text Ä...nott fits") == 0);
+    vim_free(buf);
+    vim_free(s);
+
+    buf = alloc(40);
+    s = vim_strsave((char_u *)"a text that not fitsÄ");
+    trunc_string(s, buf, 20, 40);
+    assert(STRCMP(buf, "a text t...not fitsÄ") == 0);
+    vim_free(buf);
+    vim_free(s);
+}
+
+/*
  * Test vim_snprintf() with a focus on checking that truncation is
  * correct when buffer is small, since it cannot be tested from
- * vim scrip tests. Check that:
+ * vim script tests. Check that:
  * - no buffer overflows happens (with valgrind or asan)
  * - output string is always NUL terminated.
  *
@@ -171,7 +211,6 @@ test_vim_snprintf(void)
 	assert(bsize == 0 || STRNCMP(buf, "001100", bsize_int) == 0);
 	assert(bsize == 0 || buf[MIN(n, bsize_int)] == '\0');
 
-#ifdef FEAT_FLOAT
 	n = vim_snprintf(buf, bsize, "%f", 1.234);
 	assert(n == 8);
 	assert(bsize == 0 || STRNCMP(buf, "1.234000", bsize_int) == 0);
@@ -201,7 +240,6 @@ test_vim_snprintf(void)
 	assert(n == 9);
 	assert(bsize == 0 || STRNCMP(buf, "-0.000000", bsize_int) == 0);
 	assert(bsize == 0 || buf[MIN(n, bsize_int)] == '\0');
-#endif
 
 	n = vim_snprintf(buf, bsize, "%s", "漢語");
 	assert(n == 6);
@@ -274,12 +312,13 @@ main(int argc, char **argv)
     params.argv = argv;
     common_init(&params);
 
-    set_option_value((char_u *)"encoding", 0, (char_u *)"utf-8", 0);
+    set_option_value_give_err((char_u *)"encoding", 0, (char_u *)"utf-8", 0);
     init_chartab();
     test_trunc_string();
+    test_trunc_string_mbyte();
     test_vim_snprintf();
 
-    set_option_value((char_u *)"encoding", 0, (char_u *)"latin1", 0);
+    set_option_value_give_err((char_u *)"encoding", 0, (char_u *)"latin1", 0);
     init_chartab();
     test_trunc_string();
     test_vim_snprintf();

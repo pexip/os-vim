@@ -55,8 +55,10 @@ ga_concat_esc(garray_T *gap, char_u *p, int clen)
 	mch_memmove(buf, p, clen);
 	buf[clen] = NUL;
 	ga_concat(gap, buf);
+	return;
     }
-    else switch (*p)
+
+    switch (*p)
     {
 	case BS: ga_concat(gap, (char_u *)"\\b"); break;
 	case ESC: ga_concat(gap, (char_u *)"\\e"); break;
@@ -101,7 +103,7 @@ ga_concat_shorten_esc(garray_T *gap, char_u *str)
     {
 	same_len = 1;
 	s = p;
-	c = mb_ptr2char_adv(&s);
+	c = mb_cptr2char_adv(&s);
 	clen = s - p;
 	while (*s != NUL && c == mb_ptr2char(s))
 	{
@@ -278,9 +280,17 @@ assert_match_common(typval_T *argvars, assert_type_T atype)
     char_u	buf1[NUMBUFLEN];
     char_u	buf2[NUMBUFLEN];
     int		called_emsg_before = called_emsg;
-    char_u	*pat = tv_get_string_buf_chk(&argvars[0], buf1);
-    char_u	*text = tv_get_string_buf_chk(&argvars[1], buf2);
+    char_u	*pat;
+    char_u	*text;
 
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_string_arg(argvars, 1) == FAIL
+		|| check_for_opt_string_arg(argvars, 2) == FAIL))
+	return 1;
+
+    pat = tv_get_string_buf_chk(&argvars[0], buf1);
+    text = tv_get_string_buf_chk(&argvars[1], buf2);
     if (called_emsg == called_emsg_before
 		 && pattern_match(pat, text, FALSE) != (atype == ASSERT_MATCH))
     {
@@ -338,20 +348,27 @@ assert_append_cmd_or_arg(garray_T *gap, typval_T *argvars, char_u *cmd)
 }
 
     static int
-assert_beeps(typval_T *argvars)
+assert_beeps(typval_T *argvars, int no_beep)
 {
-    char_u	*cmd = tv_get_string_chk(&argvars[0]);
+    char_u	*cmd;
     garray_T	ga;
     int		ret = 0;
 
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return 0;
+
+    cmd = tv_get_string_chk(&argvars[0]);
     called_vim_beep = FALSE;
     suppress_errthrow = TRUE;
     emsg_silent = FALSE;
     do_cmdline_cmd(cmd);
-    if (!called_vim_beep)
+    if (no_beep ? called_vim_beep : !called_vim_beep)
     {
 	prepare_assert_error(&ga);
-	ga_concat(&ga, (char_u *)"command did not beep: ");
+	if (no_beep)
+	    ga_concat(&ga, (char_u *)"command did beep: ");
+	else
+	    ga_concat(&ga, (char_u *)"command did not beep: ");
 	ga_concat(&ga, cmd);
 	assert_error(&ga);
 	ga_clear(&ga);
@@ -364,12 +381,27 @@ assert_beeps(typval_T *argvars)
 }
 
 /*
- * "assert_beeps(cmd [, error])" function
+ * "assert_beeps(cmd)" function
  */
     void
 f_assert_beeps(typval_T *argvars, typval_T *rettv)
 {
-    rettv->vval.v_number = assert_beeps(argvars);
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
+    rettv->vval.v_number = assert_beeps(argvars, FALSE);
+}
+
+/*
+ * "assert_nobeep(cmd)" function
+ */
+    void
+f_assert_nobeep(typval_T *argvars, typval_T *rettv)
+{
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
+    rettv->vval.v_number = assert_beeps(argvars, TRUE);
 }
 
 /*
@@ -403,7 +435,7 @@ assert_equalfile(typval_T *argvars)
     fd1 = mch_fopen((char *)fname1, READBIN);
     if (fd1 == NULL)
     {
-	vim_snprintf((char *)IObuff, IOSIZE, (char *)e_notread, fname1);
+	vim_snprintf((char *)IObuff, IOSIZE, (char *)e_cant_read_file_str, fname1);
     }
     else
     {
@@ -411,7 +443,7 @@ assert_equalfile(typval_T *argvars)
 	if (fd2 == NULL)
 	{
 	    fclose(fd1);
-	    vim_snprintf((char *)IObuff, IOSIZE, (char *)e_notread, fname2);
+	    vim_snprintf((char *)IObuff, IOSIZE, (char *)e_cant_read_file_str, fname2);
 	}
 	else
 	{
@@ -503,6 +535,12 @@ assert_equalfile(typval_T *argvars)
     void
 f_assert_equalfile(typval_T *argvars, typval_T *rettv)
 {
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_string_arg(argvars, 1) == FAIL
+		|| check_for_opt_string_arg(argvars, 2) == FAIL))
+	return;
+
     rettv->vval.v_number = assert_equalfile(argvars);
 }
 
@@ -522,8 +560,14 @@ f_assert_notequal(typval_T *argvars, typval_T *rettv)
 f_assert_exception(typval_T *argvars, typval_T *rettv)
 {
     garray_T	ga;
-    char_u	*error = tv_get_string_chk(&argvars[0]);
+    char_u	*error;
 
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_opt_string_arg(argvars, 1) == FAIL))
+	return;
+
+    error = tv_get_string_chk(&argvars[0]);
     if (*get_vim_var_str(VV_EXCEPTION) == NUL)
     {
 	prepare_assert_error(&ga);
@@ -550,18 +594,34 @@ f_assert_exception(typval_T *argvars, typval_T *rettv)
     void
 f_assert_fails(typval_T *argvars, typval_T *rettv)
 {
-    char_u	*cmd = tv_get_string_chk(&argvars[0]);
     garray_T	ga;
     int		save_trylevel = trylevel;
     int		called_emsg_before = called_emsg;
     char	*wrong_arg_msg = NULL;
+    char_u	*tofree = NULL;
+
+    if (check_for_string_or_number_arg(argvars, 0) == FAIL
+	    || check_for_opt_string_or_list_arg(argvars, 1) == FAIL
+	    || (argvars[1].v_type != VAR_UNKNOWN
+		&& (argvars[2].v_type != VAR_UNKNOWN
+		    && (check_for_opt_number_arg(argvars, 3) == FAIL
+			|| (argvars[3].v_type != VAR_UNKNOWN
+			    && check_for_opt_string_arg(argvars, 4) == FAIL)))))
+	return;
 
     // trylevel must be zero for a ":throw" command to be considered failed
     trylevel = 0;
     suppress_errthrow = TRUE;
     in_assert_fails = TRUE;
+    ++no_wait_return;
 
+    char_u *cmd = tv_get_string_chk(&argvars[0]);
     do_cmdline_cmd(cmd);
+
+    // reset here for any errors reported below
+    trylevel = save_trylevel;
+    suppress_errthrow = FALSE;
+
     if (called_emsg == called_emsg_before)
     {
 	prepare_assert_error(&ga);
@@ -600,6 +660,8 @@ f_assert_fails(typval_T *argvars, typval_T *rettv)
 	    CHECK_LIST_MATERIALIZE(list);
 	    tv = &list->lv_first->li_tv;
 	    expected = tv_get_string_buf_chk(tv, buf);
+	    if (expected == NULL)
+		goto theend;
 	    if (!pattern_match(expected, actual, FALSE))
 	    {
 		error_found = TRUE;
@@ -607,13 +669,19 @@ f_assert_fails(typval_T *argvars, typval_T *rettv)
 	    }
 	    else if (list->lv_len == 2)
 	    {
-		tv = &list->lv_u.mat.lv_last->li_tv;
-		actual = get_vim_var_str(VV_ERRMSG);
-		expected = tv_get_string_buf_chk(tv, buf);
-		if (!pattern_match(expected, actual, FALSE))
+		// make a copy, an error in pattern_match() may free it
+		tofree = actual = vim_strsave(get_vim_var_str(VV_ERRMSG));
+		if (actual != NULL)
 		{
-		    error_found = TRUE;
-		    expected_str = expected;
+		    tv = &list->lv_u.mat.lv_last->li_tv;
+		    expected = tv_get_string_buf_chk(tv, buf);
+		    if (expected == NULL)
+			goto theend;
+		    if (!pattern_match(expected, actual, FALSE))
+		    {
+			error_found = TRUE;
+			expected_str = expected;
+		    }
 		}
 	    }
 	}
@@ -689,12 +757,15 @@ theend:
     suppress_errthrow = FALSE;
     in_assert_fails = FALSE;
     did_emsg = FALSE;
+    got_int = FALSE;
     msg_col = 0;
+    --no_wait_return;
     need_wait_return = FALSE;
     emsg_on_display = FALSE;
     msg_scrolled = 0;
     lines_left = Rows;
     VIM_CLEAR(emsg_assert_fails_msg);
+    vim_free(tofree);
     set_vim_var_string(VV_ERRMSG, NULL, 0);
     if (wrong_arg_msg != NULL)
 	emsg(_(wrong_arg_msg));
@@ -718,7 +789,6 @@ assert_inrange(typval_T *argvars)
     char	msg[200];
     char_u	numbuf[NUMBUFLEN];
 
-#ifdef FEAT_FLOAT
     if (argvars[0].v_type == VAR_FLOAT
 	    || argvars[1].v_type == VAR_FLOAT
 	    || argvars[2].v_type == VAR_FLOAT)
@@ -747,7 +817,6 @@ assert_inrange(typval_T *argvars)
 	}
     }
     else
-#endif
     {
 	varnumber_T	lower = tv_get_number_chk(&argvars[0], &error);
 	varnumber_T	upper = tv_get_number_chk(&argvars[1], &error);
@@ -783,6 +852,12 @@ assert_inrange(typval_T *argvars)
     void
 f_assert_inrange(typval_T *argvars, typval_T *rettv)
 {
+    if (check_for_float_or_nr_arg(argvars, 0) == FAIL
+	    || check_for_float_or_nr_arg(argvars, 1) == FAIL
+	    || check_for_float_or_nr_arg(argvars, 2) == FAIL
+	    || check_for_opt_string_arg(argvars, 3) == FAIL)
+	return;
+
     rettv->vval.v_number = assert_inrange(argvars);
 }
 
@@ -812,6 +887,9 @@ f_assert_report(typval_T *argvars, typval_T *rettv)
 {
     garray_T	ga;
 
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
     prepare_assert_error(&ga);
     ga_concat(&ga, tv_get_string(&argvars[0]));
     assert_error(&ga);
@@ -834,17 +912,23 @@ f_assert_true(typval_T *argvars, typval_T *rettv)
     void
 f_test_alloc_fail(typval_T *argvars, typval_T *rettv UNUSED)
 {
+    if (in_vim9script()
+	    && (check_for_number_arg(argvars, 0) == FAIL
+		|| check_for_number_arg(argvars, 1) == FAIL
+		|| check_for_number_arg(argvars, 2) == FAIL))
+	return;
+
     if (argvars[0].v_type != VAR_NUMBER
 	    || argvars[0].vval.v_number <= 0
 	    || argvars[1].v_type != VAR_NUMBER
 	    || argvars[1].vval.v_number < 0
 	    || argvars[2].v_type != VAR_NUMBER)
-	emsg(_(e_invarg));
+	emsg(_(e_invalid_argument));
     else
     {
 	alloc_fail_id = argvars[0].vval.v_number;
 	if (alloc_fail_id >= aid_last)
-	    emsg(_(e_invarg));
+	    emsg(_(e_invalid_argument));
 	alloc_fail_countdown = argvars[1].vval.v_number;
 	alloc_fail_repeat = argvars[2].vval.v_number;
 	did_outofmem_msg = FALSE;
@@ -869,8 +953,12 @@ f_test_autochdir(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
 f_test_feedinput(typval_T *argvars, typval_T *rettv UNUSED)
 {
 #ifdef USE_INPUT_BUF
-    char_u	*val = tv_get_string_chk(&argvars[0]);
+    char_u	*val;
 
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
+    val = tv_get_string_chk(&argvars[0]);
 # ifdef VIMDLL
     // this doesn't work in the console
     if (!gui.in_use)
@@ -891,17 +979,17 @@ f_test_feedinput(typval_T *argvars, typval_T *rettv UNUSED)
     void
 f_test_getvalue(typval_T *argvars, typval_T *rettv)
 {
-    if (argvars[0].v_type != VAR_STRING)
-	emsg(_(e_invarg));
-    else
-    {
-	char_u *name = tv_get_string(&argvars[0]);
+    char_u *name;
 
-	if (STRCMP(name, (char_u *)"need_fileinfo") == 0)
-	    rettv->vval.v_number = need_fileinfo;
-	else
-	    semsg(_(e_invarg2), name);
-    }
+    if (check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
+    name = tv_get_string(&argvars[0]);
+
+    if (STRCMP(name, (char_u *)"need_fileinfo") == 0)
+	rettv->vval.v_number = need_fileinfo;
+    else
+	semsg(_(e_invalid_argument_str), name);
 }
 
 /*
@@ -912,14 +1000,12 @@ f_test_option_not_set(typval_T *argvars, typval_T *rettv UNUSED)
 {
     char_u *name = (char_u *)"";
 
-    if (argvars[0].v_type != VAR_STRING)
-	emsg(_(e_invarg));
-    else
-    {
-	name = tv_get_string(&argvars[0]);
-	if (reset_option_was_set(name) == FAIL)
-	    semsg(_(e_invarg2), name);
-    }
+    if (check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
+    name = tv_get_string(&argvars[0]);
+    if (reset_option_was_set(name) == FAIL)
+	semsg(_(e_invalid_argument_str), name);
 }
 
 /*
@@ -932,62 +1018,70 @@ f_test_override(typval_T *argvars, typval_T *rettv UNUSED)
     int     val;
     static int save_starting = -1;
 
-    if (argvars[0].v_type != VAR_STRING
-	    || (argvars[1].v_type) != VAR_NUMBER)
-	emsg(_(e_invarg));
-    else
-    {
-	name = tv_get_string(&argvars[0]);
-	val = (int)tv_get_number(&argvars[1]);
+    if (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_number_arg(argvars, 1) == FAIL)
+	return;
 
-	if (STRCMP(name, (char_u *)"redraw") == 0)
-	    disable_redraw_for_testing = val;
-	else if (STRCMP(name, (char_u *)"redraw_flag") == 0)
-	    ignore_redraw_flag_for_testing = val;
-	else if (STRCMP(name, (char_u *)"char_avail") == 0)
-	    disable_char_avail_for_testing = val;
-	else if (STRCMP(name, (char_u *)"starting") == 0)
+    name = tv_get_string(&argvars[0]);
+    val = (int)tv_get_number(&argvars[1]);
+
+    if (STRCMP(name, (char_u *)"redraw") == 0)
+	disable_redraw_for_testing = val;
+    else if (STRCMP(name, (char_u *)"redraw_flag") == 0)
+	ignore_redraw_flag_for_testing = val;
+    else if (STRCMP(name, (char_u *)"char_avail") == 0)
+	disable_char_avail_for_testing = val;
+    else if (STRCMP(name, (char_u *)"starting") == 0)
+    {
+	if (val)
 	{
-	    if (val)
-	    {
-		if (save_starting < 0)
-		    save_starting = starting;
-		starting = 0;
-	    }
-	    else
-	    {
-		starting = save_starting;
-		save_starting = -1;
-	    }
-	}
-	else if (STRCMP(name, (char_u *)"nfa_fail") == 0)
-	    nfa_fail_for_testing = val;
-	else if (STRCMP(name, (char_u *)"no_query_mouse") == 0)
-	    no_query_mouse_for_testing = val;
-	else if (STRCMP(name, (char_u *)"no_wait_return") == 0)
-	    no_wait_return = val;
-	else if (STRCMP(name, (char_u *)"ui_delay") == 0)
-	    ui_delay_for_testing = val;
-	else if (STRCMP(name, (char_u *)"term_props") == 0)
-	    reset_term_props_on_termresponse = val;
-	else if (STRCMP(name, (char_u *)"ALL") == 0)
-	{
-	    disable_char_avail_for_testing = FALSE;
-	    disable_redraw_for_testing = FALSE;
-	    ignore_redraw_flag_for_testing = FALSE;
-	    nfa_fail_for_testing = FALSE;
-	    no_query_mouse_for_testing = FALSE;
-	    ui_delay_for_testing = 0;
-	    reset_term_props_on_termresponse = FALSE;
-	    if (save_starting >= 0)
-	    {
-		starting = save_starting;
-		save_starting = -1;
-	    }
+	    if (save_starting < 0)
+		save_starting = starting;
+	    starting = 0;
 	}
 	else
-	    semsg(_(e_invarg2), name);
+	{
+	    starting = save_starting;
+	    save_starting = -1;
+	}
     }
+    else if (STRCMP(name, (char_u *)"nfa_fail") == 0)
+	nfa_fail_for_testing = val;
+    else if (STRCMP(name, (char_u *)"no_query_mouse") == 0)
+	no_query_mouse_for_testing = val;
+    else if (STRCMP(name, (char_u *)"no_wait_return") == 0)
+	no_wait_return = val;
+    else if (STRCMP(name, (char_u *)"ui_delay") == 0)
+	ui_delay_for_testing = val;
+    else if (STRCMP(name, (char_u *)"term_props") == 0)
+	reset_term_props_on_termresponse = val;
+    else if (STRCMP(name, (char_u *)"vterm_title") == 0)
+	disable_vterm_title_for_testing = val;
+    else if (STRCMP(name, (char_u *)"uptime") == 0)
+	override_sysinfo_uptime = val;
+    else if (STRCMP(name, (char_u *)"alloc_lines") == 0)
+	ml_get_alloc_lines = val;
+    else if (STRCMP(name, (char_u *)"autoload") == 0)
+	override_autoload = val;
+    else if (STRCMP(name, (char_u *)"ALL") == 0)
+    {
+	disable_char_avail_for_testing = FALSE;
+	disable_redraw_for_testing = FALSE;
+	ignore_redraw_flag_for_testing = FALSE;
+	nfa_fail_for_testing = FALSE;
+	no_query_mouse_for_testing = FALSE;
+	ui_delay_for_testing = 0;
+	reset_term_props_on_termresponse = FALSE;
+	override_sysinfo_uptime = -1;
+	// ml_get_alloc_lines is not reset by "ALL"
+	if (save_starting >= 0)
+	{
+	    starting = save_starting;
+	    save_starting = -1;
+	}
+    }
+    else
+	semsg(_(e_invalid_argument_str), name);
 }
 
 /*
@@ -1008,6 +1102,9 @@ f_test_refcount(typval_T *argvars, typval_T *rettv)
 	case VAR_FLOAT:
 	case VAR_SPECIAL:
 	case VAR_STRING:
+	case VAR_INSTR:
+	case VAR_CLASS:
+	case VAR_OBJECT:
 	    break;
 	case VAR_JOB:
 #ifdef FEAT_JOB_CHANNEL
@@ -1026,7 +1123,7 @@ f_test_refcount(typval_T *argvars, typval_T *rettv)
 	    {
 		ufunc_T *fp;
 
-		fp = find_func(argvars[0].vval.v_string, FALSE, NULL);
+		fp = find_func(argvars[0].vval.v_string, FALSE);
 		if (fp != NULL)
 		    retval = fp->uf_refcount;
 	    }
@@ -1062,7 +1159,10 @@ f_test_garbagecollect_now(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
 {
     // This is dangerous, any Lists and Dicts used internally may be freed
     // while still in use.
-    garbage_collect(TRUE);
+    if (!get_vim_var_nr(VV_TESTING))
+	emsg(_(e_calling_test_garbagecollect_now_while_v_testing_is_not_set));
+    else
+	garbage_collect(TRUE);
 }
 
 /*
@@ -1080,7 +1180,10 @@ f_test_garbagecollect_soon(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
     void
 f_test_ignore_error(typval_T *argvars, typval_T *rettv UNUSED)
 {
-     ignore_error_for_testing(tv_get_string(&argvars[0]));
+    if (check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
+    ignore_error_for_testing(tv_get_string(&argvars[0]));
 }
 
     void
@@ -1153,25 +1256,187 @@ f_test_void(typval_T *argvars UNUSED, typval_T *rettv)
     rettv->v_type = VAR_VOID;
 }
 
-#ifdef FEAT_GUI
     void
-f_test_scrollbar(typval_T *argvars, typval_T *rettv UNUSED)
+f_test_setmouse(typval_T *argvars, typval_T *rettv UNUSED)
+{
+    if (in_vim9script()
+	    && (check_for_number_arg(argvars, 0) == FAIL
+		|| check_for_number_arg(argvars, 1) == FAIL))
+	return;
+
+    if (argvars[0].v_type != VAR_NUMBER || argvars[1].v_type != VAR_NUMBER)
+    {
+	emsg(_(e_invalid_argument));
+	return;
+    }
+
+    mouse_row = (time_t)tv_get_number(&argvars[0]) - 1;
+    mouse_col = (time_t)tv_get_number(&argvars[1]) - 1;
+}
+
+# ifdef FEAT_GUI
+    static int
+test_gui_drop_files(dict_T *args UNUSED)
+{
+#  if defined(HAVE_DROP_FILE)
+    int		row;
+    int		col;
+    int_u	mods;
+    char_u	**fnames;
+    int		count = 0;
+    typval_T	t;
+    list_T	*l;
+    listitem_T	*li;
+
+    if (!dict_has_key(args, "files")
+	    || !dict_has_key(args, "row")
+	    || !dict_has_key(args, "col")
+	    || !dict_has_key(args, "modifiers"))
+	return FALSE;
+
+    (void)dict_get_tv(args, "files", &t);
+    row = (int)dict_get_number(args, "row");
+    col = (int)dict_get_number(args, "col");
+    mods = (int)dict_get_number(args, "modifiers");
+
+    if (t.v_type != VAR_LIST || list_len(t.vval.v_list) == 0)
+	return FALSE;
+
+    l = t.vval.v_list;
+    fnames = ALLOC_MULT(char_u *, list_len(l));
+    if (fnames == NULL)
+	return FALSE;
+
+    FOR_ALL_LIST_ITEMS(l, li)
+    {
+	// ignore non-string items
+	if (li->li_tv.v_type != VAR_STRING
+		|| li->li_tv.vval.v_string == NULL)
+	    continue;
+
+	fnames[count] = vim_strsave(li->li_tv.vval.v_string);
+	if (fnames[count] == NULL)
+	{
+	    while (--count >= 0)
+		vim_free(fnames[count]);
+	    vim_free(fnames);
+	    return FALSE;
+	}
+	count++;
+    }
+
+    if (count > 0)
+	gui_handle_drop(TEXT_X(col - 1), TEXT_Y(row - 1), mods, fnames, count);
+    else
+	vim_free(fnames);
+#  endif
+
+    return TRUE;
+}
+
+#if defined(FIND_REPLACE_DIALOG)
+    static int
+test_gui_find_repl(dict_T *args)
+{
+    int		flags;
+    char_u	*find_text;
+    char_u	*repl_text;
+    int		forward;
+    int		retval;
+
+    if (!dict_has_key(args, "find_text")
+	    || !dict_has_key(args, "repl_text")
+	    || !dict_has_key(args, "flags")
+	    || !dict_has_key(args, "forward"))
+	return FALSE;
+
+    find_text = dict_get_string(args, "find_text", TRUE);
+    repl_text = dict_get_string(args, "repl_text", TRUE);
+    flags = (int)dict_get_number(args, "flags");
+    forward = (int)dict_get_number(args, "forward");
+
+    retval = gui_do_findrepl(flags, find_text, repl_text, forward);
+    vim_free(find_text);
+    vim_free(repl_text);
+
+    return retval;
+}
+#endif
+
+    static int
+test_gui_mouse_event(dict_T *args)
+{
+    int		button;
+    int		row;
+    int		col;
+    int		repeated_click;
+    int_u	mods;
+    int		move;
+
+    if (!dict_has_key(args, "row")
+	    || !dict_has_key(args, "col"))
+	return FALSE;
+
+    // Note: "move" is optional, requires fewer arguments
+    move = (int)dict_get_bool(args, "move", FALSE);
+
+    if (!move && (!dict_has_key(args, "button")
+	    || !dict_has_key(args, "multiclick")
+	    || !dict_has_key(args, "modifiers")))
+	return FALSE;
+
+    row = (int)dict_get_number(args, "row");
+    col = (int)dict_get_number(args, "col");
+
+    if (move)
+    {
+	int pY = row;
+	int pX = col;
+	// the "move" argument expects row and col coordnates to be in pixels,
+	// unless "cell" is specified and is TRUE.
+	if (dict_get_bool(args, "cell", FALSE))
+	{
+	    // calculate the middle of the character cell
+	    // Note: Cell coordinates are 1-based from vimscript
+	    pY = (row - 1) * gui.char_height + gui.char_height / 2;
+	    pX = (col - 1) * gui.char_width + gui.char_width / 2;
+	}
+	gui_mouse_moved(pX, pY);
+    }
+    else
+    {
+	button = (int)dict_get_number(args, "button");
+	repeated_click = (int)dict_get_number(args, "multiclick");
+	mods = (int)dict_get_number(args, "modifiers");
+
+	// Reset the scroll values to known values.
+	// XXX: Remove this when/if the scroll step is made configurable.
+	mouse_set_hor_scroll_step(6);
+	mouse_set_vert_scroll_step(3);
+
+	gui_send_mouse_event(button, TEXT_X(col - 1), TEXT_Y(row - 1),
+							repeated_click, mods);
+    }
+
+    return TRUE;
+}
+
+    static int
+test_gui_scrollbar(dict_T *args)
 {
     char_u	*which;
     long	value;
     int		dragging;
     scrollbar_T *sb = NULL;
 
-    if (argvars[0].v_type != VAR_STRING
-	    || (argvars[1].v_type) != VAR_NUMBER
-	    || (argvars[2].v_type) != VAR_NUMBER)
-    {
-	emsg(_(e_invarg));
-	return;
-    }
-    which = tv_get_string(&argvars[0]);
-    value = tv_get_number(&argvars[1]);
-    dragging = tv_get_number(&argvars[2]);
+    if (!dict_has_key(args, "which")
+	    || !dict_has_key(args, "value")
+	    || !dict_has_key(args, "dragging"))
+	return FALSE;
+
+    which = dict_get_string(args, "which", FALSE);
+    value = (long)dict_get_number(args, "value");
+    dragging = (int)dict_get_number(args, "dragging");
 
     if (STRCMP(which, "left") == 0)
 	sb = &curwin->w_scrollbars[SBAR_LEFT];
@@ -1181,29 +1446,133 @@ f_test_scrollbar(typval_T *argvars, typval_T *rettv UNUSED)
 	sb = &gui.bottom_sbar;
     if (sb == NULL)
     {
-	semsg(_(e_invarg2), which);
-	return;
+	semsg(_(e_invalid_argument_str), which);
+	return FALSE;
     }
     gui_drag_scrollbar(sb, value, dragging);
-# ifndef USE_ON_FLY_SCROLL
+#  ifndef USE_ON_FLY_SCROLL
     // need to loop through normal_cmd() to handle the scroll events
     exec_normal(FALSE, TRUE, FALSE);
-# endif
+#  endif
+
+    return TRUE;
 }
-#endif
+
+    static int
+test_gui_tabline_event(dict_T *args UNUSED)
+{
+#  ifdef FEAT_GUI_TABLINE
+    int		tabnr;
+
+    if (!dict_has_key(args, "tabnr"))
+	return FALSE;
+
+    tabnr = (int)dict_get_number(args, "tabnr");
+
+    return send_tabline_event(tabnr);
+#  else
+    return FALSE;
+#  endif
+}
+
+    static int
+test_gui_tabmenu_event(dict_T *args UNUSED)
+{
+#  ifdef FEAT_GUI_TABLINE
+    int	tabnr;
+    int	item;
+
+    if (!dict_has_key(args, "tabnr")
+	    || !dict_has_key(args, "item"))
+	return FALSE;
+
+    tabnr = (int)dict_get_number(args, "tabnr");
+    item = (int)dict_get_number(args, "item");
+
+    send_tabline_menu_event(tabnr, item);
+#  endif
+    return TRUE;
+}
+# endif
 
     void
-f_test_setmouse(typval_T *argvars, typval_T *rettv UNUSED)
+f_test_mswin_event(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
 {
-    mouse_row = (time_t)tv_get_number(&argvars[0]) - 1;
-    mouse_col = (time_t)tv_get_number(&argvars[1]) - 1;
+# ifdef MSWIN
+    rettv->v_type = VAR_BOOL;
+    rettv->vval.v_number = FALSE;
+
+    if (sandbox != 0)
+    {
+	emsg(_(e_not_allowed_in_sandbox));
+	return;
+    }
+
+    if (check_for_string_arg(argvars, 0) == FAIL
+	    || check_for_dict_arg(argvars, 1) == FAIL
+	    || argvars[1].vval.v_dict == NULL)
+	return;
+
+    char_u *event = tv_get_string(&argvars[0]);
+    rettv->vval.v_number = test_mswin_event(event, argvars[1].vval.v_dict);
+
+# endif
+}
+
+    void
+f_test_gui_event(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
+{
+# ifdef FEAT_GUI
+    char_u	*event;
+
+    rettv->v_type = VAR_BOOL;
+    rettv->vval.v_number = FALSE;
+
+    if (sandbox != 0)
+    {
+	emsg(_(e_not_allowed_in_sandbox));
+	return;
+    }
+
+    if (check_for_string_arg(argvars, 0) == FAIL
+	    || check_for_dict_arg(argvars, 1) == FAIL
+	    || argvars[1].vval.v_dict == NULL)
+	return;
+
+    event = tv_get_string(&argvars[0]);
+    if (STRCMP(event, "dropfiles") == 0)
+	rettv->vval.v_number = test_gui_drop_files(argvars[1].vval.v_dict);
+#  if defined(FIND_REPLACE_DIALOG)
+    else if (STRCMP(event, "findrepl") == 0)
+	rettv->vval.v_number = test_gui_find_repl(argvars[1].vval.v_dict);
+#  endif
+#  ifdef MSWIN
+    else if (STRCMP(event, "key") == 0 || STRCMP(event, "mouse") == 0)
+	rettv->vval.v_number = test_mswin_event(event, argvars[1].vval.v_dict);
+#  endif
+    else if (STRCMP(event, "mouse") == 0)
+	rettv->vval.v_number = test_gui_mouse_event(argvars[1].vval.v_dict);
+    else if (STRCMP(event, "scrollbar") == 0)
+	rettv->vval.v_number = test_gui_scrollbar(argvars[1].vval.v_dict);
+    else if (STRCMP(event, "tabline") == 0)
+	rettv->vval.v_number = test_gui_tabline_event(argvars[1].vval.v_dict);
+    else if (STRCMP(event, "tabmenu") == 0)
+	rettv->vval.v_number = test_gui_tabmenu_event(argvars[1].vval.v_dict);
+    else
+    {
+	semsg(_(e_invalid_argument_str), event);
+	return;
+    }
+# endif
 }
 
     void
 f_test_settime(typval_T *argvars, typval_T *rettv UNUSED)
 {
+    if (in_vim9script() && check_for_number_arg(argvars, 0) == FAIL)
+	return;
+
     time_for_testing = (time_t)tv_get_number(&argvars[0]);
 }
-
 
 #endif // defined(FEAT_EVAL)

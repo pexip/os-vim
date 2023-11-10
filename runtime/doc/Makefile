@@ -16,6 +16,7 @@ include ../../src/auto/config.mk
 DOCS = \
 	arabic.txt \
 	autocmd.txt \
+	builtin.txt \
 	change.txt \
 	channel.txt \
 	cmdline.txt \
@@ -30,6 +31,10 @@ DOCS = \
 	filetype.txt \
 	fold.txt \
 	ft_ada.txt \
+	ft_context.txt \
+	ft_mp.txt \
+	ft_ps1.txt \
+	ft_raku.txt \
 	ft_rust.txt \
 	ft_sql.txt \
 	gui.txt \
@@ -110,6 +115,7 @@ DOCS = \
 	todo.txt \
 	uganda.txt \
 	undo.txt \
+	userfunc.txt \
 	usr_01.txt \
 	usr_02.txt \
 	usr_03.txt \
@@ -141,7 +147,9 @@ DOCS = \
 	usr_43.txt \
 	usr_44.txt \
 	usr_45.txt \
-	usr_46.txt \
+	usr_50.txt \
+	usr_51.txt \
+	usr_52.txt \
 	usr_90.txt \
 	usr_toc.txt \
 	various.txt \
@@ -150,8 +158,10 @@ DOCS = \
 	version6.txt \
 	version7.txt \
 	version8.txt \
+	version9.txt \
 	vi_diff.txt \
 	vim9.txt \
+	vim9class.txt \
 	visual.txt \
 	windows.txt \
 	workshop.txt
@@ -159,6 +169,7 @@ DOCS = \
 HTMLS = \
 	arabic.html \
 	autocmd.html \
+	builtin.html \
 	change.html \
 	channel.html \
 	cmdline.html \
@@ -173,6 +184,10 @@ HTMLS = \
 	filetype.html \
 	fold.html \
 	ft_ada.html \
+	ft_context.html \
+	ft_mp.html \
+	ft_ps1.html \
+	ft_raku.html \
 	ft_rust.html \
 	ft_sql.html \
 	gui.html \
@@ -252,6 +267,7 @@ HTMLS = \
 	todo.html \
 	uganda.html \
 	undo.html \
+	userfunc.html \
 	usr_01.html \
 	usr_02.html \
 	usr_03.html \
@@ -283,7 +299,9 @@ HTMLS = \
 	usr_43.html \
 	usr_44.html \
 	usr_45.html \
-	usr_46.html \
+	usr_50.html \
+	usr_51.html \
+	usr_52.html \
 	usr_90.html \
 	usr_toc.html \
 	various.html \
@@ -292,9 +310,11 @@ HTMLS = \
 	version6.html \
 	version7.html \
 	version8.html \
+	version9.html \
 	vi_diff.html \
 	vimindex.html \
 	vim9.html \
+	vim9class.html \
 	visual.html \
 	windows.html \
 	workshop.html

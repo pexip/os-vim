@@ -27,6 +27,12 @@
 
 #include "vim.h"
 
+
+#ifdef FEAT_EVAL
+// Determines how deeply nested %{} blocks will be evaluated in statusline.
+# define MAX_STL_EVAL_DEPTH 100
+#endif
+
 static void	enter_buffer(buf_T *buf);
 static void	buflist_getfpos(void);
 static char_u	*buflist_match(regmatch_T *rmp, buf_T *buf, int ignore_case);
@@ -38,13 +44,12 @@ static int	buf_same_ino(buf_T *buf, stat_T *stp);
 #else
 static int	otherfile_buf(buf_T *buf, char_u *ffname);
 #endif
-#ifdef FEAT_TITLE
 static int	value_changed(char_u *str, char_u **last);
-#endif
 static int	append_arg_number(win_T *wp, char_u *buf, int buflen, int add_file);
 static void	free_buffer(buf_T *);
 static void	free_buffer_stuff(buf_T *buf, int free_options);
-static void	clear_wininfo(buf_T *buf);
+static int	bt_nofileread(buf_T *buf);
+static void	no_write_message_buf(buf_T *buf);
 
 #ifdef UNIX
 # define dev_T dev_t
@@ -59,7 +64,6 @@ static void	clear_wininfo(buf_T *buf);
 static char *msg_loclist = N_("[Location List]");
 static char *msg_qflist = N_("[Quickfix List]");
 #endif
-static char *e_auabort = N_("E855: Autocommands caused command to abort");
 
 // Number of times free_buffer() was called.
 static int	buf_free_count = 0;
@@ -88,16 +92,14 @@ read_buffer(
     int		retval = OK;
     linenr_T	line_count;
 
-    /*
-     * Read from the buffer which the text is already filled in and append at
-     * the end.  This makes it possible to retry when 'fileformat' or
-     * 'fileencoding' was guessed wrong.
-     */
+    // Read from the buffer which the text is already filled in and append at
+    // the end.  This makes it possible to retry when 'fileformat' or
+    // 'fileencoding' was guessed wrong.
     line_count = curbuf->b_ml.ml_line_count;
     retval = readfile(
 	    read_stdin ? NULL : curbuf->b_ffname,
 	    read_stdin ? NULL : curbuf->b_fname,
-	    (linenr_T)line_count, (linenr_T)0, (linenr_T)MAXLNUM, eap,
+	    line_count, (linenr_T)0, (linenr_T)MAXLNUM, eap,
 	    flags | READ_BUFFER);
     if (retval == OK)
     {
@@ -137,22 +139,29 @@ read_buffer(
     return retval;
 }
 
+#if defined(FEAT_EVAL) || defined(PROTO)
 /*
  * Ensure buffer "buf" is loaded.  Does not trigger the swap-exists action.
  */
     void
 buffer_ensure_loaded(buf_T *buf)
 {
-    if (buf->b_ml.ml_mfp == NULL)
-    {
-	aco_save_T	aco;
+    if (buf->b_ml.ml_mfp != NULL)
+	return;
 
-	aucmd_prepbuf(&aco, buf);
-	swap_exists_action = SEA_NONE;
+    aco_save_T	aco;
+
+    // Make sure the buffer is in a window.  If not then skip it.
+    aucmd_prepbuf(&aco, buf);
+    if (curbuf == buf)
+    {
+	if (swap_exists_action != SEA_READONLY)
+	    swap_exists_action = SEA_NONE;
 	open_buffer(FALSE, NULL, 0);
 	aucmd_restbuf(&aco);
     }
 }
+#endif
 
 /*
  * Open current buffer, that is: open the memfile and read the file into
@@ -163,8 +172,9 @@ buffer_ensure_loaded(buf_T *buf)
 open_buffer(
     int		read_stdin,	    // read file from stdin
     exarg_T	*eap,		    // for forced 'ff' and 'fenc' or NULL
-    int		flags)		    // extra flags for readfile()
+    int		flags_arg)	    // extra flags for readfile()
 {
+    int		flags = flags_arg;
     int		retval = OK;
     bufref_T	old_curbuf;
 #ifdef FEAT_SYN_HL
@@ -172,32 +182,26 @@ open_buffer(
 #endif
     int		read_fifo = FALSE;
 
-    /*
-     * The 'readonly' flag is only set when BF_NEVERLOADED is being reset.
-     * When re-entering the same buffer, it should not change, because the
-     * user may have reset the flag by hand.
-     */
+    // The 'readonly' flag is only set when BF_NEVERLOADED is being reset.
+    // When re-entering the same buffer, it should not change, because the
+    // user may have reset the flag by hand.
     if (readonlymode && curbuf->b_ffname != NULL
 					&& (curbuf->b_flags & BF_NEVERLOADED))
 	curbuf->b_p_ro = TRUE;
 
     if (ml_open(curbuf) == FAIL)
     {
-	/*
-	 * There MUST be a memfile, otherwise we can't do anything
-	 * If we can't create one for the current buffer, take another buffer
-	 */
+	// There MUST be a memfile, otherwise we can't do anything
+	// If we can't create one for the current buffer, take another buffer
 	close_buffer(NULL, curbuf, 0, FALSE, FALSE);
 	FOR_ALL_BUFFERS(curbuf)
 	    if (curbuf->b_ml.ml_mfp != NULL)
 		break;
-	/*
-	 * If there is no memfile at all, exit.
-	 * This is OK, since there are no changes to lose.
-	 */
+	// If there is no memfile at all, exit.
+	// This is OK, since there are no changes to lose.
 	if (curbuf == NULL)
 	{
-	    emsg(_("E82: Cannot allocate any buffer, exiting..."));
+	    emsg(_(e_cannot_allocate_any_buffer_exiting));
 
 	    // Don't try to do any saving, with "curbuf" NULL almost nothing
 	    // will work.
@@ -205,7 +209,7 @@ open_buffer(
 	    getout(2);
 	}
 
-	emsg(_("E83: Cannot allocate buffer, using other one..."));
+	emsg(_(e_cannot_allocate_buffer_using_other_one));
 	enter_buffer(curbuf);
 #ifdef FEAT_SYN_HL
 	if (old_tw != curbuf->b_p_tw)
@@ -222,6 +226,12 @@ open_buffer(
     // mark cursor position as being invalid
     curwin->w_valid = 0;
 
+    // A buffer without an actual file should not use the buffer name to read a
+    // file.
+    if (bt_nofileread(curbuf))
+	flags |= READ_NOFILE;
+
+    // Read the file if there is one.
     if (curbuf->b_ffname != NULL
 #ifdef FEAT_NETBEANS_INTG
 	    && netbeansReadFile
@@ -275,12 +285,10 @@ open_buffer(
     {
 	int	save_bin = curbuf->b_p_bin;
 
-	/*
-	 * First read the text in binary mode into the buffer.
-	 * Then read from that same buffer and append at the end.  This makes
-	 * it possible to retry when 'fileformat' or 'fileencoding' was
-	 * guessed wrong.
-	 */
+	// First read the text in binary mode into the buffer.
+	// Then read from that same buffer and append at the end.  This makes
+	// it possible to retry when 'fileformat' or 'fileencoding' was
+	// guessed wrong.
 	curbuf->b_p_bin = TRUE;
 	retval = readfile(NULL, NULL, (linenr_T)0,
 		  (linenr_T)0, (linenr_T)MAXLNUM, NULL,
@@ -294,16 +302,13 @@ open_buffer(
     if (curbuf->b_flags & BF_NEVERLOADED)
     {
 	(void)buf_init_chartab(curbuf, FALSE);
-#ifdef FEAT_CINDENT
 	parse_cino(curbuf);
-#endif
     }
 
-    /*
-     * Set/reset the Changed flag first, autocmds may change the buffer.
-     * Apply the automatic commands, before processing the modelines.
-     * So the modelines have priority over autocommands.
-     */
+    // Set/reset the Changed flag first, autocmds may change the buffer.
+    // Apply the automatic commands, before processing the modelines.
+    // So the modelines have priority over autocommands.
+    //
     // When reading stdin, the buffer contents always needs writing, so set
     // the changed flag.  Unless in readonly mode: "ls | gview -".
     // When interrupted and 'cpoptions' contains 'i' set changed flag.
@@ -321,6 +326,7 @@ open_buffer(
     // Set last_changedtick to avoid triggering a TextChanged autocommand right
     // after it was added.
     curbuf->b_last_changedtick = CHANGEDTICK(curbuf);
+    curbuf->b_last_changedtick_i = CHANGEDTICK(curbuf);
     curbuf->b_last_changedtick_pum = CHANGEDTICK(curbuf);
 
     // require "!" to overwrite the file, because it wasn't read completely
@@ -351,26 +357,30 @@ open_buffer(
     apply_autocmds(EVENT_BUFENTER, NULL, NULL, FALSE, curbuf);
 #endif
 
-    if (retval == OK)
-    {
-	/*
-	 * The autocommands may have changed the current buffer.  Apply the
-	 * modelines to the correct buffer, if it still exists and is loaded.
-	 */
-	if (bufref_valid(&old_curbuf) && old_curbuf.br_buf->b_ml.ml_mfp != NULL)
-	{
-	    aco_save_T	aco;
+    if (retval != OK)
+	return retval;
 
-	    // Go to the buffer that was opened.
-	    aucmd_prepbuf(&aco, old_curbuf.br_buf);
+    // The autocommands may have changed the current buffer.  Apply the
+    // modelines to the correct buffer, if it still exists and is loaded.
+    if (bufref_valid(&old_curbuf) && old_curbuf.br_buf->b_ml.ml_mfp != NULL)
+    {
+	aco_save_T	aco;
+
+	// Go to the buffer that was opened, make sure it is in a window.
+	// If not then skip it.
+	aucmd_prepbuf(&aco, old_curbuf.br_buf);
+	if (curbuf == old_curbuf.br_buf)
+	{
 	    do_modelines(0);
 	    curbuf->b_flags &= ~(BF_CHECK_RO | BF_NEVERLOADED);
 
+	    if ((flags & READ_NOWINENTER) == 0)
 #ifdef FEAT_EVAL
-	    apply_autocmds_retval(EVENT_BUFWINENTER, NULL, NULL, FALSE, curbuf,
-								      &retval);
+		apply_autocmds_retval(EVENT_BUFWINENTER, NULL, NULL,
+			FALSE, curbuf, &retval);
 #else
-	    apply_autocmds(EVENT_BUFWINENTER, NULL, NULL, FALSE, curbuf);
+	    apply_autocmds(EVENT_BUFWINENTER, NULL, NULL,
+		    FALSE, curbuf);
 #endif
 
 	    // restore curwin/curbuf and a few other things
@@ -433,8 +443,8 @@ static hashtab_T buf_hashtab;
 buf_hashtab_add(buf_T *buf)
 {
     sprintf((char *)buf->b_key, "%x", buf->b_fnum);
-    if (hash_add(&buf_hashtab, buf->b_key) == FAIL)
-	emsg(_("E931: Buffer cannot be registered"));
+    if (hash_add(&buf_hashtab, buf->b_key, "create buffer") == FAIL)
+	emsg(_(e_buffer_cannot_be_registered));
 }
 
     static void
@@ -443,7 +453,7 @@ buf_hashtab_remove(buf_T *buf)
     hashitem_T *hi = hash_find(&buf_hashtab, buf->b_key);
 
     if (!HASHITEM_EMPTY(hi))
-	hash_remove(&buf_hashtab, hi);
+	hash_remove(&buf_hashtab, hi, "close buffer");
 }
 
 /*
@@ -468,8 +478,12 @@ can_unload_buffer(buf_T *buf)
 	    }
     }
     if (!can_unload)
-	semsg(_("E937: Attempt to delete a buffer that is in use: %s"),
-								 buf->b_fname);
+    {
+	char_u *fname = buf->b_fname != NULL ? buf->b_fname : buf->b_ffname;
+
+	semsg(_(e_attempt_to_delete_buffer_that_is_in_use_str),
+				fname != NULL ? fname : (char_u *)"[No Name]");
+    }
     return can_unload;
 }
 
@@ -514,11 +528,10 @@ close_buffer(
     int		del_buf = (action == DOBUF_DEL || wipe_buf);
 
     CHECK_CURBUF;
-    /*
-     * Force unloading or deleting when 'bufhidden' says so.
-     * The caller must take care of NOT deleting/freeing when 'bufhidden' is
-     * "hide" (otherwise we could never free or delete a buffer).
-     */
+
+    // Force unloading or deleting when 'bufhidden' says so.
+    // The caller must take care of NOT deleting/freeing when 'bufhidden' is
+    // "hide" (otherwise we could never free or delete a buffer).
     if (buf->b_p_bh[0] == 'd')		// 'bufhidden' == "delete"
     {
 	del_buf = TRUE;
@@ -534,7 +547,8 @@ close_buffer(
 	unload_buf = TRUE;
 
 #ifdef FEAT_TERMINAL
-    if (bt_terminal(buf) && (buf->b_nwindows == 1 || del_buf))
+    // depending on how we get here b_nwindows may already be zero
+    if (bt_terminal(buf) && (buf->b_nwindows <= 1 || del_buf))
     {
 	CHECK_CURBUF;
 	if (term_job_running(buf->b_term))
@@ -546,6 +560,11 @@ close_buffer(
 
 		// Wiping out or unloading a terminal buffer kills the job.
 		free_terminal(buf);
+
+		// A terminal buffer is wiped out when job has finished.
+		del_buf = TRUE;
+		unload_buf = TRUE;
+		wipe_buf = TRUE;
 	    }
 	    else
 	    {
@@ -561,10 +580,16 @@ close_buffer(
 	}
 	else
 	{
-	    // A terminal buffer is wiped out if the job has finished.
-	    del_buf = TRUE;
-	    unload_buf = TRUE;
-	    wipe_buf = TRUE;
+	    if (del_buf || unload_buf)
+	    {
+		// A terminal buffer is wiped out if the job has finished.
+		// We only do this when there's an intention to unload the
+		// buffer. This way, :hide and other similar commands won't
+		// wipe the buffer.
+		del_buf = TRUE;
+		unload_buf = TRUE;
+		wipe_buf = TRUE;
+	    }
 	}
 	CHECK_CURBUF;
     }
@@ -595,16 +620,18 @@ close_buffer(
     if (buf->b_nwindows == 1)
     {
 	++buf->b_locked;
+	++buf->b_locked_split;
 	if (apply_autocmds(EVENT_BUFWINLEAVE, buf->b_fname, buf->b_fname,
 								  FALSE, buf)
 		&& !bufref_valid(&bufref))
 	{
 	    // Autocommands deleted the buffer.
 aucmd_abort:
-	    emsg(_(e_auabort));
+	    emsg(_(e_autocommands_caused_command_to_abort));
 	    return FALSE;
 	}
 	--buf->b_locked;
+	--buf->b_locked_split;
 	if (abort_if_last && one_window())
 	    // Autocommands made this the only window.
 	    goto aucmd_abort;
@@ -614,12 +641,14 @@ aucmd_abort:
 	if (!unload_buf)
 	{
 	    ++buf->b_locked;
+	    ++buf->b_locked_split;
 	    if (apply_autocmds(EVENT_BUFHIDDEN, buf->b_fname, buf->b_fname,
 								  FALSE, buf)
 		    && !bufref_valid(&bufref))
 		// Autocommands deleted the buffer.
 		goto aucmd_abort;
 	    --buf->b_locked;
+	    --buf->b_locked_split;
 	    if (abort_if_last && one_window())
 		// Autocommands made this the only window.
 		goto aucmd_abort;
@@ -670,10 +699,9 @@ aucmd_abort:
 	    )
 	end_visual_mode();
 
-    /*
-     * Free all things allocated for this buffer.
-     * Also calls the "BufDelete" autocommands when del_buf is TRUE.
-     */
+    // Free all things allocated for this buffer.
+    // Also calls the "BufDelete" autocommands when del_buf is TRUE.
+    //
     // Remember if we are closing the current buffer.  Restore the number of
     // windows, so that autocommands in buf_freeall() don't get confused.
     is_curbuf = (buf == curbuf);
@@ -692,13 +720,11 @@ aucmd_abort:
 	return FALSE;
 #endif
 
-    /*
-     * It's possible that autocommands change curbuf to the one being deleted.
-     * This might cause the previous curbuf to be deleted unexpectedly.  But
-     * in some cases it's OK to delete the curbuf, because a new one is
-     * obtained anyway.  Therefore only return if curbuf changed to the
-     * deleted buffer.
-     */
+    // It's possible that autocommands change curbuf to the one being deleted.
+    // This might cause the previous curbuf to be deleted unexpectedly.  But
+    // in some cases it's OK to delete the curbuf, because a new one is
+    // obtained anyway.  Therefore only return if curbuf changed to the
+    // deleted buffer.
     if (buf == curbuf && !is_curbuf)
 	return FALSE;
 
@@ -715,6 +741,10 @@ aucmd_abort:
      */
     if (wipe_buf)
     {
+	// Do not wipe out the buffer if it is used in a window.
+	if (buf->b_nwindows > 0)
+	    return FALSE;
+
 	if (action == DOBUF_WIPE_REUSE)
 	{
 	    // we can re-use this buffer number, store it
@@ -769,6 +799,8 @@ buf_clear_file(buf_T *buf)
     buf->b_ml.ml_line_count = 1;
     unchanged(buf, TRUE, TRUE);
     buf->b_shortname = FALSE;
+    buf->b_p_eof = FALSE;
+    buf->b_start_eof = FALSE;
     buf->b_p_eol = TRUE;
     buf->b_start_eol = TRUE;
     buf->b_p_bomb = FALSE;
@@ -800,6 +832,7 @@ buf_freeall(buf_T *buf, int flags)
 
     // Make sure the buffer isn't closed by autocommands.
     ++buf->b_locked;
+    ++buf->b_locked_split;
     set_bufref(&bufref, buf);
     if (buf->b_ml.ml_mfp != NULL)
     {
@@ -826,6 +859,7 @@ buf_freeall(buf_T *buf, int flags)
 	    return;
     }
     --buf->b_locked;
+    --buf->b_locked_split;
 
     // If the buffer was in curwin and the window has changed, go back to that
     // window, if it still exists.  This avoids that ":edit x" triggering a
@@ -843,12 +877,10 @@ buf_freeall(buf_T *buf, int flags)
 	return;
 #endif
 
-    /*
-     * It's possible that autocommands change curbuf to the one being deleted.
-     * This might cause curbuf to be deleted unexpectedly.  But in some cases
-     * it's OK to delete the curbuf, because a new one is obtained anyway.
-     * Therefore only return if curbuf changed to the deleted buffer.
-     */
+    // It's possible that autocommands change curbuf to the one being deleted.
+    // This might cause curbuf to be deleted unexpectedly.  But in some cases
+    // it's OK to delete the curbuf, because a new one is obtained anyway.
+    // Therefore only return if curbuf changed to the deleted buffer.
     if (buf == curbuf && !is_curbuf)
 	return;
 #ifdef FEAT_DIFF
@@ -902,7 +934,7 @@ free_buffer(buf_T *buf)
     free_buffer_stuff(buf, TRUE);
 #ifdef FEAT_EVAL
     // b:changedtick uses an item in buf_T, remove it now
-    dictitem_remove(buf->b_vars, (dictitem_T *)&buf->b_ct_di);
+    dictitem_remove(buf->b_vars, (dictitem_T *)&buf->b_ct_di, "free buffer");
     unref_var_dict(buf->b_vars);
     remove_listeners(buf);
 #endif
@@ -975,6 +1007,22 @@ init_changedtick(buf_T *buf)
 }
 
 /*
+ * Free the b_wininfo list for buffer "buf".
+ */
+    static void
+clear_wininfo(buf_T *buf)
+{
+    wininfo_T	*wip;
+
+    while (buf->b_wininfo != NULL)
+    {
+	wip = buf->b_wininfo;
+	buf->b_wininfo = wip->wi_next;
+	free_wininfo(wip);
+    }
+}
+
+/*
  * Free stuff in the buffer for ":bdel" and when wiping out the buffer.
  */
     static void
@@ -1008,8 +1056,11 @@ free_buffer_stuff(
 #ifdef FEAT_NETBEANS_INTG
     netbeans_file_killed(buf);
 #endif
-    map_clear_int(buf, MAP_ALL_MODES, TRUE, FALSE);  // clear local mappings
-    map_clear_int(buf, MAP_ALL_MODES, TRUE, TRUE);   // clear local abbrevs
+#ifdef FEAT_PROP_POPUP
+    ga_clear_strings(&buf->b_textprop_text);
+#endif
+    map_clear_mode(buf, MAP_ALL_MODES, TRUE, FALSE);  // clear local mappings
+    map_clear_mode(buf, MAP_ALL_MODES, TRUE, TRUE);   // clear local abbrevs
     VIM_CLEAR(buf->b_start_fenc);
 }
 
@@ -1030,22 +1081,6 @@ free_wininfo(wininfo_T *wip)
 }
 
 /*
- * Free the b_wininfo list for buffer "buf".
- */
-    static void
-clear_wininfo(buf_T *buf)
-{
-    wininfo_T	*wip;
-
-    while (buf->b_wininfo != NULL)
-    {
-	wip = buf->b_wininfo;
-	buf->b_wininfo = wip->wi_next;
-	free_wininfo(wip);
-    }
-}
-
-/*
  * Go to another buffer.  Handles the result of the ATTENTION dialog.
  */
     void
@@ -1056,10 +1091,12 @@ goto_buffer(
     int		count)
 {
     bufref_T	old_curbuf;
+    int		save_sea = swap_exists_action;
 
     set_bufref(&old_curbuf, curbuf);
 
-    swap_exists_action = SEA_DIALOG;
+    if (swap_exists_action == SEA_NONE)
+	swap_exists_action = SEA_DIALOG;
     (void)do_buffer(*eap->cmd == 's' ? DOBUF_SPLIT : DOBUF_GOTO,
 					     start, dir, count, eap->forceit);
     if (swap_exists_action == SEA_QUIT && *eap->cmd == 's')
@@ -1074,7 +1111,7 @@ goto_buffer(
 
 	// Quitting means closing the split window, nothing else.
 	win_close(curwin, TRUE);
-	swap_exists_action = SEA_NONE;
+	swap_exists_action = save_sea;
 	swap_exists_did_quit = TRUE;
 
 #if defined(FEAT_EVAL)
@@ -1118,7 +1155,12 @@ handle_swap_exists(bufref_T *old_curbuf)
 	close_buffer(curwin, curbuf, DOBUF_UNLOAD, FALSE, FALSE);
 	if (old_curbuf == NULL || !bufref_valid(old_curbuf)
 					      || old_curbuf->br_buf == curbuf)
+	{
+	    // Block autocommands here because curwin->w_buffer is NULL.
+	    block_autocmds();
 	    buf = buflist_new(NULL, NULL, 1L, BLN_CURBUF | BLN_LISTED);
+	    unblock_autocmds();
+	}
 	else
 	    buf = old_curbuf->br_buf;
 	if (buf != NULL)
@@ -1169,122 +1211,6 @@ handle_swap_exists(bufref_T *old_curbuf)
 }
 
 /*
- * do_bufdel() - delete or unload buffer(s)
- *
- * addr_count == 0: ":bdel" - delete current buffer
- * addr_count == 1: ":N bdel" or ":bdel N [N ..]" - first delete
- *		    buffer "end_bnr", then any other arguments.
- * addr_count == 2: ":N,N bdel" - delete buffers in range
- *
- * command can be DOBUF_UNLOAD (":bunload"), DOBUF_WIPE (":bwipeout") or
- * DOBUF_DEL (":bdel")
- *
- * Returns error message or NULL
- */
-    char *
-do_bufdel(
-    int		command,
-    char_u	*arg,		// pointer to extra arguments
-    int		addr_count,
-    int		start_bnr,	// first buffer number in a range
-    int		end_bnr,	// buffer nr or last buffer nr in a range
-    int		forceit)
-{
-    int		do_current = 0;	// delete current buffer?
-    int		deleted = 0;	// number of buffers deleted
-    char	*errormsg = NULL; // return value
-    int		bnr;		// buffer number
-    char_u	*p;
-
-    if (addr_count == 0)
-    {
-	(void)do_buffer(command, DOBUF_CURRENT, FORWARD, 0, forceit);
-    }
-    else
-    {
-	if (addr_count == 2)
-	{
-	    if (*arg)		// both range and argument is not allowed
-		return ex_errmsg(e_trailing_arg, arg);
-	    bnr = start_bnr;
-	}
-	else	// addr_count == 1
-	    bnr = end_bnr;
-
-	for ( ;!got_int; ui_breakcheck())
-	{
-	    /*
-	     * delete the current buffer last, otherwise when the
-	     * current buffer is deleted, the next buffer becomes
-	     * the current one and will be loaded, which may then
-	     * also be deleted, etc.
-	     */
-	    if (bnr == curbuf->b_fnum)
-		do_current = bnr;
-	    else if (do_buffer(command, DOBUF_FIRST, FORWARD, (int)bnr,
-							       forceit) == OK)
-		++deleted;
-
-	    /*
-	     * find next buffer number to delete/unload
-	     */
-	    if (addr_count == 2)
-	    {
-		if (++bnr > end_bnr)
-		    break;
-	    }
-	    else    // addr_count == 1
-	    {
-		arg = skipwhite(arg);
-		if (*arg == NUL)
-		    break;
-		if (!VIM_ISDIGIT(*arg))
-		{
-		    p = skiptowhite_esc(arg);
-		    bnr = buflist_findpat(arg, p,
-			  command == DOBUF_WIPE || command == DOBUF_WIPE_REUSE,
-								FALSE, FALSE);
-		    if (bnr < 0)	    // failed
-			break;
-		    arg = p;
-		}
-		else
-		    bnr = getdigits(&arg);
-	    }
-	}
-	if (!got_int && do_current && do_buffer(command, DOBUF_FIRST,
-					  FORWARD, do_current, forceit) == OK)
-	    ++deleted;
-
-	if (deleted == 0)
-	{
-	    if (command == DOBUF_UNLOAD)
-		STRCPY(IObuff, _("E515: No buffers were unloaded"));
-	    else if (command == DOBUF_DEL)
-		STRCPY(IObuff, _("E516: No buffers were deleted"));
-	    else
-		STRCPY(IObuff, _("E517: No buffers were wiped out"));
-	    errormsg = (char *)IObuff;
-	}
-	else if (deleted >= p_report)
-	{
-	    if (command == DOBUF_UNLOAD)
-		smsg(NGETTEXT("%d buffer unloaded",
-			    "%d buffers unloaded", deleted), deleted);
-	    else if (command == DOBUF_DEL)
-		smsg(NGETTEXT("%d buffer deleted",
-			    "%d buffers deleted", deleted), deleted);
-	    else
-		smsg(NGETTEXT("%d buffer wiped out",
-			    "%d buffers wiped out", deleted), deleted);
-	}
-    }
-
-
-    return errormsg;
-}
-
-/*
  * Make the current buffer empty.
  * Used when it is wiped out and it's the last buffer.
  */
@@ -1300,7 +1226,7 @@ empty_curbuf(
 
     if (action == DOBUF_UNLOAD)
     {
-	emsg(_("E90: Cannot unload last buffer"));
+	emsg(_(e_cannot_unload_last_buffer));
 	return FAIL;
     }
 
@@ -1313,11 +1239,9 @@ empty_curbuf(
     retval = do_ecmd(0, NULL, NULL, NULL, ECMD_ONE,
 					  forceit ? ECMD_FORCEIT : 0, curwin);
 
-    /*
-     * do_ecmd() may create a new buffer, then we have to delete
-     * the old one.  But do_ecmd() may have done that already, check
-     * if the buffer still exists.
-     */
+    // do_ecmd() may create a new buffer, then we have to delete
+    // the old one.  But do_ecmd() may have done that already, check
+    // if the buffer still exists.
     if (buf != curbuf && bufref_valid(&bufref) && buf->b_nwindows == 0)
 	close_buffer(NULL, buf, action, FALSE, FALSE);
     if (!close_others)
@@ -1342,13 +1266,13 @@ empty_curbuf(
  *
  * Return FAIL or OK.
  */
-    int
-do_buffer(
+    static int
+do_buffer_ext(
     int		action,
     int		start,
     int		dir,		// FORWARD or BACKWARD
     int		count,		// buffer number or number of buffers
-    int		forceit)	// TRUE for :...!
+    int		flags)		// DOBUF_FORCEIT etc.
 {
     buf_T	*buf;
     buf_T	*bp;
@@ -1375,7 +1299,7 @@ do_buffer(
 	}
 	if (!bufIsChanged(buf))
 	{
-	    emsg(_("E84: No modified buffer found"));
+	    emsg(_(e_no_modified_buffer_found));
 	    return FAIL;
 	}
     }
@@ -1414,7 +1338,7 @@ do_buffer(
 	    if (bp == buf)
 	    {
 		// back where we started, didn't find anything.
-		emsg(_("E85: There is no listed buffer"));
+		emsg(_(e_there_is_no_listed_buffer));
 		return FAIL;
 	    }
 	}
@@ -1426,12 +1350,23 @@ do_buffer(
 	{
 	    // don't warn when deleting
 	    if (!unload)
-		semsg(_(e_nobufnr), count);
+		semsg(_(e_buffer_nr_does_not_exist), count);
 	}
 	else if (dir == FORWARD)
-	    emsg(_("E87: Cannot go beyond last buffer"));
+	    emsg(_(e_cannot_go_beyond_last_buffer));
 	else
-	    emsg(_("E88: Cannot go before first buffer"));
+	    emsg(_(e_cannot_go_before_first_buffer));
+	return FAIL;
+    }
+#ifdef FEAT_PROP_POPUP
+    if ((flags & DOBUF_NOPOPUP) && bt_popup(buf) && !bt_terminal(buf))
+	return OK;
+#endif
+    if ((action == DOBUF_GOTO || action == DOBUF_SPLIT)
+						  && (buf->b_flags & BF_DUMMY))
+    {
+	// disallow navigating to the dummy buffer
+	semsg(_(e_buffer_nr_does_not_exist), count);
 	return FAIL;
     }
 
@@ -1440,7 +1375,7 @@ do_buffer(
 #endif
 
     /*
-     * delete buffer buf from memory and/or the list
+     * delete buffer "buf" from memory and/or the list
      */
     if (unload)
     {
@@ -1458,26 +1393,35 @@ do_buffer(
 				   && buf->b_ml.ml_mfp == NULL && !buf->b_p_bl)
 	    return FAIL;
 
-	if (!forceit && bufIsChanged(buf))
+	if ((flags & DOBUF_FORCEIT) == 0 && bufIsChanged(buf))
 	{
 #if defined(FEAT_GUI_DIALOG) || defined(FEAT_CON_DIALOG)
 	    if ((p_confirm || (cmdmod.cmod_flags & CMOD_CONFIRM)) && p_write)
 	    {
-		dialog_changed(buf, FALSE);
-		if (!bufref_valid(&bufref))
-		    // Autocommand deleted buffer, oops!  It's not changed
-		    // now.
-		    return FAIL;
-		// If it's still changed fail silently, the dialog already
-		// mentioned why it fails.
-		if (bufIsChanged(buf))
-		    return FAIL;
+# ifdef FEAT_TERMINAL
+		if (term_job_running(buf->b_term))
+		{
+		    if (term_confirm_stop(buf) == FAIL)
+			return FAIL;
+		}
+		else
+# endif
+		{
+		    dialog_changed(buf, FALSE);
+		    if (!bufref_valid(&bufref))
+			// Autocommand deleted buffer, oops!  It's not changed
+			// now.
+			return FAIL;
+		    // If it's still changed fail silently, the dialog already
+		    // mentioned why it fails.
+		    if (bufIsChanged(buf))
+			return FAIL;
+		}
 	    }
 	    else
 #endif
 	    {
-		semsg(_("E89: No write since last change for buffer %d (add ! to override)"),
-								 buf->b_fnum);
+		no_write_message_buf(buf);
 		return FAIL;
 	    }
 	}
@@ -1486,21 +1430,17 @@ do_buffer(
 	if (buf == curbuf && VIsual_active)
 	    end_visual_mode();
 
-	/*
-	 * If deleting the last (listed) buffer, make it empty.
-	 * The last (listed) buffer cannot be unloaded.
-	 */
+	// If deleting the last (listed) buffer, make it empty.
+	// The last (listed) buffer cannot be unloaded.
 	FOR_ALL_BUFFERS(bp)
 	    if (bp->b_p_bl && bp != buf)
 		break;
 	if (bp == NULL && buf == curbuf)
-	    return empty_curbuf(TRUE, forceit, action);
+	    return empty_curbuf(TRUE, (flags & DOBUF_FORCEIT), action);
 
-	/*
-	 * If the deleted buffer is the current one, close the current window
-	 * (unless it's the only window).  Repeat this so long as we end up in
-	 * a window with this buffer.
-	 */
+	// If the deleted buffer is the current one, close the current window
+	// (unless it's the only window).  Repeat this so long as we end up in
+	// a window with this buffer.
 	while (buf == curbuf
 		   && !(curwin->w_closing || curwin->w_buffer->b_locked > 0)
 		   && (!ONE_WINDOW || first_tabpage->tp_next != NULL))
@@ -1509,9 +1449,7 @@ do_buffer(
 		break;
 	}
 
-	/*
-	 * If the buffer to be deleted is not the current one, delete it here.
-	 */
+	// If the buffer to be deleted is not the current one, delete it here.
 	if (buf != curbuf)
 	{
 	    close_windows(buf, FALSE);
@@ -1534,7 +1472,6 @@ do_buffer(
 	bp = NULL;	// used when no loaded buffer found
 	if (au_new_curbuf.br_buf != NULL && bufref_valid(&au_new_curbuf))
 	    buf = au_new_curbuf.br_buf;
-#ifdef FEAT_JUMPLIST
 	else if (curwin->w_jumplistlen > 0)
 	{
 	    int     jumpidx;
@@ -1549,8 +1486,10 @@ do_buffer(
 		buf = buflist_findnr(curwin->w_jumplist[jumpidx].fmark.fnum);
 		if (buf != NULL)
 		{
-		    if (buf == curbuf || !buf->b_p_bl)
-			buf = NULL;	// skip current and unlisted bufs
+		    // Skip current and unlisted bufs.  Also skip a quickfix
+		    // buffer, it might be deleted soon.
+		    if (buf == curbuf || !buf->b_p_bl || bt_quickfix(buf))
+			buf = NULL;
 		    else if (buf->b_ml.ml_mfp == NULL)
 		    {
 			// skip unloaded buf, but may keep it for later
@@ -1570,7 +1509,6 @@ do_buffer(
 		    break;
 	    }
 	}
-#endif
 
 	if (buf == NULL)	// No previous buffer, Try 2'nd approach
 	{
@@ -1587,7 +1525,8 @@ do_buffer(
 		    continue;
 		}
 		// in non-help buffer, try to skip help buffers, and vv
-		if (buf->b_help == curbuf->b_help && buf->b_p_bl)
+		if (buf->b_help == curbuf->b_help && buf->b_p_bl
+			    && !bt_quickfix(buf))
 		{
 		    if (buf->b_ml.ml_mfp != NULL)   // found loaded buffer
 			break;
@@ -1605,7 +1544,7 @@ do_buffer(
 	if (buf == NULL)	// No loaded buffer, find listed one
 	{
 	    FOR_ALL_BUFFERS(buf)
-		if (buf->b_p_bl && buf != curbuf)
+		if (buf->b_p_bl && buf != curbuf && !bt_quickfix(buf))
 		    break;
 	}
 	if (buf == NULL)	// Still no buffer, just take one
@@ -1614,6 +1553,8 @@ do_buffer(
 		buf = curbuf->b_next;
 	    else
 		buf = curbuf->b_prev;
+	    if (bt_quickfix(buf))
+		buf = NULL;
 	}
     }
 
@@ -1621,11 +1562,11 @@ do_buffer(
     {
 	// Autocommands must have wiped out all other buffers.  Only option
 	// now is to make the current buffer empty.
-	return empty_curbuf(FALSE, forceit, action);
+	return empty_curbuf(FALSE, (flags & DOBUF_FORCEIT), action);
     }
 
     /*
-     * make buf current buffer
+     * make "buf" the current buffer
      */
     if (action == DOBUF_SPLIT)	    // split window first
     {
@@ -1645,23 +1586,40 @@ do_buffer(
     if (buf == curbuf)
 	return OK;
 
-    /*
-     * Check if the current buffer may be abandoned.
-     */
-    if (action == DOBUF_GOTO && !can_abandon(curbuf, forceit))
+    // Check if the current buffer may be abandoned.
+    if (action == DOBUF_GOTO && !can_abandon(curbuf, (flags & DOBUF_FORCEIT)))
     {
 #if defined(FEAT_GUI_DIALOG) || defined(FEAT_CON_DIALOG)
 	if ((p_confirm || (cmdmod.cmod_flags & CMOD_CONFIRM)) && p_write)
 	{
-	    bufref_T bufref;
+# ifdef FEAT_TERMINAL
+	    if (term_job_running(curbuf->b_term))
+	    {
+		if (term_confirm_stop(curbuf) == FAIL)
+		    return FAIL;
+		// Manually kill the terminal here because this command will
+		// hide it otherwise.
+		free_terminal(curbuf);
+	    }
+	    else
+# endif
+	    {
+		bufref_T bufref;
 
-	    set_bufref(&bufref, buf);
-	    dialog_changed(curbuf, FALSE);
-	    if (!bufref_valid(&bufref))
-		// Autocommand deleted buffer, oops!
-		return FAIL;
+		set_bufref(&bufref, buf);
+		dialog_changed(curbuf, FALSE);
+		if (!bufref_valid(&bufref))
+		    // Autocommand deleted buffer, oops!
+		    return FAIL;
+
+		if (bufIsChanged(curbuf))
+		{
+		    no_write_message();
+		    return FAIL;
+		}
+	    }
 	}
-	if (bufIsChanged(curbuf))
+	else
 #endif
 	{
 	    no_write_message();
@@ -1681,6 +1639,129 @@ do_buffer(
 #endif
 
     return OK;
+}
+
+    int
+do_buffer(
+    int		action,
+    int		start,
+    int		dir,		// FORWARD or BACKWARD
+    int		count,		// buffer number or number of buffers
+    int		forceit)	// TRUE when using !
+{
+    return do_buffer_ext(action, start, dir, count,
+						  forceit ? DOBUF_FORCEIT : 0);
+}
+
+/*
+ * do_bufdel() - delete or unload buffer(s)
+ *
+ * addr_count == 0: ":bdel" - delete current buffer
+ * addr_count == 1: ":N bdel" or ":bdel N [N ..]" - first delete
+ *		    buffer "end_bnr", then any other arguments.
+ * addr_count == 2: ":N,N bdel" - delete buffers in range
+ *
+ * command can be DOBUF_UNLOAD (":bunload"), DOBUF_WIPE (":bwipeout") or
+ * DOBUF_DEL (":bdel")
+ *
+ * Returns error message or NULL
+ */
+    char *
+do_bufdel(
+    int		command,
+    char_u	*arg,		// pointer to extra arguments
+    int		addr_count,
+    int		start_bnr,	// first buffer number in a range
+    int		end_bnr,	// buffer nr or last buffer nr in a range
+    int		forceit)
+{
+    int		do_current = 0;	// delete current buffer?
+    int		deleted = 0;	// number of buffers deleted
+    char	*errormsg = NULL; // return value
+    int		bnr;		// buffer number
+    char_u	*p;
+
+    if (addr_count == 0)
+    {
+	(void)do_buffer(command, DOBUF_CURRENT, FORWARD, 0, forceit);
+    }
+    else
+    {
+	if (addr_count == 2)
+	{
+	    if (*arg)		// both range and argument is not allowed
+		return ex_errmsg(e_trailing_characters_str, arg);
+	    bnr = start_bnr;
+	}
+	else	// addr_count == 1
+	    bnr = end_bnr;
+
+	for ( ;!got_int; ui_breakcheck())
+	{
+	    // Delete the current buffer last, otherwise when the
+	    // current buffer is deleted, the next buffer becomes
+	    // the current one and will be loaded, which may then
+	    // also be deleted, etc.
+	    if (bnr == curbuf->b_fnum)
+		do_current = bnr;
+	    else if (do_buffer_ext(command, DOBUF_FIRST, FORWARD, bnr,
+			  DOBUF_NOPOPUP | (forceit ? DOBUF_FORCEIT : 0)) == OK)
+		++deleted;
+
+	    // find next buffer number to delete/unload
+	    if (addr_count == 2)
+	    {
+		if (++bnr > end_bnr)
+		    break;
+	    }
+	    else    // addr_count == 1
+	    {
+		arg = skipwhite(arg);
+		if (*arg == NUL)
+		    break;
+		if (!VIM_ISDIGIT(*arg))
+		{
+		    p = skiptowhite_esc(arg);
+		    bnr = buflist_findpat(arg, p,
+			  command == DOBUF_WIPE || command == DOBUF_WIPE_REUSE,
+								FALSE, FALSE);
+		    if (bnr < 0)	    // failed
+			break;
+		    arg = p;
+		}
+		else
+		    bnr = getdigits(&arg);
+	    }
+	}
+	if (!got_int && do_current && do_buffer(command, DOBUF_FIRST,
+					  FORWARD, do_current, forceit) == OK)
+	    ++deleted;
+
+	if (deleted == 0)
+	{
+	    if (command == DOBUF_UNLOAD)
+		STRCPY(IObuff, _(e_no_buffers_were_unloaded));
+	    else if (command == DOBUF_DEL)
+		STRCPY(IObuff, _(e_no_buffers_were_deleted));
+	    else
+		STRCPY(IObuff, _(e_no_buffers_were_wiped_out));
+	    errormsg = (char *)IObuff;
+	}
+	else if (deleted >= p_report)
+	{
+	    if (command == DOBUF_UNLOAD)
+		smsg(NGETTEXT("%d buffer unloaded",
+			    "%d buffers unloaded", deleted), deleted);
+	    else if (command == DOBUF_DEL)
+		smsg(NGETTEXT("%d buffer deleted",
+			    "%d buffers deleted", deleted), deleted);
+	    else
+		smsg(NGETTEXT("%d buffer wiped out",
+			    "%d buffers wiped out", deleted), deleted);
+	}
+    }
+
+    return errormsg;
 }
 
 /*
@@ -1704,6 +1785,7 @@ set_curbuf(buf_T *buf, int action)
 #endif
     bufref_T	newbufref;
     bufref_T	prevbufref;
+    int		valid;
 
     setpcmark();
     if ((cmdmod.cmod_flags & CMOD_KEEPALT) == 0)
@@ -1718,8 +1800,8 @@ set_curbuf(buf_T *buf, int action)
     set_bufref(&prevbufref, prevbuf);
     set_bufref(&newbufref, buf);
 
-    // Autocommands may delete the current buffer and/or the buffer we want to go
-    // to.  In those cases don't close the buffer.
+    // Autocommands may delete the current buffer and/or the buffer we want to
+    // go to.  In those cases don't close the buffer.
     if (!apply_autocmds(EVENT_BUFLEAVE, NULL, NULL, FALSE, curbuf)
 	    || (bufref_valid(&prevbufref)
 		&& bufref_valid(&newbufref)
@@ -1742,7 +1824,11 @@ set_curbuf(buf_T *buf, int action)
 	{
 	    win_T  *previouswin = curwin;
 
-	    if (prevbuf == curbuf)
+	    // Do not sync when in Insert mode and the buffer is open in
+	    // another window, might be a timer doing something in another
+	    // window.
+	    if (prevbuf == curbuf
+		    && ((State & MODE_INSERT) == 0 || curbuf->b_nwindows <= 1))
 		u_sync(FALSE);
 	    close_buffer(prevbuf == curwin->w_buffer ? curwin : NULL, prevbuf,
 		    unload ? action : (action == DOBUF_GOTO
@@ -1757,13 +1843,19 @@ set_curbuf(buf_T *buf, int action)
     // An autocommand may have deleted "buf", already entered it (e.g., when
     // it did ":bunload") or aborted the script processing.
     // If curwin->w_buffer is null, enter_buffer() will make it valid again
-    if ((buf_valid(buf) && buf != curbuf
+    valid = buf_valid(buf);
+    if ((valid && buf != curbuf
 #ifdef FEAT_EVAL
 		&& !aborting()
 #endif
 	) || curwin->w_buffer == NULL)
     {
-	enter_buffer(buf);
+	// If the buffer is not valid but curwin->w_buffer is NULL we must
+	// enter some buffer.  Using the last one is hopefully OK.
+	if (!valid)
+	    enter_buffer(lastbuf);
+	else
+	    enter_buffer(buf);
 #ifdef FEAT_SYN_HL
 	if (old_tw != curbuf->b_p_tw)
 	    check_colorcolumn(curwin);
@@ -1779,6 +1871,14 @@ set_curbuf(buf_T *buf, int action)
     static void
 enter_buffer(buf_T *buf)
 {
+    // when closing the current buffer stop Visual mode
+    if (VIsual_active
+#if defined(EXITFREE)
+	    && !entered_free_all_mem
+#endif
+	    )
+	end_visual_mode();
+
     // Get the buffer in the current window.
     curwin->w_buffer = buf;
     curbuf = buf;
@@ -1821,7 +1921,7 @@ enter_buffer(buf_T *buf)
     if (curbuf->b_ml.ml_mfp == NULL)	// need to load the file
     {
 	// If there is no filetype, allow for detecting one.  Esp. useful for
-	// ":ball" used in a autocommand.  If there already is a filetype we
+	// ":ball" used in an autocommand.  If there already is a filetype we
 	// might prefer to keep it.
 	if (*curbuf->b_p_ft == NUL)
 	    did_filetype = FALSE;
@@ -1850,12 +1950,10 @@ enter_buffer(buf_T *buf)
 	buflist_getfpos();
 
     check_arg_idx(curwin);		// check for valid arg_idx
-#ifdef FEAT_TITLE
     maketitle();
-#endif
 	// when autocmds didn't change it
     if (curwin->w_topline == 1 && !curwin->w_topline_was_set)
-	scroll_cursor_halfway(FALSE);	// redisplay at correct position
+	scroll_cursor_halfway(FALSE, FALSE);	// redisplay at correct position
 
 #ifdef FEAT_NETBEANS_INTG
     // Send fileOpened event because we've changed buffers.
@@ -1873,13 +1971,13 @@ enter_buffer(buf_T *buf)
     // May need to set the spell language.  Can only do this after the buffer
     // has been properly setup.
     if (!curbuf->b_help && curwin->w_p_spell && *curwin->w_s->b_p_spl != NUL)
-	(void)did_set_spelllang(curwin);
+	(void)parse_spelllang(curwin);
 #endif
 #ifdef FEAT_VIMINFO
     curbuf->b_last_used = vim_time();
 #endif
 
-    redraw_later(NOT_VALID);
+    redraw_later(UPD_NOT_VALID);
 }
 
 #if defined(FEAT_AUTOCHDIR) || defined(PROTO)
@@ -1893,19 +1991,34 @@ do_autochdir(void)
     if ((starting == 0 || test_autochdir)
 	    && curbuf->b_ffname != NULL
 	    && vim_chdirfile(curbuf->b_ffname, "auto") == OK)
+    {
 	shorten_fnames(TRUE);
+	last_chdir_reason = "autochdir";
+    }
 }
 #endif
+
+    static void
+no_write_message_buf(buf_T *buf UNUSED)
+{
+#ifdef FEAT_TERMINAL
+    if (term_job_running(buf->b_term))
+	emsg(_(e_job_still_running_add_bang_to_end_the_job));
+    else
+#endif
+	semsg(_(e_no_write_since_last_change_for_buffer_nr_add_bang_to_override),
+		buf->b_fnum);
+}
 
     void
 no_write_message(void)
 {
 #ifdef FEAT_TERMINAL
     if (term_job_running(curbuf->b_term))
-	emsg(_("E948: Job still running (add ! to end the job)"));
+	emsg(_(e_job_still_running_add_bang_to_end_the_job));
     else
 #endif
-	emsg(_("E37: No write since last change (add ! to override)"));
+	emsg(_(e_no_write_since_last_change_add_bang_to_override));
 }
 
     void
@@ -1913,10 +2026,10 @@ no_write_message_nobang(buf_T *buf UNUSED)
 {
 #ifdef FEAT_TERMINAL
     if (term_job_running(buf->b_term))
-	emsg(_("E948: Job still running"));
+	emsg(_(e_job_still_running));
     else
 #endif
-	emsg(_("E37: No write since last change"));
+	emsg(_(e_no_write_since_last_change));
 }
 
 /*
@@ -1934,9 +2047,7 @@ curbuf_reusable(void)
 	&& curbuf->b_ffname == NULL
 	&& curbuf->b_nwindows <= 1
 	&& (curbuf->b_ml.ml_mfp == NULL || BUFEMPTY())
-#if defined(FEAT_QUICKFIX)
 	&& !bt_quickfix(curbuf)
-#endif
 	&& !curbufIsChanged());
 }
 
@@ -1973,7 +2084,7 @@ buflist_new(
     fname_expand(curbuf, &ffname, &sfname);	// will allocate ffname
 
     /*
-     * If file name already exists in the list, update the entry.
+     * If the file name already exists in the list, update the entry.
      */
 #ifdef UNIX
     // On Unix we can use inode numbers when the file exists.  Works better
@@ -2029,10 +2140,9 @@ buflist_new(
 	buf = curbuf;
 	// It's like this buffer is deleted.  Watch out for autocommands that
 	// change curbuf!  If that happens, allocate a new buffer anyway.
-	if (curbuf->b_p_bl)
-	    apply_autocmds(EVENT_BUFDELETE, NULL, NULL, FALSE, curbuf);
-	if (buf == curbuf)
-	    apply_autocmds(EVENT_BUFWIPEOUT, NULL, NULL, FALSE, curbuf);
+	buf_freeall(buf, BFA_WIPE | BFA_DEL);
+	if (buf != curbuf)   // autocommands deleted the buffer!
+	    return NULL;
 #ifdef FEAT_EVAL
 	if (aborting())		// autocmds may abort script processing
 	{
@@ -2040,12 +2150,6 @@ buflist_new(
 	    return NULL;
 	}
 #endif
-	if (buf == curbuf)
-	{
-	    // Make sure 'bufhidden' and 'buftype' are empty
-	    clear_string_option(&buf->b_p_bh);
-	    clear_string_option(&buf->b_p_bt);
-	}
     }
     if (buf != curbuf || curbuf == NULL)
     {
@@ -2057,7 +2161,7 @@ buflist_new(
 	}
 #ifdef FEAT_EVAL
 	// init b: variables
-	buf->b_vars = dict_alloc();
+	buf->b_vars = dict_alloc_id(aid_newbuf_bvars);
 	if (buf->b_vars == NULL)
 	{
 	    vim_free(ffname);
@@ -2093,14 +2197,6 @@ buflist_new(
 
     if (buf == curbuf)
     {
-	// free all things allocated for this buffer
-	buf_freeall(buf, 0);
-	if (buf != curbuf)	 // autocommands deleted the buffer!
-	    return NULL;
-#if defined(FEAT_EVAL)
-	if (aborting())		// autocmds may abort script processing
-	    return NULL;
-#endif
 	free_buffer_stuff(buf, FALSE);	// delete local variables et al.
 
 	// Init the options.
@@ -2114,9 +2210,7 @@ buflist_new(
     }
     else
     {
-	/*
-	 * put new buffer at the end of the buffer list
-	 */
+	// put the new buffer at the end of the buffer list
 	buf->b_next = NULL;
 	if (firstbuf == NULL)		// buffer list is empty
 	{
@@ -2171,9 +2265,7 @@ buflist_new(
 	}
 	buf_hashtab_add(buf);
 
-	/*
-	 * Always copy the options from the current buffer.
-	 */
+	// Always copy the options from the current buffer.
 	buf_copy_options(buf, BCO_ALWAYS);
     }
 
@@ -2254,7 +2346,7 @@ free_buf_options(
     clear_string_option(&buf->b_p_inex);
 # endif
 #endif
-#if defined(FEAT_CINDENT) && defined(FEAT_EVAL)
+#if defined(FEAT_EVAL)
     clear_string_option(&buf->b_p_inde);
     clear_string_option(&buf->b_p_indk);
 #endif
@@ -2269,6 +2361,11 @@ free_buf_options(
     clear_string_option(&buf->b_p_fex);
 #endif
 #ifdef FEAT_CRYPT
+# ifdef FEAT_SODIUM
+    if ((buf->b_p_key != NULL) && (*buf->b_p_key != NUL) &&
+				(crypt_get_method_nr(buf) == CRYPT_M_SOD))
+	crypt_sodium_munlock(buf->b_p_key, STRLEN(buf->b_p_key));
+# endif
     clear_string_option(&buf->b_p_key);
 #endif
     clear_string_option(&buf->b_p_kp);
@@ -2280,8 +2377,7 @@ free_buf_options(
     clear_string_option(&buf->b_p_vsts);
     vim_free(buf->b_p_vsts_nopaste);
     buf->b_p_vsts_nopaste = NULL;
-    vim_free(buf->b_p_vsts_array);
-    buf->b_p_vsts_array = NULL;
+    VIM_CLEAR(buf->b_p_vsts_array);
     clear_string_option(&buf->b_p_vts);
     VIM_CLEAR(buf->b_p_vts_array);
 #endif
@@ -2307,21 +2403,21 @@ free_buf_options(
     clear_string_option(&buf->b_s.b_p_spl);
     clear_string_option(&buf->b_s.b_p_spo);
 #endif
-#ifdef FEAT_SEARCHPATH
     clear_string_option(&buf->b_p_sua);
-#endif
     clear_string_option(&buf->b_p_ft);
-#ifdef FEAT_CINDENT
     clear_string_option(&buf->b_p_cink);
     clear_string_option(&buf->b_p_cino);
-#endif
-#if defined(FEAT_CINDENT) || defined(FEAT_SMARTINDENT)
+    clear_string_option(&buf->b_p_lop);
+    clear_string_option(&buf->b_p_cinsd);
     clear_string_option(&buf->b_p_cinw);
-#endif
     clear_string_option(&buf->b_p_cpt);
 #ifdef FEAT_COMPL_FUNC
     clear_string_option(&buf->b_p_cfu);
+    free_callback(&buf->b_cfu_cb);
     clear_string_option(&buf->b_p_ofu);
+    free_callback(&buf->b_ofu_cb);
+    clear_string_option(&buf->b_p_tsrfu);
+    free_callback(&buf->b_tsrfu_cb);
 #endif
 #ifdef FEAT_QUICKFIX
     clear_string_option(&buf->b_p_gp);
@@ -2334,17 +2430,14 @@ free_buf_options(
     clear_string_option(&buf->b_p_tc);
 #ifdef FEAT_EVAL
     clear_string_option(&buf->b_p_tfu);
+    free_callback(&buf->b_tfu_cb);
 #endif
     clear_string_option(&buf->b_p_dict);
     clear_string_option(&buf->b_p_tsr);
-#ifdef FEAT_TEXTOBJ
     clear_string_option(&buf->b_p_qe);
-#endif
     buf->b_p_ar = -1;
     buf->b_p_ul = NO_LOCAL_UNDOLEVEL;
-#ifdef FEAT_LISP
     clear_string_option(&buf->b_p_lw);
-#endif
     clear_string_option(&buf->b_p_bkc);
     clear_string_option(&buf->b_p_menc);
 }
@@ -2375,9 +2468,9 @@ buflist_getfile(
     if (buf == NULL)
     {
 	if ((options & GETF_ALT) && n == 0)
-	    emsg(_(e_noalt));
+	    emsg(_(e_no_alternate_file));
 	else
-	    semsg(_("E92: Buffer %d not found"), n);
+	    semsg(_(e_buffer_nr_not_found), n);
 	return FAIL;
     }
 
@@ -2385,12 +2478,7 @@ buflist_getfile(
     if (buf == curbuf)
 	return OK;
 
-    if (text_locked())
-    {
-	text_locked_msg();
-	return FAIL;
-    }
-    if (curbuf_locked())
+    if (text_or_buf_locked())
 	return FAIL;
 
     // altfpos may be changed by getfile(), get it now
@@ -2473,7 +2561,7 @@ buflist_getfpos(void)
     }
 }
 
-#if defined(FEAT_QUICKFIX) || defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_QUICKFIX) || defined(FEAT_EVAL) || defined(FEAT_SPELL) || defined(PROTO)
 /*
  * Find file in buffer list by name (it has to be for the current window).
  * Returns NULL if not found.
@@ -2612,13 +2700,15 @@ buflist_findpat(
 		if (*p == '^' && !(attempt & 1))	 // add/remove '^'
 		    ++p;
 		regmatch.regprog = vim_regcomp(p, magic_isset() ? RE_MAGIC : 0);
-		if (regmatch.regprog == NULL)
-		{
-		    vim_free(pat);
-		    return -1;
-		}
 
 		FOR_ALL_BUFS_FROM_LAST(buf)
+		{
+		    if (regmatch.regprog == NULL)
+		    {
+			// invalid pattern, possibly after switching engine
+			vim_free(pat);
+			return -1;
+		    }
 		    if (buf->b_p_bl == find_listed
 #ifdef FEAT_DIFF
 			    && (!diffmode || diff_mode_buf(buf))
@@ -2644,6 +2734,7 @@ buflist_findpat(
 			}
 			match = buf->b_fnum;	// remember first match
 		    }
+		}
 
 		vim_regfree(regmatch.regprog);
 		if (match >= 0)			// found one match
@@ -2661,9 +2752,9 @@ buflist_findpat(
     }
 
     if (match == -2)
-	semsg(_("E93: More than one match for %s"), pattern);
+	semsg(_(e_more_than_one_match_for_str), pattern);
     else if (match < 0)
-	semsg(_("E94: No matching buffer for %s"), pattern);
+	semsg(_(e_no_matching_buffer_for_str), pattern);
     return match;
 }
 
@@ -2691,10 +2782,12 @@ ExpandBufnames(
     int		round;
     char_u	*p;
     int		attempt;
-    char_u	*patc;
+    char_u	*patc = NULL;
 #ifdef FEAT_VIMINFO
     bufmatch_T	*matches = NULL;
 #endif
+    int		fuzzy;
+    fuzmatch_str_T  *fuzmatch = NULL;
 
     *num_file = 0;		    // return values in case of FAIL
     *file = NULL;
@@ -2704,40 +2797,40 @@ ExpandBufnames(
 	return FAIL;
 #endif
 
-    // Make a copy of "pat" and change "^" to "\(^\|[\/]\)".
-    if (*pat == '^')
-    {
-	patc = alloc(STRLEN(pat) + 11);
-	if (patc == NULL)
-	    return FAIL;
-	STRCPY(patc, "\\(^\\|[\\/]\\)");
-	STRCPY(patc + 11, pat + 1);
-    }
-    else
-	patc = pat;
+    fuzzy = cmdline_fuzzy_complete(pat);
 
-    /*
-     * attempt == 0: try match with    '\<', match at start of word
-     * attempt == 1: try match without '\<', match anywhere
-     */
-    for (attempt = 0; attempt <= 1; ++attempt)
+    // Make a copy of "pat" and change "^" to "\(^\|[\/]\)" (if doing regular
+    // expression matching)
+    if (!fuzzy)
+    {
+	if (*pat == '^')
+	{
+	    patc = alloc(STRLEN(pat) + 11);
+	    if (patc == NULL)
+		return FAIL;
+	    STRCPY(patc, "\\(^\\|[\\/]\\)");
+	    STRCPY(patc + 11, pat + 1);
+	}
+	else
+	    patc = pat;
+    }
+
+    // attempt == 0: try match with    '\<', match at start of word
+    // attempt == 1: try match without '\<', match anywhere
+    for (attempt = 0; attempt <= (fuzzy ? 0 : 1); ++attempt)
     {
 	regmatch_T	regmatch;
+	int		score = 0;
 
-	if (attempt > 0 && patc == pat)
-	    break;	// there was no anchor, no need to try again
-	regmatch.regprog = vim_regcomp(patc + attempt * 11, RE_MAGIC);
-	if (regmatch.regprog == NULL)
+	if (!fuzzy)
 	{
-	    if (patc != pat)
-		vim_free(patc);
-	    return FAIL;
+	    if (attempt > 0 && patc == pat)
+		break;	// there was no anchor, no need to try again
+	    regmatch.regprog = vim_regcomp(patc + attempt * 11, RE_MAGIC);
 	}
 
-	/*
-	 * round == 1: Count the matches.
-	 * round == 2: Build the array to keep the matches.
-	 */
+	// round == 1: Count the matches.
+	// round == 2: Build the array to keep the matches.
 	for (round = 1; round <= 2; ++round)
 	{
 	    count = 0;
@@ -2753,75 +2846,136 @@ ExpandBufnames(
 			continue;
 #endif
 
-		p = buflist_match(&regmatch, buf, p_wic);
-		if (p != NULL)
+		if (!fuzzy)
 		{
-		    if (round == 1)
-			++count;
-		    else
+		    if (regmatch.regprog == NULL)
 		    {
-			if (options & WILD_HOME_REPLACE)
-			    p = home_replace_save(buf, p);
-			else
-			    p = vim_strsave(p);
-#ifdef FEAT_VIMINFO
-			if (matches != NULL)
-			{
-			    matches[count].buf = buf;
-			    matches[count].match = p;
-			    count++;
-			}
-			else
-#endif
-			    (*file)[count++] = p;
+			// invalid pattern, possibly after recompiling
+			if (patc != pat)
+			    vim_free(patc);
+			return FAIL;
 		    }
+		    p = buflist_match(&regmatch, buf, p_wic);
+		}
+		else
+		{
+		    p = NULL;
+		    // first try matching with the short file name
+		    if ((score = fuzzy_match_str(buf->b_sfname, pat)) != 0)
+			p = buf->b_sfname;
+		    if (p == NULL)
+		    {
+			// next try matching with the full path file name
+			if ((score = fuzzy_match_str(buf->b_ffname, pat)) != 0)
+			    p = buf->b_ffname;
+		    }
+		}
+
+		if (p == NULL)
+		    continue;
+
+		if (round == 1)
+		{
+		    ++count;
+		    continue;
+		}
+
+		if (options & WILD_HOME_REPLACE)
+		    p = home_replace_save(buf, p);
+		else
+		    p = vim_strsave(p);
+
+		if (!fuzzy)
+		{
+#ifdef FEAT_VIMINFO
+		    if (matches != NULL)
+		    {
+			matches[count].buf = buf;
+			matches[count].match = p;
+			count++;
+		    }
+		    else
+#endif
+			(*file)[count++] = p;
+		}
+		else
+		{
+		    fuzmatch[count].idx = count;
+		    fuzmatch[count].str = p;
+		    fuzmatch[count].score = score;
+		    count++;
 		}
 	    }
 	    if (count == 0)	// no match found, break here
 		break;
 	    if (round == 1)
 	    {
-		*file = ALLOC_MULT(char_u *, count);
-		if (*file == NULL)
+		if (!fuzzy)
 		{
-		    vim_regfree(regmatch.regprog);
-		    if (patc != pat)
-			vim_free(patc);
-		    return FAIL;
-		}
+		    *file = ALLOC_MULT(char_u *, count);
+		    if (*file == NULL)
+		    {
+			vim_regfree(regmatch.regprog);
+			if (patc != pat)
+			    vim_free(patc);
+			return FAIL;
+		    }
 #ifdef FEAT_VIMINFO
-		if (options & WILD_BUFLASTUSED)
-		    matches = ALLOC_MULT(bufmatch_T, count);
+		    if (options & WILD_BUFLASTUSED)
+			matches = ALLOC_MULT(bufmatch_T, count);
 #endif
+		}
+		else
+		{
+		    fuzmatch = ALLOC_MULT(fuzmatch_str_T, count);
+		    if (fuzmatch == NULL)
+		    {
+			*num_file = 0;
+			*file = NULL;
+			return FAIL;
+		    }
+		}
 	    }
 	}
-	vim_regfree(regmatch.regprog);
-	if (count)		// match(es) found, break here
-	    break;
+
+	if (!fuzzy)
+	{
+	    vim_regfree(regmatch.regprog);
+	    if (count)		// match(es) found, break here
+		break;
+	}
     }
 
-    if (patc != pat)
+    if (!fuzzy && patc != pat)
 	vim_free(patc);
 
 #ifdef FEAT_VIMINFO
-    if (matches != NULL)
+    if (!fuzzy)
     {
-	int i;
-	if (count > 1)
-	    qsort(matches, count, sizeof(bufmatch_T), buf_compare);
-	// if the current buffer is first in the list, place it at the end
-	if (matches[0].buf == curbuf)
+	if (matches != NULL)
 	{
-	    for (i = 1; i < count; i++)
-		(*file)[i-1] = matches[i].match;
-	    (*file)[count-1] = matches[0].match;
+	    int i;
+	    if (count > 1)
+		qsort(matches, count, sizeof(bufmatch_T), buf_compare);
+	    // if the current buffer is first in the list, place it at the end
+	    if (matches[0].buf == curbuf)
+	    {
+		for (i = 1; i < count; i++)
+		    (*file)[i-1] = matches[i].match;
+		(*file)[count-1] = matches[0].match;
+	    }
+	    else
+	    {
+		for (i = 0; i < count; i++)
+		    (*file)[i] = matches[i].match;
+	    }
+	    vim_free(matches);
 	}
-	else
-	{
-	    for (i = 0; i < count; i++)
-		(*file)[i] = matches[i].match;
-	}
-	vim_free(matches);
+    }
+    else
+    {
+	if (fuzzymatches_to_strmatches(fuzmatch, file, count, FALSE) == FAIL)
+	    return FAIL;
     }
 #endif
 
@@ -2831,6 +2985,7 @@ ExpandBufnames(
 
 /*
  * Check for a match on the file name for buffer "buf" with regprog "prog".
+ * Note that rmp->regprog may become NULL when switching regexp engine.
  */
     static char_u *
 buflist_match(
@@ -2842,14 +2997,15 @@ buflist_match(
 
     // First try the short file name, then the long file name.
     match = fname_match(rmp, buf->b_sfname, ignore_case);
-    if (match == NULL)
+    if (match == NULL && rmp->regprog != NULL)
 	match = fname_match(rmp, buf->b_ffname, ignore_case);
 
     return match;
 }
 
 /*
- * Try matching the regexp in "prog" with file name "name".
+ * Try matching the regexp in "rmp->regprog" with file name "name".
+ * Note that rmp->regprog may become NULL when switching regexp engine.
  * Return "name" when there is a match, NULL when not.
  */
     static char_u *
@@ -2861,20 +3017,21 @@ fname_match(
     char_u	*match = NULL;
     char_u	*p;
 
-    if (name != NULL)
+    // extra check for valid arguments
+    if (name == NULL || rmp->regprog == NULL)
+	return NULL;
+
+    // Ignore case when 'fileignorecase' or the argument is set.
+    rmp->rm_ic = p_fic || ignore_case;
+    if (vim_regexec(rmp, name, (colnr_T)0))
+	match = name;
+    else if (rmp->regprog != NULL)
     {
-	// Ignore case when 'fileignorecase' or the argument is set.
-	rmp->rm_ic = p_fic || ignore_case;
-	if (vim_regexec(rmp, name, (colnr_T)0))
+	// Replace $(HOME) with '~' and try matching again.
+	p = home_replace_save(NULL, name);
+	if (p != NULL && vim_regexec(rmp, p, (colnr_T)0))
 	    match = name;
-	else
-	{
-	    // Replace $(HOME) with '~' and try matching again.
-	    p = home_replace_save(NULL, name);
-	    if (p != NULL && vim_regexec(rmp, p, (colnr_T)0))
-		match = name;
-	    vim_free(p);
-	}
+	vim_free(p);
     }
 
     return match;
@@ -2971,6 +3128,8 @@ buflist_setfpos(
 	wip->wi_fpos.lnum = lnum;
 	wip->wi_fpos.col = col;
     }
+    if (win != NULL)
+	wip->wi_changelistidx = win->w_changelistidx;
     if (copy_options && win != NULL)
     {
 	// Save the window-specific option values.
@@ -2988,8 +3147,6 @@ buflist_setfpos(
     wip->wi_prev = NULL;
     if (wip->wi_next)
 	wip->wi_next->wi_prev = wip;
-
-    return;
 }
 
 #ifdef FEAT_DIFF
@@ -3002,16 +3159,15 @@ wininfo_other_tab_diff(wininfo_T *wip)
 {
     win_T	*wp;
 
-    if (wip->wi_opt.wo_diff)
-    {
-	FOR_ALL_WINDOWS(wp)
-	    // return FALSE when it's a window in the current tab page, thus
-	    // the buffer was in diff mode here
-	    if (wip->wi_win == wp)
-		return FALSE;
-	return TRUE;
-    }
-    return FALSE;
+    if (!wip->wi_opt.wo_diff)
+	return FALSE;
+
+    FOR_ALL_WINDOWS(wp)
+	// return FALSE when it's a window in the current tab page, thus
+	// the buffer was in diff mode here
+	if (wip->wi_win == wp)
+	    return FALSE;
+    return TRUE;
 }
 #endif
 
@@ -3040,27 +3196,27 @@ find_wininfo(
 		&& (!need_options || wip->wi_optset))
 	    break;
 
+    if (wip != NULL)
+	return wip;
+
     // If no wininfo for curwin, use the first in the list (that doesn't have
     // 'diff' set and is in another tab page).
     // If "need_options" is TRUE skip entries that don't have options set,
     // unless the window is editing "buf", so we can copy from the window
     // itself.
-    if (wip == NULL)
-    {
 #ifdef FEAT_DIFF
-	if (skip_diff_buffer)
-	{
-	    FOR_ALL_BUF_WININFO(buf, wip)
-		if (!wininfo_other_tab_diff(wip)
-			&& (!need_options || wip->wi_optset
-			    || (wip->wi_win != NULL
-					     && wip->wi_win->w_buffer == buf)))
-		    break;
-	}
-	else
-#endif
-	    wip = buf->b_wininfo;
+    if (skip_diff_buffer)
+    {
+	FOR_ALL_BUF_WININFO(buf, wip)
+	    if (!wininfo_other_tab_diff(wip)
+		    && (!need_options || wip->wi_optset
+			|| (wip->wi_win != NULL
+			    && wip->wi_win->w_buffer == buf)))
+		break;
     }
+    else
+#endif
+	wip = buf->b_wininfo;
     return wip;
 }
 
@@ -3107,6 +3263,8 @@ get_winopts(buf_T *buf)
     }
     else
 	copy_winopt(&curwin->w_allbuf_opt, &curwin->w_onebuf_opt);
+    if (wip != NULL)
+	curwin->w_changelistidx = wip->wi_changelistidx;
 
 #ifdef FEAT_FOLDING
     // Set 'foldlevel' to 'foldlevelstart' if it's not negative.
@@ -3189,7 +3347,7 @@ buflist_list(exarg_T *eap)
     {
 #ifdef FEAT_TERMINAL
 	job_running = term_job_running(buf->b_term);
-	job_none_open = job_running && term_none_open(buf->b_term);
+	job_none_open = term_none_open(buf->b_term);
 #endif
 	// skip unlisted buffers, unless ! was used
 	if ((!buf->b_p_bl && !eap->forceit && !vim_strchr(eap->arg, 'u'))
@@ -3225,9 +3383,9 @@ buflist_list(exarg_T *eap)
 	changed_char = (buf->b_flags & BF_READERR) ? 'x'
 					     : (bufIsChanged(buf) ? '+' : ' ');
 #ifdef FEAT_TERMINAL
-	if (term_job_running(buf->b_term))
+	if (job_running)
 	{
-	    if (term_none_open(buf->b_term))
+	    if (job_none_open)
 		ro_char = '?';
 	    else
 		ro_char = 'R';
@@ -3342,7 +3500,7 @@ setfname(
 	    return FAIL;
 
 	/*
-	 * if the file name is already used in another buffer:
+	 * If the file name is already used in another buffer:
 	 * - if the buffer is loaded, fail
 	 * - if the buffer is not loaded, delete it from the list
 	 */
@@ -3358,10 +3516,20 @@ setfname(
 #endif
 	if (obuf != NULL && obuf != buf)
 	{
-	    if (obuf->b_ml.ml_mfp != NULL)	// it's loaded, fail
+	    win_T	*win;
+	    tabpage_T   *tab;
+	    int		in_use = FALSE;
+
+	    // during startup a window may use a buffer that is not loaded yet
+	    FOR_ALL_TAB_WINDOWS(tab, win)
+		if (win->w_buffer == obuf)
+		    in_use = TRUE;
+
+	    // it's loaded or used in a window, fail
+	    if (obuf->b_ml.ml_mfp != NULL || in_use)
 	    {
 		if (message)
-		    emsg(_("E95: Buffer with this name already exists"));
+		    emsg(_(e_buffer_with_this_name_already_exists));
 		vim_free(ffname);
 		return FAIL;
 	    }
@@ -3412,18 +3580,18 @@ buf_set_name(int fnum, char_u *name)
     buf_T	*buf;
 
     buf = buflist_findnr(fnum);
-    if (buf != NULL)
-    {
-	if (buf->b_sfname != buf->b_ffname)
-	    vim_free(buf->b_sfname);
-	vim_free(buf->b_ffname);
-	buf->b_ffname = vim_strsave(name);
-	buf->b_sfname = NULL;
-	// Allocate ffname and expand into full path.  Also resolves .lnk
-	// files on Win32.
-	fname_expand(buf, &buf->b_ffname, &buf->b_sfname);
-	buf->b_fname = buf->b_sfname;
-    }
+    if (buf == NULL)
+	return;
+
+    if (buf->b_sfname != buf->b_ffname)
+	vim_free(buf->b_sfname);
+    vim_free(buf->b_ffname);
+    buf->b_ffname = vim_strsave(name);
+    buf->b_sfname = NULL;
+    // Allocate ffname and expand into full path.  Also resolves .lnk
+    // files on Win32.
+    fname_expand(buf, &buf->b_ffname, &buf->b_sfname);
+    buf->b_fname = buf->b_sfname;
 }
 
 /*
@@ -3439,11 +3607,14 @@ buf_name_changed(buf_T *buf)
     if (buf->b_ml.ml_mfp != NULL)
 	ml_setname(buf);
 
+#ifdef FEAT_TERMINAL
+    if (buf->b_term != NULL)
+	term_clear_status_text(buf->b_term);
+#endif
+
     if (curwin->w_buffer == buf)
 	check_arg_idx(curwin);	// check file name for arg list
-#ifdef FEAT_TITLE
     maketitle();		// set window title
-#endif
     status_redraw_all();	// status lines need to be redrawn
     fmarks_check_names(buf);	// check named file marks
     ml_timestamp(buf);		// reset timestamp
@@ -3484,7 +3655,7 @@ getaltfname(
     if (buflist_name_nr(0, &fname, &dummy) == FAIL)
     {
 	if (errmsg)
-	    emsg(_(e_noalt));
+	    emsg(_(e_no_alternate_file));
 	return NULL;
     }
     return fname;
@@ -3672,15 +3843,9 @@ fileinfo(
     vim_snprintf_add(buffer, IOSIZE, "\"%s%s%s%s%s%s",
 	    curbufIsChanged() ? (shortmess(SHM_MOD)
 					  ?  " [+]" : _(" [Modified]")) : " ",
-	    (curbuf->b_flags & BF_NOTEDITED)
-#ifdef FEAT_QUICKFIX
-		    && !bt_dontwrite(curbuf)
-#endif
+	    (curbuf->b_flags & BF_NOTEDITED) && !bt_dontwrite(curbuf)
 					? _("[Not edited]") : "",
-	    (curbuf->b_flags & BF_NEW)
-#ifdef FEAT_QUICKFIX
-		    && !bt_dontwrite(curbuf)
-#endif
+	    (curbuf->b_flags & BF_NEW) && !bt_dontwrite(curbuf)
 					   ? new_file_message() : "",
 	    (curbuf->b_flags & BF_READERR) ? _("[Read errors]") : "",
 	    curbuf->b_p_ro ? (shortmess(SHM_RO) ? _("[RO]")
@@ -3698,14 +3863,12 @@ fileinfo(
 					    (long)curbuf->b_ml.ml_line_count);
     if (curbuf->b_ml.ml_flags & ML_EMPTY)
 	vim_snprintf_add(buffer, IOSIZE, "%s", _(no_lines_msg));
-#ifdef FEAT_CMDL_INFO
     else if (p_ru)
 	// Current line and column are already on the screen -- webb
 	vim_snprintf_add(buffer, IOSIZE,
 		NGETTEXT("%ld line --%d%%--", "%ld lines --%d%%--",
 						   curbuf->b_ml.ml_line_count),
 		(long)curbuf->b_ml.ml_line_count, n);
-#endif
     else
     {
 	vim_snprintf_add(buffer, IOSIZE,
@@ -3734,7 +3897,7 @@ fileinfo(
     }
     else
     {
-	p = (char *)msg_trunc_attr(buffer, FALSE, 0);
+	p = msg_trunc_attr(buffer, FALSE, 0);
 	if (restart_edit != 0 || (msg_scrolled && !need_wait_return))
 	    // Need to repeat the message after redrawing when:
 	    // - When restart_edit is set (otherwise there will be a delay
@@ -3760,7 +3923,6 @@ col_print(
 	vim_snprintf((char *)buf, buflen, "%d-%d", col, vcol);
 }
 
-#if defined(FEAT_TITLE) || defined(PROTO)
 static char_u *lasttitle = NULL;
 static char_u *lasticon = NULL;
 
@@ -3804,20 +3966,9 @@ maketitle(void)
 	{
 #ifdef FEAT_STL_OPT
 	    if (stl_syntax & STL_IN_TITLE)
-	    {
-		int	use_sandbox = FALSE;
-		int	called_emsg_before = called_emsg;
-
-# ifdef FEAT_EVAL
-		use_sandbox = was_set_insecurely((char_u *)"titlestring", 0);
-# endif
-		build_stl_str_hl(curwin, title_str, sizeof(buf),
-					      p_titlestring, use_sandbox,
-					      0, maxlen, NULL, NULL);
-		if (called_emsg > called_emsg_before)
-		    set_string_option_direct((char_u *)"titlestring", -1,
-					   (char_u *)"", OPT_FREE, SID_ERROR);
-	    }
+		build_stl_str_hl(curwin, title_str, sizeof(buf), p_titlestring,
+				    (char_u *)"titlestring", 0,
+				    0, maxlen, NULL, NULL);
 	    else
 #endif
 		title_str = p_titlestring;
@@ -3935,20 +4086,8 @@ maketitle(void)
 	{
 #ifdef FEAT_STL_OPT
 	    if (stl_syntax & STL_IN_ICON)
-	    {
-		int	use_sandbox = FALSE;
-		int	called_emsg_before = called_emsg;
-
-# ifdef FEAT_EVAL
-		use_sandbox = was_set_insecurely((char_u *)"iconstring", 0);
-# endif
-		build_stl_str_hl(curwin, icon_str, sizeof(buf),
-						    p_iconstring, use_sandbox,
-						    0, 0, NULL, NULL);
-		if (called_emsg > called_emsg_before)
-		    set_string_option_direct((char_u *)"iconstring", -1,
-					   (char_u *)"", OPT_FREE, SID_ERROR);
-	    }
+		build_stl_str_hl(curwin, icon_str, sizeof(buf), p_iconstring,
+				 (char_u *)"iconstring", 0, 0, 0, NULL, NULL);
 	    else
 #endif
 		icon_str = p_iconstring;
@@ -4025,7 +4164,6 @@ free_titles(void)
 }
 # endif
 
-#endif // FEAT_TITLE
 
 #if defined(FEAT_STL_OPT) || defined(FEAT_GUI_TABLINE) || defined(PROTO)
 
@@ -4041,7 +4179,7 @@ typedef struct
 	Normal,
 	Empty,
 	Group,
-	Middle,
+	Separate,
 	Highlight,
 	TabPage,
 	Trunc
@@ -4053,6 +4191,7 @@ static stl_item_T      *stl_items = NULL;
 static int	       *stl_groupitem = NULL;
 static stl_hlrec_T     *stl_hltab = NULL;
 static stl_hlrec_T     *stl_tabtab = NULL;
+static int		*stl_separator_locations = NULL;
 
 /*
  * Build a string from the status line items in "fmt".
@@ -4062,7 +4201,7 @@ static stl_hlrec_T     *stl_tabtab = NULL;
  * is "curwin".
  *
  * Items are drawn interspersed with the text that surrounds it
- * Specials: %-<wid>(xxx%) => group, %= => middle marker, %< => truncation
+ * Specials: %-<wid>(xxx%) => group, %= => separation marker, %< => truncation
  * Item: %-<minwid>.<maxwid><itemch> All but <itemch> are optional
  *
  * If maxwidth is not zero, the string will be filled at any middle marker
@@ -4074,7 +4213,8 @@ build_stl_str_hl(
     char_u	*out,		// buffer to write into != NameBuff
     size_t	outlen,		// length of out[]
     char_u	*fmt,
-    int		use_sandbox UNUSED, // "fmt" was set insecurely, use sandbox
+    char_u	*opt_name,      // option name corresponding to "fmt"
+    int		opt_scope,	// scope for "opt_name"
     int		fillchar,
     int		maxwidth,
     stl_hlrec_T **hltab,	// return: HL attributes (can be NULL)
@@ -4087,6 +4227,7 @@ build_stl_str_hl(
     char_u	*t;
     int		byteval;
 #ifdef FEAT_EVAL
+    int		use_sandbox;
     win_T	*save_curwin;
     buf_T	*save_curbuf;
     int		save_VIsual_active;
@@ -4107,6 +4248,9 @@ build_stl_str_hl(
     int		group_end_userhl;
     int		group_start_userhl;
     int		groupdepth;
+#ifdef FEAT_EVAL
+    int		evaldepth;
+#endif
     int		minwid;
     int		maxwid;
     int		zeropad;
@@ -4117,22 +4261,38 @@ build_stl_str_hl(
     char_u	win_tmp[TMPLEN];
     char_u	*usefmt = fmt;
     stl_hlrec_T *sp;
-    int		save_must_redraw = must_redraw;
-    int		save_redr_type = curwin->w_redr_type;
+    int		save_redraw_not_allowed = redraw_not_allowed;
+    int		save_KeyTyped = KeyTyped;
+    // TODO: find out why using called_emsg_before makes tests fail, does it
+    // matter?
+    // int	called_emsg_before = called_emsg;
+    int		did_emsg_before = did_emsg;
+
+    // When inside update_screen() we do not want redrawing a statusline,
+    // ruler, title, etc. to trigger another redraw, it may cause an endless
+    // loop.
+    if (updating_screen)
+	redraw_not_allowed = TRUE;
 
     if (stl_items == NULL)
     {
 	stl_items = ALLOC_MULT(stl_item_T, stl_items_len);
 	stl_groupitem = ALLOC_MULT(int, stl_items_len);
-	stl_hltab  = ALLOC_MULT(stl_hlrec_T, stl_items_len);
-	stl_tabtab = ALLOC_MULT(stl_hlrec_T, stl_items_len);
+
+	// Allocate one more, because the last element is used to indicate the
+	// end of the list.
+	stl_hltab  = ALLOC_MULT(stl_hlrec_T, stl_items_len + 1);
+	stl_tabtab = ALLOC_MULT(stl_hlrec_T, stl_items_len + 1);
+
+	stl_separator_locations = ALLOC_MULT(int, stl_items_len);
     }
 
 #ifdef FEAT_EVAL
-    /*
-     * When the format starts with "%!" then evaluate it as an expression and
-     * use the result as the actual format string.
-     */
+    // if "fmt" was set insecurely it needs to be evaluated in the sandbox
+    use_sandbox = was_set_insecurely(opt_name, opt_scope);
+
+    // When the format starts with "%!" then evaluate it as an expression and
+    // use the result as the actual format string.
     if (fmt[0] == '%' && fmt[1] == '!')
     {
 	typval_T	tv;
@@ -4141,7 +4301,7 @@ build_stl_str_hl(
 	tv.vval.v_number = wp->w_id;
 	set_var((char_u *)"g:statusline_winid", &tv, FALSE);
 
-	usefmt = eval_to_string_safe(fmt + 2, use_sandbox);
+	usefmt = eval_to_string_safe(fmt + 2, use_sandbox, FALSE, FALSE);
 	if (usefmt == NULL)
 	    usefmt = fmt;
 
@@ -4151,9 +4311,6 @@ build_stl_str_hl(
 
     if (fillchar == 0)
 	fillchar = ' ';
-    // Can't handle a multi-byte fill character yet.
-    else if (mb_char2len(fillchar) > 1)
-	fillchar = '-';
 
     // The cursor in windows other than the current one isn't always
     // up-to-date, esp. because of autocommands and timers.
@@ -4184,39 +4341,52 @@ build_stl_str_hl(
 	byteval = (*mb_ptr2char)(p + wp->w_cursor.col);
 
     groupdepth = 0;
+#ifdef FEAT_EVAL
+    evaldepth = 0;
+#endif
     p = out;
     curitem = 0;
     prevchar_isflag = TRUE;
     prevchar_isitem = FALSE;
-    for (s = usefmt; *s; )
+    for (s = usefmt; *s != NUL; )
     {
 	if (curitem == (int)stl_items_len)
 	{
 	    size_t	new_len = stl_items_len * 3 / 2;
-	    stl_item_T	*new_items;
-	    int		*new_groupitem;
-	    stl_hlrec_T	*new_hlrec;
 
-	    new_items = vim_realloc(stl_items, sizeof(stl_item_T) * new_len);
+	    stl_item_T *new_items =
+			  vim_realloc(stl_items, sizeof(stl_item_T) * new_len);
 	    if (new_items == NULL)
 		break;
 	    stl_items = new_items;
-	    new_groupitem = vim_realloc(stl_groupitem, sizeof(int) * new_len);
+
+	    int *new_groupitem =
+			     vim_realloc(stl_groupitem, sizeof(int) * new_len);
 	    if (new_groupitem == NULL)
 		break;
 	    stl_groupitem = new_groupitem;
-	    new_hlrec = vim_realloc(stl_hltab, sizeof(stl_hlrec_T) * new_len);
+
+	    stl_hlrec_T	*new_hlrec = vim_realloc(stl_hltab,
+					  sizeof(stl_hlrec_T) * (new_len + 1));
 	    if (new_hlrec == NULL)
 		break;
 	    stl_hltab = new_hlrec;
-	    new_hlrec = vim_realloc(stl_tabtab, sizeof(stl_hlrec_T) * new_len);
+	    new_hlrec = vim_realloc(stl_tabtab,
+					  sizeof(stl_hlrec_T) * (new_len + 1));
 	    if (new_hlrec == NULL)
 		break;
 	    stl_tabtab = new_hlrec;
+
+	    int *new_separator_locs = vim_realloc(stl_separator_locations,
+					    sizeof(int) * new_len);
+	    if (new_separator_locs == NULL)
+		break;
+	    stl_separator_locations = new_separator_locs;;
+
 	    stl_items_len = new_len;
 	}
 
-	if (*s != NUL && *s != '%')
+	if (*s != '%')
 	    prevchar_isflag = prevchar_isitem = FALSE;
 
 	/*
@@ -4241,12 +4411,13 @@ build_stl_str_hl(
 	    prevchar_isflag = prevchar_isitem = FALSE;
 	    continue;
 	}
-	if (*s == STL_MIDDLEMARK)
+	// STL_SEPARATE: Separation between items, filled with white space.
+	if (*s == STL_SEPARATE)
 	{
 	    s++;
 	    if (groupdepth > 0)
 		continue;
-	    stl_items[curitem].stl_type = Middle;
+	    stl_items[curitem].stl_type = Separate;
 	    stl_items[curitem++].stl_start = p;
 	    continue;
 	}
@@ -4329,12 +4500,13 @@ build_stl_str_hl(
 
 		// Fill up space left over by half a double-wide char.
 		while (++l < stl_items[stl_groupitem[groupdepth]].stl_minwid)
-		    *p++ = fillchar;
+		    MB_CHAR2BYTES(fillchar, p);
 
 		// correct the start of the items for the truncation
 		for (l = stl_groupitem[groupdepth] + 1; l < curitem; l++)
 		{
-		    stl_items[l].stl_start -= n;
+		    // Minus one for the leading '<' added above.
+		    stl_items[l].stl_start -= n - 1;
 		    if (stl_items[l].stl_start < t)
 			stl_items[l].stl_start = t;
 		}
@@ -4348,20 +4520,20 @@ build_stl_str_hl(
 		    // fill by appending characters
 		    n = 0 - n;
 		    while (l++ < n && p + 1 < out + outlen)
-			*p++ = fillchar;
+			MB_CHAR2BYTES(fillchar, p);
 		}
 		else
 		{
 		    // fill by inserting characters
-		    mch_memmove(t + n - l, t, (size_t)(p - t));
-		    l = n - l;
+		    l = (n - l) * MB_CHAR2LEN(fillchar);
+		    mch_memmove(t + l, t, (size_t)(p - t));
 		    if (p + l >= out + outlen)
 			l = (long)((out + outlen) - p - 1);
 		    p += l;
 		    for (n = stl_groupitem[groupdepth] + 1; n < curitem; n++)
 			stl_items[n].stl_start += l;
 		    for ( ; l > 0; l--)
-			*t++ = fillchar;
+			MB_CHAR2BYTES(fillchar, t);
 		}
 	    }
 	    continue;
@@ -4444,8 +4616,19 @@ build_stl_str_hl(
 	    curitem++;
 	    continue;
 	}
+#ifdef FEAT_EVAL
+	// Denotes end of expanded %{} block
+	if (*s == '}' && evaldepth > 0)
+	{
+	    s++;
+	    evaldepth--;
+	    continue;
+	}
+#endif
 	if (vim_strchr(STL_ALL, *s) == NULL)
 	{
+	    if (*s == NUL)  // can happen with "%0"
+		break;
 	    s++;
 	    continue;
 	}
@@ -4479,16 +4662,27 @@ build_stl_str_hl(
 	    break;
 
 	case STL_VIM_EXPR: // '{'
+	{
+#ifdef FEAT_EVAL
+	    char_u *block_start = s - 1;
+#endif
+	    int reevaluate = (*s == '%');
+
+	    if (reevaluate)
+		s++;
 	    itemisflag = TRUE;
 	    t = p;
-	    while (*s != '}' && *s != NUL && p + 1 < out + outlen)
+	    while ((*s != '}' || (reevaluate && s[-1] != '%'))
+					  && *s != NUL && p + 1 < out + outlen)
 		*p++ = *s++;
 	    if (*s != '}')	// missing '}' or out of space
 		break;
 	    s++;
-	    *p = 0;
+	    if (reevaluate)
+		p[-1] = 0; // remove the % at the end of %{% expr %}
+	    else
+		*p = 0;
 	    p = t;
-
 #ifdef FEAT_EVAL
 	    vim_snprintf((char *)buf_tmp, sizeof(buf_tmp),
 							 "%d", curbuf->b_fnum);
@@ -4505,7 +4699,7 @@ build_stl_str_hl(
 	    if (curwin != save_curwin)
 		VIsual_active = FALSE;
 
-	    str = eval_to_string_safe(p, use_sandbox);
+	    str = eval_to_string_safe(p, use_sandbox, FALSE, FALSE);
 
 	    curwin = save_curwin;
 	    curbuf = save_curbuf;
@@ -4522,9 +4716,42 @@ build_stl_str_hl(
 		    itemisflag = FALSE;
 		}
 	    }
+
+	    // If the output of the expression needs to be evaluated
+	    // replace the %{} block with the result of evaluation
+	    if (reevaluate && str != NULL && *str != 0
+		    && strchr((const char *)str, '%') != NULL
+		    && evaldepth < MAX_STL_EVAL_DEPTH)
+	    {
+		size_t parsed_usefmt = (size_t)(block_start - usefmt);
+		size_t str_length = strlen((const char *)str);
+		size_t fmt_length = strlen((const char *)s);
+		size_t new_fmt_len = parsed_usefmt
+						 + str_length + fmt_length + 3;
+		char_u *new_fmt = (char_u *)alloc(new_fmt_len * sizeof(char_u));
+		char_u *new_fmt_p = new_fmt;
+
+		new_fmt_p = (char_u *)memcpy(new_fmt_p, usefmt, parsed_usefmt)
+							       + parsed_usefmt;
+		new_fmt_p = (char_u *)memcpy(new_fmt_p , str, str_length)
+								  + str_length;
+		new_fmt_p = (char_u *)memcpy(new_fmt_p, "%}", 2) + 2;
+		new_fmt_p = (char_u *)memcpy(new_fmt_p , s, fmt_length)
+								  + fmt_length;
+		*new_fmt_p = 0;
+		new_fmt_p = NULL;
+
+		if (usefmt != fmt)
+		    vim_free(usefmt);
+		VIM_CLEAR(str);
+		usefmt = new_fmt;
+		s = usefmt + parsed_usefmt;
+		evaldepth++;
+		continue;
+	    }
 #endif
 	    break;
-
+	}
 	case STL_LINE:
 	    num = (wp->w_buffer->b_ml.ml_flags & ML_EMPTY)
 		  ? 0L : (long)(wp->w_cursor.lnum);
@@ -4535,25 +4762,17 @@ build_stl_str_hl(
 	    break;
 
 	case STL_COLUMN:
-	    num = !(State & INSERT) && empty_line
-		  ? 0 : (int)wp->w_cursor.col + 1;
+	    num = (State & MODE_INSERT) == 0 && empty_line
+					       ? 0 : (int)wp->w_cursor.col + 1;
 	    break;
 
 	case STL_VIRTCOL:
 	case STL_VIRTCOL_ALT:
-	    // In list mode virtcol needs to be recomputed
-	    virtcol = wp->w_virtcol;
-	    if (wp->w_p_list && lcs_tab1 == NUL)
-	    {
-		wp->w_p_list = FALSE;
-		getvcol(wp, &wp->w_cursor, NULL, &virtcol, NULL);
-		wp->w_p_list = TRUE;
-	    }
-	    ++virtcol;
+	    virtcol = wp->w_virtcol + 1;
 	    // Don't display %V if it's the same as %c.
 	    if (opt == STL_VIRTCOL_ALT
-		    && (virtcol == (colnr_T)(!(State & INSERT) && empty_line
-			    ? 0 : (int)wp->w_cursor.col + 1)))
+		    && (virtcol == (colnr_T)((State & MODE_INSERT) == 0
+			       && empty_line ? 0 : (int)wp->w_cursor.col + 1)))
 		break;
 	    num = (long)virtcol;
 	    break;
@@ -4566,6 +4785,11 @@ build_stl_str_hl(
 	case STL_ALTPERCENT:
 	    str = buf_tmp;
 	    get_rel_pos(wp, str, TMPLEN);
+	    break;
+
+	case STL_SHOWCMD:
+	    if (p_sc && STRCMP(opt_name, p_sloc) == 0)
+		str = showcmd_buf;
 	    break;
 
 	case STL_ARGLISTSTAT:
@@ -4598,9 +4822,9 @@ build_stl_str_hl(
 	case STL_OFFSET:
 #ifdef FEAT_BYTEOFF
 	    l = ml_find_line_or_offset(wp->w_buffer, wp->w_cursor.lnum, NULL);
-	    num = (wp->w_buffer->b_ml.ml_flags & ML_EMPTY) || l < 0 ?
-		  0L : l + 1 + (!(State & INSERT) && empty_line ?
-				0 : (int)wp->w_cursor.col);
+	    num = (wp->w_buffer->b_ml.ml_flags & ML_EMPTY) || l < 0
+		       ? 0L : l + 1 + ((State & MODE_INSERT) == 0 && empty_line
+				? 0 : (int)wp->w_cursor.col);
 #endif
 	    break;
 
@@ -4740,23 +4964,24 @@ build_stl_str_hl(
 		    if (l + 1 == minwid && fillchar == '-' && VIM_ISDIGIT(*t))
 			*p++ = ' ';
 		    else
-			*p++ = fillchar;
+			MB_CHAR2BYTES(fillchar, p);
 		}
 		minwid = 0;
 	    }
 	    else
 		minwid *= -1;
-	    while (*t && p + 1 < out + outlen)
+	    for (; *t && p + 1 < out + outlen; t++)
 	    {
-		*p++ = *t++;
 		// Change a space by fillchar, unless fillchar is '-' and a
 		// digit follows.
-		if (fillable && p[-1] == ' '
-				     && (!VIM_ISDIGIT(*t) || fillchar != '-'))
-		    p[-1] = fillchar;
+		if (fillable && *t == ' '
+				&& (!VIM_ISDIGIT(*(t + 1)) || fillchar != '-'))
+		    MB_CHAR2BYTES(fillchar, p);
+		else
+		    *p++ = *t;
 	    }
 	    for (; l < minwid && p + 1 < out + outlen; l++)
-		*p++ = fillchar;
+		MB_CHAR2BYTES(fillchar, p);
 	}
 	else if (num >= 0)
 	{
@@ -4804,11 +5029,11 @@ build_stl_str_hl(
 	else
 	    stl_items[curitem].stl_type = Empty;
 
+	if (num >= 0 || (!itemisflag && str != NULL && *str != NUL))
+	    prevchar_isflag = FALSE;	    // Item not NULL, but not a flag
+					    //
 	if (opt == STL_VIM_EXPR)
 	    vim_free(str);
-
-	if (num >= 0 || (!itemisflag && str && *str))
-	    prevchar_isflag = FALSE;	    // Item not NULL, but not a flag
 	curitem++;
     }
     *p = NUL;
@@ -4859,7 +5084,7 @@ build_stl_str_hl(
 		}
 		// Fill up for half a double-wide character.
 		while (++width < maxwidth)
-		    *s++ = fillchar;
+		    MB_CHAR2BYTES(fillchar, s);
 	    }
 	    else
 		s = out + maxwidth - 1;
@@ -4891,7 +5116,7 @@ build_stl_str_hl(
 	    while (++width < maxwidth)
 	    {
 		s = s + STRLEN(s);
-		*s++ = fillchar;
+		MB_CHAR2BYTES(fillchar, s);
 		*s = NUL;
 	    }
 
@@ -4908,18 +5133,45 @@ build_stl_str_hl(
     }
     else if (width < maxwidth && STRLEN(out) + maxwidth - width + 1 < outlen)
     {
-	// Apply STL_MIDDLE if any
+	// Find how many separators there are, which we will use when
+	// figuring out how many groups there are.
+	int num_separators = 0;
+
 	for (l = 0; l < itemcnt; l++)
-	    if (stl_items[l].stl_type == Middle)
-		break;
-	if (l < itemcnt)
 	{
-	    p = stl_items[l].stl_start + maxwidth - width;
-	    STRMOVE(p, stl_items[l].stl_start);
-	    for (s = stl_items[l].stl_start; s < p; s++)
-		*s = fillchar;
-	    for (l++; l < itemcnt; l++)
-		stl_items[l].stl_start += maxwidth - width;
+	    if (stl_items[l].stl_type == Separate)
+	    {
+		// Create an array of the start location for each separator
+		// mark.
+		stl_separator_locations[num_separators] = l;
+		num_separators++;
+	    }
+	}
+
+	// If we have separated groups, then we deal with it now
+	if (num_separators)
+	{
+	    int standard_spaces;
+	    int final_spaces;
+
+	    standard_spaces = (maxwidth - width) / num_separators;
+	    final_spaces = (maxwidth - width) -
+					standard_spaces * (num_separators - 1);
+	    for (l = 0; l < num_separators; l++)
+	    {
+		int dislocation = (l == (num_separators - 1)) ?
+					final_spaces : standard_spaces;
+		dislocation *= MB_CHAR2LEN(fillchar);
+		char_u *start = stl_items[stl_separator_locations[l]].stl_start;
+		char_u *seploc = start + dislocation;
+		STRMOVE(seploc, start);
+		for (s = start; s < seploc;)
+		    MB_CHAR2BYTES(fillchar, s);
+
+		for (int i = stl_separator_locations[l] + 1; i < itemcnt; i++)
+		    stl_items[i].stl_start += dislocation;
+	    }
+
 	    width = maxwidth;
 	}
     }
@@ -4960,20 +5212,25 @@ build_stl_str_hl(
 	sp->userhl = 0;
     }
 
-    // When inside update_screen we do not want redrawing a stausline, ruler,
-    // title, etc. to trigger another redraw, it may cause an endless loop.
-    if (updating_screen)
-    {
-	must_redraw = save_must_redraw;
-	curwin->w_redr_type = save_redr_type;
-    }
+    redraw_not_allowed = save_redraw_not_allowed;
+
+    // A user function may reset KeyTyped, restore it.
+    KeyTyped = save_KeyTyped;
+
+    // Check for an error.  If there is one the display will be messed up and
+    // might loop redrawing.  Avoid that by making the corresponding option
+    // empty.
+    // TODO: find out why using called_emsg_before makes tests fail, does it
+    // matter?
+    // if (called_emsg > called_emsg_before)
+    if (did_emsg > did_emsg_before)
+	set_string_option_direct(opt_name, -1, (char_u *)"",
+					      OPT_FREE | opt_scope, SID_ERROR);
 
     return width;
 }
 #endif // FEAT_STL_OPT
 
-#if defined(FEAT_STL_OPT) || defined(FEAT_CMDL_INFO) \
-	    || defined(FEAT_GUI_TABLINE) || defined(PROTO)
 /*
  * Get relative cursor position in window into "buf[buflen]", in the form 99%,
  * using "Top", "Bot" or "All" when appropriate.
@@ -5008,7 +5265,6 @@ get_rel_pos(
 				    ? (int)(above / ((above + below) / 100L))
 				    : (int)(above * 100L / (above + below)));
 }
-#endif
 
 /*
  * Append (file 2 of 8) to "buf[buflen]", if editing more than one file.
@@ -5146,6 +5402,10 @@ ex_buffer_all(exarg_T *eap)
     else
 	all = TRUE;
 
+    // Stop Visual mode, the cursor and "VIsual" may very well be invalid after
+    // switching to another buffer.
+    reset_VIsual_and_resel();
+
     setpcmark();
 
 #ifdef FEAT_GUI
@@ -5165,17 +5425,21 @@ ex_buffer_all(exarg_T *eap)
 	{
 	    wpnext = wp->w_next;
 	    if ((wp->w_buffer->b_nwindows > 1
-		    || ((cmdmod.cmod_split & WSP_VERT)
-			? wp->w_height + wp->w_status_height < Rows - p_ch
-							    - tabline_height()
-			: wp->w_width != Columns)
-		    || (had_tab > 0 && wp != firstwin)) && !ONE_WINDOW
-			     && !(wp->w_closing || wp->w_buffer->b_locked > 0))
+			|| ((cmdmod.cmod_split & WSP_VERT)
+			    ? wp->w_height + wp->w_status_height < Rows - p_ch
+							     - tabline_height()
+			    : wp->w_width != Columns)
+			|| (had_tab > 0 && wp != firstwin))
+		    && !ONE_WINDOW
+		    && !(wp->w_closing || wp->w_buffer->b_locked > 0)
+		    && !win_unlisted(wp))
 	    {
-		win_close(wp, FALSE);
-		wpnext = firstwin;	// just in case an autocommand does
-					// something strange with windows
-		tpnext = first_tabpage;	// start all over...
+		if (win_close(wp, FALSE) == FAIL)
+		    break;
+		// Just in case an autocommand does something strange with
+		// windows: start all over...
+		wpnext = firstwin;
+		tpnext = first_tabpage;
 		open_wins = 0;
 	    }
 	    else
@@ -5347,12 +5611,12 @@ do_modelines(int flags)
 	return;
 
     ++entered;
-    for (lnum = 1; lnum <= curbuf->b_ml.ml_line_count && lnum <= nmlines;
+    for (lnum = 1; curbuf->b_p_ml && lnum <= curbuf->b_ml.ml_line_count && lnum <= nmlines;
 								       ++lnum)
 	if (chk_modeline(lnum, flags) == FAIL)
 	    nmlines = 0;
 
-    for (lnum = curbuf->b_ml.ml_line_count; lnum > 0 && lnum > nmlines
+    for (lnum = curbuf->b_ml.ml_line_count; curbuf->b_p_ml && lnum > 0 && lnum > nmlines
 		       && lnum > curbuf->b_ml.ml_line_count - nmlines; --lnum)
 	if (chk_modeline(lnum, flags) == FAIL)
 	    nmlines = 0;
@@ -5500,27 +5764,31 @@ bt_normal(buf_T *buf)
     return buf != NULL && buf->b_p_bt[0] == NUL;
 }
 
-#if defined(FEAT_QUICKFIX) || defined(PROTO)
 /*
  * Return TRUE if "buf" is the quickfix buffer.
  */
     int
-bt_quickfix(buf_T *buf)
+bt_quickfix(buf_T *buf UNUSED)
 {
+#ifdef FEAT_QUICKFIX
     return buf != NULL && buf->b_p_bt[0] == 'q';
-}
+#else
+    return FALSE;
 #endif
+}
 
-#if defined(FEAT_TERMINAL) || defined(PROTO)
 /*
  * Return TRUE if "buf" is a terminal buffer.
  */
     int
-bt_terminal(buf_T *buf)
+bt_terminal(buf_T *buf UNUSED)
 {
+#if defined(FEAT_TERMINAL)
     return buf != NULL && buf->b_p_bt[0] == 't';
-}
+#else
+    return FALSE;
 #endif
+}
 
 /*
  * Return TRUE if "buf" is a help buffer.
@@ -5540,6 +5808,7 @@ bt_prompt(buf_T *buf)
     return buf != NULL && buf->b_p_bt[0] == 'p' && buf->b_p_bt[1] == 'r';
 }
 
+#if defined(FEAT_PROP_POPUP) || defined(PROTO)
 /*
  * Return TRUE if "buf" is a buffer for a popup window.
  */
@@ -5549,10 +5818,12 @@ bt_popup(buf_T *buf)
     return buf != NULL && buf->b_p_bt != NULL
 	&& buf->b_p_bt[0] == 'p' && buf->b_p_bt[1] == 'o';
 }
+#endif
 
 /*
  * Return TRUE if "buf" is a "nofile", "acwrite", "terminal" or "prompt"
- * buffer.  This means the buffer name is not a file name.
+ * buffer.  This means the buffer name may not be a file name, at least not for
+ * writing the buffer.
  */
     int
 bt_nofilename(buf_T *buf)
@@ -5564,6 +5835,20 @@ bt_nofilename(buf_T *buf)
 }
 
 /*
+ * Return TRUE if "buf" is a "nofile", "quickfix", "terminal" or "prompt"
+ * buffer.  This means the buffer is not to be read from a file.
+ */
+    static int
+bt_nofileread(buf_T *buf)
+{
+    return buf != NULL && ((buf->b_p_bt[0] == 'n' && buf->b_p_bt[2] == 'f')
+	    || buf->b_p_bt[0] == 't'
+	    || buf->b_p_bt[0] == 'q'
+	    || buf->b_p_bt[0] == 'p');
+}
+
+#if defined(FEAT_QUICKFIX) || defined(PROTO)
+/*
  * Return TRUE if "buf" has 'buftype' set to "nofile".
  */
     int
@@ -5571,10 +5856,11 @@ bt_nofile(buf_T *buf)
 {
     return buf != NULL && buf->b_p_bt[0] == 'n' && buf->b_p_bt[2] == 'f';
 }
+#endif
 
 /*
- * Return TRUE if "buf" is a "nowrite", "nofile", "terminal" or "prompt"
- * buffer.
+ * Return TRUE if "buf" is a "nowrite", "nofile", "terminal", "prompt", or
+ * "popup" buffer.
  */
     int
 bt_dontwrite(buf_T *buf)
@@ -5584,18 +5870,16 @@ bt_dontwrite(buf_T *buf)
 		 || buf->b_p_bt[0] == 'p');
 }
 
-#if defined(FEAT_QUICKFIX) || defined(PROTO)
     int
 bt_dontwrite_msg(buf_T *buf)
 {
     if (bt_dontwrite(buf))
     {
-	emsg(_("E382: Cannot write, 'buftype' option is set"));
+	emsg(_(e_cannot_write_buftype_option_is_set));
 	return TRUE;
     }
     return FALSE;
 }
-#endif
 
 /*
  * Return TRUE if the buffer should be hidden, according to 'hidden', ":hide"
@@ -5679,14 +5963,14 @@ buf_get_fname(buf_T *buf)
     void
 set_buflisted(int on)
 {
-    if (on != curbuf->b_p_bl)
-    {
-	curbuf->b_p_bl = on;
-	if (on)
-	    apply_autocmds(EVENT_BUFADD, NULL, NULL, FALSE, curbuf);
-	else
-	    apply_autocmds(EVENT_BUFDELETE, NULL, NULL, FALSE, curbuf);
-    }
+    if (on == curbuf->b_p_bl)
+	return;
+
+    curbuf->b_p_bl = on;
+    if (on)
+	apply_autocmds(EVENT_BUFADD, NULL, NULL, FALSE, curbuf);
+    else
+	apply_autocmds(EVENT_BUFDELETE, NULL, NULL, FALSE, curbuf);
 }
 
 /*
@@ -5714,8 +5998,14 @@ buf_contents_changed(buf_T *buf)
 	return TRUE;
     }
 
-    // set curwin/curbuf to buf and save a few things
+    // Set curwin/curbuf to buf and save a few things.
     aucmd_prepbuf(&aco, newbuf);
+    if (curbuf != newbuf)
+    {
+	// Failed to find a window for "newbuf".
+	wipe_buffer(newbuf, FALSE);
+	return TRUE;
+    }
 
     if (ml_open(curbuf) == OK
 	    && readfile(buf->b_ffname, buf->b_fname,

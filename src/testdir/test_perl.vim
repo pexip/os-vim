@@ -1,6 +1,7 @@
 " Tests for Perl interface
 
 source check.vim
+source shared.vim
 CheckFeature perl
 
 " FIXME: RunTest don't see any error when Perl abort...
@@ -52,6 +53,11 @@ func Test_buffer_Append()
   perl @l = ('5' ..'7')
   perl $curbuf->Append(0, @l)
   call assert_equal(['5', '6', '7', '', '1', '2', '3', '4'], getline(1, '$'))
+
+  perl $curbuf->Append(0)
+  call assert_match('^Usage: VIBUF::Append(vimbuf, lnum, @lines) at .* line 1\.$',
+        \           GetMessages()[-1])
+
   bwipe!
 endfunc
 
@@ -61,6 +67,11 @@ func Test_buffer_Set()
   perl $curbuf->Set(2, 'a', 'b', 'c')
   perl $curbuf->Set(4, 'A', 'B', 'C')
   call assert_equal(['1', 'a', 'b', 'A', 'B'], getline(1, '$'))
+
+  perl $curbuf->Set(0)
+  call assert_match('^Usage: VIBUF::Set(vimbuf, lnum, @lines) at .* line 1\.$',
+        \           GetMessages()[-1])
+
   bwipe!
 endfunc
 
@@ -152,11 +163,7 @@ func Test_perleval()
   call assert_equal(0, perleval('0'))
   call assert_equal(2, perleval('2'))
   call assert_equal(-2, perleval('-2'))
-  if has('float')
-    call assert_equal(2.5, perleval('2.5'))
-  else
-    call assert_equal(2, perleval('2.5'))
-  end
+  call assert_equal(2.5, perleval('2.5'))
 
   sandbox call assert_equal(2, perleval('2'))
 
@@ -210,6 +217,13 @@ func Test_perldo()
   perldo VIM::DoCommand("%d_")
   bwipe!
 
+  " Check a Perl expression which gives an error.
+  new
+  call setline(1, 'one')
+  perldo 1/0
+  call assert_match('^Illegal division by zero at .* line 1\.$', GetMessages()[-1])
+  bwipe!
+
   " Check switching to another buffer does not trigger ml_get error.
   new
   let wincount = winnr('$')
@@ -231,12 +245,13 @@ endfunc
 func Test_stdio()
   redir =>l:out
   perl << trim EOF
-    VIM::Msg("&VIM::Msg");
+    VIM::Msg("VIM::Msg");
+    VIM::Msg("VIM::Msg Error", "Error");
     print "STDOUT";
     print STDERR "STDERR";
   EOF
   redir END
-  call assert_equal(['&VIM::Msg', 'STDOUT', 'STDERR'], split(l:out, "\n"))
+  call assert_equal(['VIM::Msg', 'VIM::Msg Error', 'STDOUT', 'STDERR'], split(l:out, "\n"))
 endfunc
 
 " Run first to get a clean namespace
@@ -287,6 +302,16 @@ func Test_000_SvREFCNT()
   VIM::Eval("assert_false($$w)");
 --perl
   %bw!
+endfunc
+
+" This caused a memory error before issue #10386 was fixed
+func Test_stack_usage_fix()
+   let script =<< CODE
+     " This will grow Perl's stack in first invocation
+     eval [0, 0]->map({ -> perleval("push@_,0..4096;0") })
+     q!
+CODE
+   call RunVim([], script, '')
 endfunc
 
 func Test_set_cursor()

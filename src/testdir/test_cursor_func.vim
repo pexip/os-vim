@@ -1,5 +1,7 @@
 " Tests for cursor() and other functions that get/set the cursor position
 
+source check.vim
+
 func Test_wrong_arguments()
   call assert_fails('call cursor(1. 3)', 'E474:')
   call assert_fails('call cursor(test_null_list())', 'E474:')
@@ -34,6 +36,18 @@ func Test_move_cursor()
   call assert_equal([1, 1, 1], getcurpos()[1:3])
 
   call assert_fails('call cursor(-1, -1)', 'E475:')
+
+  quit!
+endfunc
+
+func Test_curswant_maxcol()
+  new
+  call setline(1, 'foo')
+
+  " Test that after "$" command curswant is set to the same value as v:maxcol.
+  normal! 1G$
+  call assert_equal(v:maxcol, getcurpos()[4])
+  call assert_equal(v:maxcol, winsaveview().curswant)
 
   quit!
 endfunc
@@ -101,14 +115,65 @@ func Test_screenpos()
 	\ 'col': wincol + 9,
 	\ 'curscol': wincol + 9,
 	\ 'endcol': wincol + 9}, screenpos(winid, 2, 22))
+
+  let wininfo = getwininfo(winid)[0]
+  call setline(3, ['x']->repeat(wininfo.height))
+  call setline(line('$') + 1, 'x'->repeat(wininfo.width * 3))
+  setlocal nonumber display=lastline so=0
+  exe "normal G\<C-Y>\<C-Y>"
+  redraw
+  call assert_equal({'row': winrow + wininfo.height - 1,
+	\ 'col': wincol + 7,
+	\ 'curscol': wincol + 7,
+	\ 'endcol': wincol + 7}, winid->screenpos(line('$'), 8))
+  call assert_equal({'row': 0, 'col': 0, 'curscol': 0, 'endcol': 0},
+        \ winid->screenpos(line('$'), 22))
+
   close
   call assert_equal({}, screenpos(999, 1, 1))
-  bwipe!
 
-  call assert_equal({'col': 1, 'row': 1, 'endcol': 1, 'curscol': 1}, screenpos(win_getid(), 1, 1))
+  bwipe!
+  set display&
+
+  call assert_equal(#{col: 1, row: 1, endcol: 1, curscol: 1}, screenpos(win_getid(), 1, 1))
   nmenu WinBar.TEST :
-  call assert_equal({'col': 1, 'row': 2, 'endcol': 1, 'curscol': 1}, screenpos(win_getid(), 1, 1))
+  call assert_equal(#{col: 1, row: 2, endcol: 1, curscol: 1}, screenpos(win_getid(), 1, 1))
   nunmenu WinBar.TEST
+endfunc
+
+func Test_screenpos_fold()
+  CheckFeature folding
+
+  enew!
+  call setline(1, range(10))
+  3,5fold
+  redraw
+  call assert_equal(2, screenpos(1, 2, 1).row)
+  call assert_equal(#{col: 1, row: 3, endcol: 1, curscol: 1}, screenpos(1, 3, 1))
+  call assert_equal(#{col: 1, row: 3, endcol: 1, curscol: 1}, screenpos(1, 4, 1))
+  call assert_equal(#{col: 1, row: 3, endcol: 1, curscol: 1}, screenpos(1, 5, 1))
+  setlocal number
+  call assert_equal(#{col: 5, row: 3, endcol: 5, curscol: 5}, screenpos(1, 3, 1))
+  call assert_equal(#{col: 5, row: 3, endcol: 5, curscol: 5}, screenpos(1, 4, 1))
+  call assert_equal(#{col: 5, row: 3, endcol: 5, curscol: 5}, screenpos(1, 5, 1))
+  call assert_equal(4, screenpos(1, 6, 1).row)
+  bwipe!
+endfunc
+
+func Test_screenpos_diff()
+  CheckFeature diff
+
+  enew!
+  call setline(1, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'])
+  vnew
+  call setline(1, ['a', 'b', 'c', 'g', 'h', 'i'])
+  windo diffthis
+  wincmd w
+  call assert_equal(#{col: 3, row: 7, endcol: 3, curscol: 3}, screenpos(0, 4, 1))
+
+  windo diffoff
+  bwipe!
+  bwipe!
 endfunc
 
 func Test_screenpos_number()
@@ -122,6 +187,9 @@ func Test_screenpos_number()
   let pos = screenpos(winid, 1, 66)
   call assert_equal(winrow, pos.row)
   call assert_equal(wincol + 66 + 3, pos.col)
+
+  call assert_fails('echo screenpos(0, 2, 1)', 'E966:')
+
   close
   bwipe!
 endfunc
@@ -143,12 +211,12 @@ func Test_getcharpos()
   call assert_fails('call getcharpos({})', 'E731:')
   call assert_equal([0, 0, 0, 0], getcharpos(0))
   new
-  call setline(1, ['', "01\tà4è678", 'Ⅵ', '012345678'])
+  call setline(1, ['', "01\tà4è678", 'Ⅵ', '012345678', ' │  x'])
 
   " Test for '.' and '$'
   normal 1G
   call assert_equal([0, 1, 1, 0], getcharpos('.'))
-  call assert_equal([0, 4, 1, 0], getcharpos('$'))
+  call assert_equal([0, 5, 1, 0], getcharpos('$'))
   normal 2G6l
   call assert_equal([0, 2, 7, 0], getcharpos('.'))
   normal 3G$
@@ -161,6 +229,12 @@ func Test_getcharpos()
   call assert_equal([0, 2, 8, 0], getcharpos("'m"))
   delmarks m
   call assert_equal([0, 0, 0, 0], getcharpos("'m"))
+
+  " Check mark does not move
+  normal 5Gfxma
+  call assert_equal([0, 5, 5, 0], getcharpos("'a"))
+  call assert_equal([0, 5, 5, 0], getcharpos("'a"))
+  call assert_equal([0, 5, 5, 0], getcharpos("'a"))
 
   " Test for the visual start column
   vnoremap <expr> <F3> SaveVisualStartCharPos()
@@ -236,8 +310,9 @@ endfunc
 
 " Test for the charcol() function
 func Test_charcol()
-  call assert_fails('call charcol({})', 'E731:')
-  call assert_equal(0, charcol(0))
+  call assert_fails('call charcol({})', 'E1222:')
+  call assert_fails('call charcol(".", [])', 'E1210:')
+  call assert_fails('call charcol(0)', 'E1222:')
   new
   call setline(1, ['', "01\tà4è678", 'Ⅵ', '012345678'])
 
@@ -292,6 +367,25 @@ func Test_charcol()
   exe "normal 2G6li\<F3>"
   call assert_equal([1, 10, 2, 10, 7], g:InsertCurrentCol)
   iunmap <F3>
+
+  " Test for getting the column number in another window.
+  let winid = win_getid()
+  new
+  call win_execute(winid, 'normal 1G')
+  call assert_equal(1, charcol('.', winid))
+  call assert_equal(1, charcol('$', winid))
+  call win_execute(winid, 'normal 2G6l')
+  call assert_equal(7, charcol('.', winid))
+  call assert_equal(10, charcol('$', winid))
+
+  " calling from another tab page also works
+  tabnew
+  call assert_equal(7, charcol('.', winid))
+  call assert_equal(10, charcol('$', winid))
+  tabclose
+
+  " unknown window ID
+  call assert_equal(0, charcol('.', 10001))
 
   %bw!
 endfunc
@@ -348,8 +442,14 @@ func Test_setcursorcharpos()
   normal G
   call setcursorcharpos([1, 1])
   call assert_equal([1, 1], [line('.'), col('.')])
+
   call setcursorcharpos([2, 7, 0])
   call assert_equal([2, 9], [line('.'), col('.')])
+  call setcursorcharpos([0, 7, 0])
+  call assert_equal([2, 9], [line('.'), col('.')])
+  call setcursorcharpos(0, 7, 0)
+  call assert_equal([2, 9], [line('.'), col('.')])
+
   call setcursorcharpos(3, 4)
   call assert_equal([3, 1], [line('.'), col('.')])
   call setcursorcharpos([3, 1])
@@ -366,6 +466,28 @@ func Test_setcursorcharpos()
   call assert_equal([4, 1], [line('.'), col('.')])
 
   %bw!
+endfunc
+
+" Test for virtcol2col()
+func Test_virtcol2col()
+  new
+  call setline(1, ["a\tb\tc"])
+  call assert_equal(1, virtcol2col(0, 1, 1))
+  call assert_equal(2, virtcol2col(0, 1, 2))
+  call assert_equal(2, virtcol2col(0, 1, 8))
+  call assert_equal(3, virtcol2col(0, 1, 9))
+  call assert_equal(4, virtcol2col(0, 1, 10))
+  call assert_equal(4, virtcol2col(0, 1, 16))
+  call assert_equal(5, virtcol2col(0, 1, 17))
+  call assert_equal(-1, virtcol2col(10, 1, 1))
+  call assert_equal(-1, virtcol2col(0, 10, 1))
+  call assert_equal(-1, virtcol2col(0, -1, 1))
+  call assert_equal(-1, virtcol2col(0, 1, -1))
+  call assert_equal(5, virtcol2col(0, 1, 20))
+  call assert_fails('echo virtcol2col("0", 1, 20)', 'E1210:')
+  call assert_fails('echo virtcol2col(0, "1", 20)', 'E1210:')
+  call assert_fails('echo virtcol2col(0, 1, "1")', 'E1210:')
+  bw!
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

@@ -80,6 +80,20 @@ func Test_edit_change()
   call setline(1, "\t⒌")
   normal Cx
   call assert_equal('x', getline(1))
+  " Do a visual block change
+  call setline(1, ['a', 'b', 'c'])
+  exe "normal gg3l\<C-V>2jcx"
+  call assert_equal(['a  x', 'b  x', 'c  x'], getline(1, '$'))
+  bwipe!
+  set virtualedit=
+endfunc
+
+func Test_edit_special_char()
+  new
+  se ve=all
+  norm a0
+  sil! exe "norm o00000\<Nul>k<a0s"
+
   bwipe!
   set virtualedit=
 endfunc
@@ -289,6 +303,16 @@ func Test_replace_after_eol()
   call append(0, '"r"')
   normal gg$5lrxa
   call assert_equal('"r"    x', getline(1))
+  " visual block replace
+  %d _
+  call setline(1, ['a', '', 'b'])
+  exe "normal 2l\<C-V>2jrx"
+  call assert_equal(['a x', '  x', 'b x'], getline(1, '$'))
+  " visual characterwise selection replace after eol
+  %d _
+  call setline(1, 'a')
+  normal 4lv2lrx
+  call assert_equal('a   xxx', getline(1))
   bwipe!
   set virtualedit=
 endfunc
@@ -374,5 +398,215 @@ func Test_ve_backspace()
   set virtualedit&
   close!
 endfunc
+
+" Test for delete (x) on EOL character and after EOL
+func Test_delete_past_eol()
+  new
+  call setline(1, "ab")
+  set virtualedit=all
+  exe "normal 2lx"
+  call assert_equal('ab', getline(1))
+  exe "normal 10lx"
+  call assert_equal('ab', getline(1))
+  set virtualedit&
+  bw!
+endfunc
+
+" After calling s:TryVirtualeditReplace(), line 1 will contain one of these
+" two strings, depending on whether virtual editing is on or off.
+let s:result_ve_on  = 'a      x'
+let s:result_ve_off = 'x'
+
+" Utility function for Test_global_local_virtualedit()
+func s:TryVirtualeditReplace()
+  call setline(1, 'a')
+  normal gg7l
+  normal rx
+endfunc
+
+" Test for :set and :setlocal
+func Test_global_local_virtualedit()
+  new
+
+  " Verify that 'virtualedit' is initialized to empty, can be set globally to
+  " all and to empty, and can be set locally to all and to empty.
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+  set ve=all
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_on, getline(1))
+  set ve=
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+  setlocal ve=all
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_on, getline(1))
+  setlocal ve=
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+
+  " Verify that :set affects multiple windows.
+  split
+  set ve=all
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_on, getline(1))
+  wincmd p
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_on, getline(1))
+  set ve=
+  wincmd p
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+  bwipe!
+
+  " Verify that :setlocal affects only the current window.
+  new
+  split
+  setlocal ve=all
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_on, getline(1))
+  wincmd p
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+  bwipe!
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+
+  " Verify that the buffer 'virtualedit' state follows the global value only
+  " when empty and that "none" works as expected.
+  "
+  "          'virtualedit' State
+  " +--------+--------------------------+
+  " | Local  |          Global          |
+  " |        |                          |
+  " +--------+--------+--------+--------+
+  " |        | ""     | "all"  | "none" |
+  " +--------+--------+--------+--------+
+  " | ""     |  off   |  on    |  off   |
+  " | "all"  |  on    |  on    |  on    |
+  " | "none" |  off   |  off   |  off   |
+  " +--------+--------+--------+--------+
+  new
+
+  setglobal ve=
+  setlocal ve=
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+  setlocal ve=all
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_on, getline(1))
+  setlocal ve=none
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+
+  setglobal ve=all
+  setlocal ve=
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_on, getline(1))
+  setlocal ve=all
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_on, getline(1))
+  setlocal ve=none
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+  setlocal ve=NONE
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+
+  setglobal ve=none
+  setlocal ve=
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+  setlocal ve=all
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_on, getline(1))
+  setlocal ve=none
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+
+  bwipe!
+
+  " Verify that the 'virtualedit' state is copied to new windows.
+  new
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+  split
+  setlocal ve=all
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_on, getline(1))
+  split
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_on, getline(1))
+  setlocal ve=
+  split
+  call s:TryVirtualeditReplace()
+  call assert_equal(s:result_ve_off, getline(1))
+  bwipe!
+
+  setlocal virtualedit&
+  set virtualedit&
+endfunc
+
+func Test_virtualedit_setlocal()
+  enew
+  setglobal virtualedit=all
+  setlocal virtualedit=all
+  normal! l
+  redraw
+  setlocal virtualedit=none
+  call assert_equal(1, wincol())
+
+  setlocal virtualedit&
+  set virtualedit&
+endfunc
+
+func Test_virtualedit_mouse()
+  let save_mouse = &mouse
+  set mouse=a
+  set virtualedit=all
+  new
+
+  call setline(1, ["text\tword"])
+  redraw
+  call test_setmouse(1, 4)
+  call feedkeys("\<LeftMouse>", "xt")
+  call assert_equal([0, 1, 4, 0, 4], getcurpos())
+  call test_setmouse(1, 5)
+  call feedkeys("\<LeftMouse>", "xt")
+  call assert_equal([0, 1, 5, 0, 5], getcurpos())
+  call test_setmouse(1, 6)
+  call feedkeys("\<LeftMouse>", "xt")
+  call assert_equal([0, 1, 5, 1, 6], getcurpos())
+  call test_setmouse(1, 7)
+  call feedkeys("\<LeftMouse>", "xt")
+  call assert_equal([0, 1, 5, 2, 7], getcurpos())
+  call test_setmouse(1, 8)
+  call feedkeys("\<LeftMouse>", "xt")
+  call assert_equal([0, 1, 5, 3, 8], getcurpos())
+  call test_setmouse(1, 9)
+  call feedkeys("\<LeftMouse>", "xt")
+  call assert_equal([0, 1, 6, 0, 9], getcurpos())
+  call test_setmouse(1, 15)
+  call feedkeys("\<LeftMouse>", "xt")
+  call assert_equal([0, 1, 10, 2, 15], getcurpos())
+
+  bwipe!
+  let &mouse = save_mouse
+  set virtualedit&
+endfunc
+
+" this was replacing the NUL at the end of the line
+func Test_virtualedit_replace_after_tab()
+  new
+  s/\v/	0
+  set ve=all
+  let @" = ''
+  sil! norm vPvr0
+
+  call assert_equal("\t0", getline(1))
+  set ve&
+  bwipe!
+endfunc
+
 
 " vim: shiftwidth=2 sts=2 expandtab

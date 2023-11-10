@@ -2,7 +2,7 @@
 " Language: R help file
 " Maintainer: Jakson Alves de Aquino <jalvesaq@gmail.com>
 " Homepage: https://github.com/jalvesaq/R-Vim-runtime
-" Last Change:	Tue Apr 07, 2015  04:37PM
+" Last Change:	Sun Apr 24, 2022  09:12AM
 
 " Only do this when not yet done for this buffer
 if exists("b:did_ftplugin")
@@ -17,8 +17,8 @@ set cpo&vim
 
 setlocal iskeyword=@,48-57,_,.
 
-if has("gui_win32") && !exists("b:browsefilter")
-  let b:browsefilter = "R Source Files (*.R *.Rnw *.Rd *.Rmd *.Rrst)\t*.R;*.Rnw;*.Rd;*.Rmd;*.Rrst\n" .
+if (has("gui_win32") || has("gui_gtk")) && !exists("b:browsefilter")
+  let b:browsefilter = "R Source Files (*.R *.Rnw *.Rd *.Rmd *.Rrst *.qmd)\t*.R;*.Rnw;*.Rd;*.Rmd;*.Rrst;*.qmd\n" .
         \ "All Files (*.*)\t*.*\n"
 endif
 

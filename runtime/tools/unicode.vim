@@ -158,7 +158,8 @@ func! BuildCombiningTable()
   let end = -1
   let ranges = []
   for p in s:dataprops
-    if p[2] == 'Mn' || p[2] == 'Mc' || p[2] == 'Me'
+    " The 'Mc' property was removed, it does take up space.
+    if p[2] == 'Mn' || p[2] == 'Me'
       let n = ('0x' . p[0]) + 0
       if start >= 0 && end + 1 == n
         " continue with same range.
@@ -195,6 +196,13 @@ func! BuildWidthTable(pattern, tableName)
   let end = -1
   let ranges = []
   let dataidx = 0
+  " Account for indentation differences between ambiguous and doublewidth
+  " table in mbyte.c
+  if a:pattern == 'A'
+    let spc = '    '
+  else
+    let spc = "\t"
+  endif
   for p in s:widthprops
     if p[1][0] =~ a:pattern
       if p[0] =~ '\.\.'
@@ -229,7 +237,7 @@ func! BuildWidthTable(pattern, tableName)
         else
           if start >= 0
             " produce previous range
-            call add(ranges, printf("\t{0x%04x, 0x%04x},", start, end))
+            call add(ranges, printf("%s{0x%04x, 0x%04x},", spc, start, end))
 	    if a:pattern == 'A'
 	      call add(s:ambitable, [start, end])
 	    else
@@ -243,7 +251,7 @@ func! BuildWidthTable(pattern, tableName)
     endif
   endfor
   if start >= 0
-    call add(ranges, printf("\t{0x%04x, 0x%04x},", start, end))
+    call add(ranges, printf("%s{0x%04x, 0x%04x},", spc, start, end))
     if a:pattern == 'A'
       call add(s:ambitable, [start, end])
     else
@@ -254,11 +262,20 @@ func! BuildWidthTable(pattern, tableName)
   " New buffer to put the result in.
   new
   exe "file " . a:tableName
-  call setline(1, "    static struct interval " . a:tableName . "[] =")
-  call setline(2, "    {")
+  if a:pattern == 'A'
+    call setline(1, "static struct interval " . a:tableName . "[] =")
+    call setline(2, "{")
+  else
+    call setline(1, "    static struct interval " . a:tableName . "[] =")
+    call setline(2, "    {")
+  endif
   call append('$', ranges)
   call setline('$', getline('$')[:-2])  " remove last comma
-  call setline(line('$') + 1, "    };")
+  if a:pattern == 'A'
+    call setline(line('$') + 1, "};")
+  else
+    call setline(line('$') + 1, "    };")
+  endif
   wincmd p
 endfunc
 
@@ -446,8 +463,9 @@ let s:ambitable = []
 call BuildWidthTable('A', 'ambiguous')
 
 " Edit the emoji text file.  Requires the netrw plugin.
-edit https://unicode.org/Public/emoji/12.1/emoji-data.txt
-
-" Build the emoji table. Ver. 1.0 - 6.0
-" Must come after the "ambiguous" and "doublewidth" tables
-call BuildEmojiTable()
+" commented out, because it drops too many characters
+"edit https://unicode.org/Public/15.0.0/ucd/emoji/emoji-data.txt
+"
+"" Build the emoji table. Ver. 1.0 - 6.0
+"" Must come after the "ambiguous" and "doublewidth" tables
+"call BuildEmojiTable()

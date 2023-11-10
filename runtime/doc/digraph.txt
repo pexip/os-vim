@@ -1,4 +1,4 @@
-*digraph.txt*   For Vim version 8.2.  Last change: 2020 Jul 16
+*digraph.txt*   For Vim version 9.0.  Last change: 2022 Nov 22
 
 
 		  VIM REFERENCE MANUAL    by Bram Moolenaar
@@ -38,6 +38,9 @@ An alternative is using the 'keymap' option.
 <			Avoid defining a digraph with '_' (underscore) as the
 			first character, it has a special meaning in the
 			future.
+			NOTE: This command cannot add a digraph that starts
+			with a white space.  If you want to add such digraph,
+			you can use |digraph_set()| instead.
 
 Vim is normally compiled with the |+digraphs| feature.  If the feature is
 disabled, the ":digraph" command will display an error message.
@@ -159,7 +162,7 @@ These are the RFC1345 digraphs for the one-byte characters.  See the output of
 ":digraphs" for the others.
 
 EURO
-
+							*euro* *euro-digraph*
 Exception: RFC1345 doesn't specify the euro sign.  In Vim the digraph =e was
 added for this.  Note the difference between latin1, where the digraph Cu is
 used for the currency sign, and latin9 (iso-8859-15), where the digraph =e is
@@ -348,8 +351,8 @@ $	DO	0x24	 36	DOLLAR SIGN
 þ	th	0xfe	254	LATIN SMALL LETTER THORN (Icelandic)
 ÿ	y:	0xff	255	LATIN SMALL LETTER Y WITH DIAERESIS
 
-If your Vim is compiled with |multibyte| support and you are using a multibyte
-'encoding', Vim provides this enhanced set of additional digraphs:
+If you are using a |multibyte| 'encoding', Vim provides this enhanced set of
+additional digraphs:
 
 							*digraph-table-mbyte*
 char  digraph	hex	dec	official name ~

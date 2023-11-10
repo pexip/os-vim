@@ -72,6 +72,54 @@ func Test_address_fold()
   quit!
 endfunc
 
+func Test_address_offsets()
+  " check the help for :range-closed-fold
+  enew
+  call setline(1, [
+        \ '1 one',
+        \ '2 two',
+        \ '3 three',
+        \ '4 four FOLDED',
+        \ '5 five FOLDED',
+        \ '6 six',
+        \ '7 seven',
+        \ '8 eight',
+        \])
+  set foldmethod=manual
+  normal 4Gvjzf
+  3,4+2yank
+  call assert_equal([
+        \ '3 three',
+        \ '4 four FOLDED',
+        \ '5 five FOLDED',
+        \ '6 six',
+        \ '7 seven',
+        \ ], getreg(0,1,1))
+
+  enew!
+  call setline(1, [
+        \ '1 one',
+        \ '2 two',
+        \ '3 three FOLDED',
+        \ '4 four FOLDED',
+        \ '5 five FOLDED',
+        \ '6 six FOLDED',
+        \ '7 seven',
+        \ '8 eight',
+        \])
+  normal 3Gv3jzf
+  2,4-1yank
+  call assert_equal([
+        \ '2 two',
+        \ '3 three FOLDED',
+        \ '4 four FOLDED',
+        \ '5 five FOLDED',
+        \ '6 six FOLDED',
+        \ ], getreg(0,1,1))
+
+  bwipe!
+endfunc
+
 func Test_indent_fold()
     new
     call setline(1, ['', 'a', '    b', '    c'])
@@ -92,6 +140,42 @@ func Test_indent_fold2()
     let a=map(range(1,5), 'v:val->foldclosed()')
     call assert_equal([-1,-1,-1,4,4], a)
     bw!
+endfunc
+
+" Test for fold indent with indents greater than 'foldnestmax'
+func Test_indent_fold_max()
+  new
+  setlocal foldmethod=indent
+  setlocal shiftwidth=2
+  " 'foldnestmax' default value is 20
+  call setline(1, "\t\t\t\t\t\ta")
+  call assert_equal(20, foldlevel(1))
+  setlocal foldnestmax=10
+  call assert_equal(10, foldlevel(1))
+  setlocal foldnestmax=-1
+  call assert_equal(0, foldlevel(1))
+  bw!
+endfunc
+
+func Test_indent_fold_tabstop()
+  call setline(1, ['0', '    1', '    1', "\t2", "\t2"])
+  setlocal shiftwidth=4
+  setlocal foldcolumn=1
+  setlocal foldlevel=2
+  setlocal foldmethod=indent
+  redraw
+  call assert_equal('2        2', ScreenLines(5, 10)[0])
+  vsplit
+  windo diffthis
+  botright new
+  " This 'tabstop' value should not be used for folding in other buffers.
+  setlocal tabstop=4
+  diffoff!
+  redraw
+  call assert_equal('2        2', ScreenLines(5, 10)[0])
+
+  bwipe!
+  bwipe!
 endfunc
 
 func Test_manual_fold_with_filter()
@@ -122,9 +206,9 @@ func Test_indent_fold_with_read()
     call assert_equal(1, foldlevel(n))
   endfor
 
-  call writefile(["a", "", "\<Tab>a"], 'Xfile')
+  call writefile(["a", "", "\<Tab>a"], 'Xinfofile', 'D')
   foldopen
-  2read Xfile
+  2read Xinfofile
   %foldclose
   call assert_equal(1, foldlevel(1))
   call assert_equal(2, foldclosedend(1))
@@ -135,7 +219,6 @@ func Test_indent_fold_with_read()
 
   bwipe!
   set foldmethod&
-  call delete('Xfile')
 endfunc
 
 func Test_combining_folds_indent()
@@ -201,8 +284,8 @@ func Test_update_folds_expr_read()
   set foldexpr=s:TestFoldExpr(v:lnum)
   2
   foldopen
-  call writefile(['b', 'b', 'a', 'a', 'd', 'a', 'a', 'c'], 'Xfile')
-  read Xfile
+  call writefile(['b', 'b', 'a', 'a', 'd', 'a', 'a', 'c'], 'Xupfofile', 'D')
+  read Xupfofile
   %foldclose
   call assert_equal(2, foldclosedend(1))
   call assert_equal(0, foldlevel(3))
@@ -211,7 +294,51 @@ func Test_update_folds_expr_read()
   call assert_equal(10, foldclosedend(7))
   call assert_equal(14, foldclosedend(11))
 
-  call delete('Xfile')
+  bwipe!
+  set foldmethod& foldexpr&
+endfunc
+
+" Test for what patch 8.1.0535 fixes.
+func Test_foldexpr_no_interrupt_addsub()
+  new
+  func! FoldFunc()
+    call setpos('.', getcurpos())
+    return '='
+  endfunc
+
+  set foldmethod=expr
+  set foldexpr=FoldFunc()
+  call setline(1, '1.2')
+
+  exe "norm! $\<C-A>"
+  call assert_equal('1.3', getline(1))
+
+  bwipe!
+  delfunc FoldFunc
+  set foldmethod& foldexpr&
+endfunc
+
+" Fold function defined in another script
+func Test_foldexpr_compiled()
+  new
+  let lines =<< trim END
+      vim9script
+      def FoldFunc(): number
+        return v:lnum
+      enddef
+
+      set foldmethod=expr
+      set foldexpr=s:FoldFunc()
+  END
+  call writefile(lines, 'XfoldExpr', 'D')
+  source XfoldExpr
+
+  call setline(1, ['one', 'two', 'three'])
+  redraw
+  call assert_equal(1, foldlevel(1))
+  call assert_equal(2, foldlevel(2))
+  call assert_equal(3, foldlevel(3))
+
   bwipe!
   set foldmethod& foldexpr&
 endfunc
@@ -329,7 +456,7 @@ func Test_move_folds_around_manual()
   %foldopen!
   13m7
   call Check_foldlevels([1, 2, 2, 2, 1, 2, 2, 1, 1, 1, 2, 2, 2, 1, 0])
-  
+
   bw!
 endfunc
 
@@ -467,7 +594,7 @@ endfunc
 
 " Basic test if a fold can be created, opened, moving to the end and closed
 func Test_fold_manual()
-  enew!
+  new
   set fdm=manual
 
   let content = ['1 aa', '2 bb', '3 cc']
@@ -482,13 +609,67 @@ func Test_fold_manual()
   normal zc
   call assert_equal('1 aa', getline(foldclosed('.')))
 
+  " Create a fold inside a closed fold after setting 'foldlevel'
+  %d _
+  call setline(1, range(1, 5))
+  1,5fold
+  normal zR
+  2,4fold
+  set foldlevel=1
+  3fold
+  call assert_equal([1, 3, 3, 3, 1], map(range(1, 5), {->foldlevel(v:val)}))
+  set foldlevel&
+
+  " Create overlapping folds (at the start and at the end)
+  normal zE
+  2,3fold
+  normal zR
+  3,4fold
+  call assert_equal([0, 2, 2, 1, 0], map(range(1, 5), {->foldlevel(v:val)}))
+  normal zE
+  3,4fold
+  normal zR
+  2,3fold
+  call assert_equal([0, 1, 2, 2, 0], map(range(1, 5), {->foldlevel(v:val)}))
+
+  " Create a nested fold across two non-adjoining folds
+  %d _
+  call setline(1, range(1, 7))
+  1,2fold
+  normal zR
+  4,5fold
+  normal zR
+  6,7fold
+  normal zR
+  1,5fold
+  call assert_equal([2, 2, 1, 2, 2, 1, 1],
+        \ map(range(1, 7), {->foldlevel(v:val)}))
+
+  " A newly created nested fold should be closed
+  %d _
+  call setline(1, range(1, 6))
+  1,6fold
+  normal zR
+  3,4fold
+  normal zR
+  2,5fold
+  call assert_equal([1, 2, 3, 3, 2, 1], map(range(1, 6), {->foldlevel(v:val)}))
+  call assert_equal(2, foldclosed(4))
+  call assert_equal(5, foldclosedend(4))
+
+  " Test zO, zC and zA on a line with no folds.
+  normal zE
+  call assert_fails('normal zO', 'E490:')
+  call assert_fails('normal zC', 'E490:')
+  call assert_fails('normal zA', 'E490:')
+
   set fdm&
-  enew!
+  bw!
 endfunc
 
 " test folding with markers.
 func Test_fold_marker()
-  enew!
+  new
   set fdm=marker fdl=1 fdc=3
 
   let content = ['4 dd {{{', '5 ee {{{ }}}', '6 ff }}}']
@@ -502,20 +683,29 @@ func Test_fold_marker()
   normal kYpj
   call assert_equal(0, foldlevel('.'))
 
+  " Use only closing fold marker (without and with a count)
+  set fdl&
+  %d _
+  call setline(1, ['one }}}', 'two'])
+  call assert_equal([0, 0], [foldlevel(1), foldlevel(2)])
+  %d _
+  call setline(1, ['one }}}4', 'two'])
+  call assert_equal([4, 3], [foldlevel(1), foldlevel(2)])
+
   set fdm& fdl& fdc&
-  enew!
+  bw!
 endfunc
 
 " test create fold markers with C filetype
 func Test_fold_create_marker_in_C()
-  enew!
+  bw!
   set fdm=marker fdl=9
   set filetype=c
 
   let content =<< trim [CODE]
     /*
      * comment
-     * 
+     *
      *
      */
     int f(int* p) {
@@ -533,12 +723,12 @@ func Test_fold_create_marker_in_C()
   endfor
 
   set fdm& fdl&
-  enew!
+  bw!
 endfunc
 
 " test folding with indent
 func Test_fold_indent()
-  enew!
+  new
   set fdm=indent sw=2
 
   let content = ['1 aa', '2 bb', '3 cc']
@@ -550,14 +740,14 @@ func Test_fold_indent()
   call assert_equal(1, foldlevel('.'))
 
   set fdm& sw&
-  enew!
+  bw!
 endfunc
 
 " test syntax folding
 func Test_fold_syntax()
   CheckFeature syntax
 
-  enew!
+  new
   set fdm=syntax fdl=0
 
   syn region Hup start="dd" end="ii" fold contains=Fd1,Fd2,Fd3
@@ -581,7 +771,7 @@ func Test_fold_syntax()
   syn clear Fd1 Fd2 Fd3 Hup
 
   set fdm& fdl&
-  enew!
+  bw!
 endfunc
 
 func Flvl()
@@ -600,7 +790,7 @@ endfun
 
 " test expression folding
 func Test_fold_expr()
-  enew!
+  new
   set fdm=expr fde=Flvl()
 
   let content = ['1 aa',
@@ -628,14 +818,14 @@ func Test_fold_expr()
   call assert_equal(0, foldlevel('.'))
 
   set fdm& fde&
-  enew!
+  bw!
 endfunc
 
 " Bug with fdm=indent and moving folds
 " Moving a fold a few times, messes up the folds below the moved fold.
 " Fixed by 7.4.700
 func Test_fold_move()
-  enew!
+  new
   set fdm=indent sw=2 fdl=0
 
   let content = ['', '', 'Line1', '  Line2', '  Line3',
@@ -655,13 +845,13 @@ func Test_fold_move()
   call assert_equal('+--  2 lines: Line8', 10->foldtextresult())
 
   set fdm& sw& fdl&
-  enew!
+  bw!
 endfunc
 
 " test for patch 7.3.637
 " Cannot catch the error caused by a foldopen when there is no fold.
 func Test_foldopen_exception()
-  enew!
+  new
   let a = 'No error caught'
   try
     foldopen
@@ -677,10 +867,11 @@ func Test_foldopen_exception()
     let a = matchstr(v:exception,'^[^ ]*')
   endtry
   call assert_match('E492:', a)
+  bw!
 endfunc
 
 func Test_fold_last_line_with_pagedown()
-  enew!
+  new
   set fdm=manual
 
   let expect = '+-- 11 lines: 9---'
@@ -700,7 +891,7 @@ func Test_fold_last_line_with_pagedown()
   call assert_equal(expect, ScreenLines(1, len(expect))[0])
 
   set fdm&
-  enew!
+  bw!
 endfunc
 
 func Test_folds_with_rnu()
@@ -709,7 +900,7 @@ func Test_folds_with_rnu()
   call writefile([
 	\ 'set fdm=marker rnu foldcolumn=2',
 	\ 'call setline(1, ["{{{1", "nline 1", "{{{1", "line 2"])',
-	\ ], 'Xtest_folds_with_rnu')
+	\ ], 'Xtest_folds_with_rnu', 'D')
   let buf = RunVimInTerminal('-S Xtest_folds_with_rnu', {})
 
   call VerifyScreenDump(buf, 'Test_folds_with_rnu_01', {})
@@ -718,7 +909,6 @@ func Test_folds_with_rnu()
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xtest_folds_with_rnu')
 endfunc
 
 func Test_folds_marker_in_comment2()
@@ -791,10 +981,36 @@ func Test_fold_delete_first_line()
   set foldmethod&
 endfunc
 
+" Add a test for deleting the outer fold of a nested fold and promoting the
+" inner folds to one level up with already a fold at that level following the
+" nested fold.
+func Test_fold_delete_recursive_fold()
+  new
+  call setline(1, range(1, 7))
+  2,3fold
+  normal zR
+  4,5fold
+  normal zR
+  1,5fold
+  normal zR
+  6,7fold
+  normal zR
+  normal 1Gzd
+  normal 1Gzj
+  call assert_equal(2, line('.'))
+  normal zj
+  call assert_equal(4, line('.'))
+  normal zj
+  call assert_equal(6, line('.'))
+  bw!
+endfunc
+
 " Test for errors in 'foldexpr'
 func Test_fold_expr_error()
   new
   call setline(1, ['one', 'two', 'three'])
+  " In a window with no folds, foldlevel() should return 0
+  call assert_equal(0, foldlevel(1))
 
   " Return a list from the expression
   set foldexpr=[]
@@ -860,31 +1076,36 @@ func Test_fold_create_delete()
 endfunc
 
 func Test_fold_relative_move()
-  enew!
+  new
   set fdm=indent sw=2 wrap tw=80
 
-  let content = [ '  foo', '  bar', '  baz',
-              \   repeat('x', &columns + 1),
-              \   '  foo', '  bar', '  baz'
+  let longtext = repeat('x', &columns + 1)
+  let content = [ '  foo', '  ' .. longtext, '  baz',
+              \   longtext,
+              \   '  foo', '  ' .. longtext, '  baz'
               \ ]
   call append(0, content)
 
   normal zM
 
-  call cursor(3, 1)
-  call assert_true(foldclosed(line('.')))
-  normal gj
-  call assert_equal(2, winline())
+  for lnum in range(1, 3)
+    call cursor(lnum, 1)
+    call assert_true(foldclosed(line('.')))
+    normal gj
+    call assert_equal(2, winline())
+  endfor
 
   call cursor(2, 1)
   call assert_true(foldclosed(line('.')))
   normal 2gj
   call assert_equal(3, winline())
 
-  call cursor(5, 1)
-  call assert_true(foldclosed(line('.')))
-  normal gk
-  call assert_equal(3, winline())
+  for lnum in range(5, 7)
+    call cursor(lnum, 1)
+    call assert_true(foldclosed(line('.')))
+    normal gk
+    call assert_equal(3, winline())
+  endfor
 
   call cursor(6, 1)
   call assert_true(foldclosed(line('.')))
@@ -892,6 +1113,646 @@ func Test_fold_relative_move()
   call assert_equal(2, winline())
 
   set fdm& sw& wrap& tw&
+  bw!
+endfunc
+
+" Test for using multibyte characters as 'foldopen', 'foldclose' and
+" 'foldsetp' items in 'fillchars'
+func s:mbyte_fillchar_tests(fo, fc, fs)
+  setlocal foldcolumn=3
+
+  normal zE
+  1,2fold
+  call assert_equal([a:fc .. '  +--  2 ', '   three  '],
+        \ ScreenLines([1, 2], 10))
+  1,2foldopen
+  call assert_equal([a:fo .. '  one ', a:fs .. '  two '],
+        \ ScreenLines([1, 2], 7))
+  1,2foldclose
+  redraw!
+  call assert_equal([a:fc .. '  +--  2 ', '   three  '],
+        \  ScreenLines([1, 2], 10))
+
+  " Two level fold
+  normal zE
+  2,3fold
+  1,4fold
+  call assert_equal([a:fc .. '  +--  4 ', '   five   '],
+        \ ScreenLines([1, 2], 10))
+  1,4foldopen
+  call assert_equal([a:fo .. '  one    ', a:fs .. a:fc .. ' +---  2'],
+        \ ScreenLines([1, 2], 10))
+  1,4foldopen
+  call assert_equal([a:fo .. '  one    ', a:fs .. a:fo .. ' two    ',
+        \ a:fs .. a:fs .. ' three  '], ScreenLines([1, 3], 10))
+  2,3foldclose
+  call assert_equal([a:fo .. '  one    ', a:fs .. a:fc .. ' +---  2'],
+        \ ScreenLines([1, 2], 10))
+  1,4foldclose
+  call assert_equal([a:fc .. '  +--  4 ', '   five   '],
+        \ ScreenLines([1, 2], 10))
+
+  " Three level fold
+  normal zE
+  3,4fold
+  2,5fold
+  1,6fold
+  call assert_equal([a:fc .. '  +--  6 '], ScreenLines(1, 10))
+  " open all the folds
+  normal zR
+  call assert_equal([
+        \ a:fo .. '  one    ',
+        \ a:fs .. a:fo .. ' two    ',
+        \ '2' .. a:fo .. ' three  ',
+        \ '23 four   ',
+        \ a:fs .. a:fs .. ' five   ',
+        \ a:fs .. '  six    ',
+        \ ], ScreenLines([1, 6], 10))
+  " close the innermost fold
+  3,4foldclose
+  call assert_equal([
+        \ a:fo .. '  one    ',
+        \ a:fs .. a:fo .. ' two    ',
+        \ a:fs .. a:fs .. a:fc .. '+----  ',
+        \ a:fs .. a:fs .. ' five   ',
+        \ a:fs .. '  six    ',
+        \ ], ScreenLines([1, 5], 10))
+  " close the next fold
+  2,5foldclose
+  call assert_equal([
+        \ a:fo .. '  one    ',
+        \ a:fs .. a:fc .. ' +---  4',
+        \ a:fs .. '  six    ',
+        \ ], ScreenLines([1, 3], 10))
+
+  " set the fold column size to 2
+  setlocal fdc=2
+  normal zR
+  call assert_equal([
+        \ a:fo .. ' one  ',
+        \ a:fo .. ' two  ',
+        \ a:fo .. ' three',
+        \ '3 four ',
+        \ '2 five ',
+        \ a:fs .. ' six  ',
+        \ ], ScreenLines([1, 6], 7))
+
+  " set the fold column size to 1
+  setlocal fdc=1
+  normal zR
+  call assert_equal([
+        \ a:fo .. 'one   ',
+        \ a:fo .. 'two   ',
+        \ a:fo .. 'three ',
+        \ '3four  ',
+        \ '2five  ',
+        \ a:fs .. 'six   ',
+        \ ], ScreenLines([1, 6], 7))
+
+  " Enable number and sign columns and place some signs
+  setlocal fdc=3
+  setlocal number
+  setlocal signcolumn=auto
+  sign define S1 text=->
+  sign place 10 line=3 name=S1
+  call assert_equal([
+        \ a:fo .. '      1 one  ',
+        \ a:fs .. a:fo .. '     2 two  ',
+        \ '2' .. a:fo .. ' ->  3 three',
+        \ '23     4 four ',
+        \ a:fs .. a:fs .. '     5 five ',
+        \ a:fs .. '      6 six  '
+        \ ], ScreenLines([1, 6], 14))
+
+  " Test with 'rightleft'
+  if has('rightleft')
+    setlocal rightleft
+    let lines = ScreenLines([1, 6], winwidth(0))
+    call assert_equal('o 1      ' .. a:fo,
+          \  strcharpart(lines[0], strchars(lines[0]) - 10, 10))
+    call assert_equal('t 2     ' .. a:fo .. a:fs,
+          \  strcharpart(lines[1], strchars(lines[1]) - 10, 10))
+    call assert_equal('t 3  >- ' .. a:fo .. '2',
+          \  strcharpart(lines[2], strchars(lines[2]) - 10, 10))
+    call assert_equal('f 4     32',
+          \  strcharpart(lines[3], strchars(lines[3]) - 10, 10))
+    call assert_equal('f 5     ' .. a:fs .. a:fs,
+          \  strcharpart(lines[4], strchars(lines[4]) - 10, 10))
+    call assert_equal('s 6      ' .. a:fs,
+          \  strcharpart(lines[5], strchars(lines[5]) - 10, 10))
+    setlocal norightleft
+  endif
+
+  sign unplace *
+  sign undefine S1
+  setlocal number& signcolumn&
+
+  " Add a test with more than 9 folds (and then delete some folds)
+  normal zE
+  for i in range(1, 10)
+    normal zfGzo
+  endfor
+  normal zR
+  call assert_equal([
+        \ a:fo .. a:fo .. ' one ',
+        \ '9> two '
+        \ ], ScreenLines([1, 2], 7))
+  normal 1Gzd
+  call assert_equal([
+        \ a:fo .. a:fo .. ' one ',
+        \ '89 two '
+        \ ], ScreenLines([1, 2], 7))
+  normal 1Gzdzdzdzdzdzdzd
+  call assert_equal([
+        \ a:fo .. a:fo .. ' one ',
+        \ a:fs .. a:fs .. ' two '
+        \ ], ScreenLines([1, 2], 7))
+
+  setlocal foldcolumn& number& signcolumn&
+endfunc
+
+func Test_foldcolumn_multibyte_char()
+  new
+  call setline(1, ['one', 'two', 'three', 'four', 'five', 'six'])
+  setlocal foldenable foldmethod=manual
+
+  " First test with the default setting
+  call s:mbyte_fillchar_tests('-', '+', '|')
+
+  " Use multi-byte characters
+  set fillchars+=foldopen:▾,foldsep:│,foldclose:▸
+  call s:mbyte_fillchar_tests('▾', '▸', '│')
+
+  " Use a mix of multi-byte and single-byte characters
+  set fillchars+=foldopen:¬,foldsep:\|,foldclose:+
+  call s:mbyte_fillchar_tests('¬', '+', '|')
+  set fillchars+=foldopen:+,foldsep:\|,foldclose:¬
+  call s:mbyte_fillchar_tests('+', '¬', '|')
+
+  bw!
+  set foldenable& fdc& fdm& fillchars&
+endfunc
+
+" Test for calling foldlevel() from a fold expression
+let g:FoldLevels = []
+func FoldExpr1(lnum)
+  let f = [a:lnum]
+  for i in range(1, line('$'))
+    call add(f, foldlevel(i))
+  endfor
+  call add(g:FoldLevels, f)
+  return getline(a:lnum)[0] == "\t"
+endfunc
+
+func Test_foldexpr_foldlevel()
+  new
+  call setline(1, ['one', "\ttwo", "\tthree"])
+  setlocal foldmethod=expr
+  setlocal foldexpr=FoldExpr1(v:lnum)
+  setlocal foldenable
+  setlocal foldcolumn=3
+  redraw!
+  call assert_equal([[1, -1, -1, -1], [2, -1, -1, -1], [3, 0, 1, -1]],
+        \ g:FoldLevels)
+  set foldmethod& foldexpr& foldenable& foldcolumn&
+  bw!
+endfunc
+
+" Test for returning different values from a fold expression
+func FoldExpr2(lnum)
+  if a:lnum == 1 || a:lnum == 4
+    return -2
+  elseif a:lnum == 2
+    return 'a1'
+  elseif a:lnum == 3
+    return 's4'
+  endif
+  return '='
+endfunc
+
+func Test_foldexpr_2()
+  new
+  call setline(1, ['one', 'two', 'three', 'four'])
+  setlocal foldexpr=FoldExpr2(v:lnum)
+  setlocal foldmethod=expr
+  call assert_equal([0, 1, 1, 0], [foldlevel(1), foldlevel(2), foldlevel(3),
+        \ foldlevel(4)])
+  bw!
+endfunc
+
+" Test for the 'foldclose' option
+func Test_foldclose_opt()
+  CheckScreendump
+
+  let lines =<< trim END
+    set foldmethod=manual foldclose=all foldopen=all
+    call setline(1, ['one', 'two', 'three', 'four'])
+    2,3fold
+    func XsaveFoldLevels()
+      redraw!
+      call writefile([json_encode([foldclosed(1), foldclosed(2), foldclosed(3),
+        \ foldclosed(4)])], 'Xoutput', 'a')
+    endfunc
+  END
+  call writefile(lines, 'Xscript', 'D')
+  let rows = 10
+  let buf = RunVimInTerminal('-S Xscript', {'rows': rows})
+  call term_wait(buf)
+  call term_sendkeys(buf, ":set noruler\n")
+  call term_wait(buf)
+  call term_sendkeys(buf, ":call XsaveFoldLevels()\n")
+  call term_sendkeys(buf, "2G")
+  call WaitForAssert({-> assert_equal('two', term_getline(buf, 2))})
+  call term_sendkeys(buf, ":call XsaveFoldLevels()\n")
+  call term_sendkeys(buf, "4G")
+  call WaitForAssert({-> assert_equal('four', term_getline(buf, 3))})
+  call term_sendkeys(buf, ":call XsaveFoldLevels()\n")
+  call term_sendkeys(buf, "3G")
+  call WaitForAssert({-> assert_equal('three', term_getline(buf, 3))})
+  call term_sendkeys(buf, ":call XsaveFoldLevels()\n")
+  call term_sendkeys(buf, "1G")
+  call WaitForAssert({-> assert_equal('four', term_getline(buf, 3))})
+  call term_sendkeys(buf, ":call XsaveFoldLevels()\n")
+  call term_sendkeys(buf, "2G")
+  call WaitForAssert({-> assert_equal('two', term_getline(buf, 2))})
+  call term_sendkeys(buf, "k")
+  call WaitForAssert({-> assert_equal('four', term_getline(buf, 3))})
+
+  " clean up
+  call StopVimInTerminal(buf)
+
+  call assert_equal(['[-1,2,2,-1]', '[-1,-1,-1,-1]', '[-1,2,2,-1]',
+        \ '[-1,-1,-1,-1]', '[-1,2,2,-1]'], readfile('Xoutput'))
+  call delete('Xoutput')
+endfunc
+
+" Test for foldtextresult()
+func Test_foldtextresult()
+  new
+  call assert_equal('', foldtextresult(-1))
+  call assert_equal('', foldtextresult(0))
+  call assert_equal('', foldtextresult(1))
+  call setline(1, ['one', 'two', 'three', 'four'])
+  2,3fold
+  call assert_equal('', foldtextresult(1))
+  call assert_equal('+--  2 lines: two', foldtextresult(2))
+  setlocal foldtext=
+  call assert_equal('+--  2 lines folded ', foldtextresult(2))
+
+  " Fold text for a C comment fold
+  %d _
+  setlocal foldtext&
+  call setline(1, ['', '/*', ' * Comment', ' */', ''])
+  2,4fold
+  call assert_equal('+--  3 lines: Comment', foldtextresult(2))
+
+  bw!
+endfunc
+
+" Test for merging two recursive folds when an intermediate line with no fold
+" is removed
+func Test_fold_merge_recursive()
+  new
+  call setline(1, ['  one', '    two', 'xxxx', '    three',
+        \ '      four', "\tfive"])
+  setlocal foldmethod=indent shiftwidth=2
+  3d_
+  %foldclose
+  call assert_equal([1, 5], [foldclosed(5), foldclosedend(1)])
+  bw!
+endfunc
+
+" Test for moving a line which is the start of a fold from a recursive fold to
+" outside. The fold length should reduce.
+func Test_fold_move_foldlevel()
+  new
+  call setline(1, ['a{{{', 'b{{{', 'c{{{', 'd}}}', 'e}}}', 'f}}}', 'g'])
+  setlocal foldmethod=marker
+  normal zR
+  call assert_equal([3, 2, 1], [foldlevel(4), foldlevel(5), foldlevel(6)])
+  3move 7
+  call assert_equal([2, 1, 0], [foldlevel(3), foldlevel(4), foldlevel(5)])
+  call assert_equal(1, foldlevel(7))
+
+  " Move a line from outside a fold to inside the fold.
+  %d _
+  call setline(1, ['a', 'b{{{', 'c}}}'])
+  normal zR
+  1move 2
+  call assert_equal([1, 1, 1], [foldlevel(1), foldlevel(2), foldlevel(3)])
+
+  " Move the start of one fold to inside another fold
+  %d _
+  call setline(1, ['a', 'b{{{', 'c}}}', 'd{{{', 'e}}}'])
+  normal zR
+  call assert_equal([0, 1, 1, 1, 1], [foldlevel(1), foldlevel(2),
+        \ foldlevel(3), foldlevel(4), foldlevel(5)])
+  1,2move 4
+  call assert_equal([0, 1, 1, 2, 2], [foldlevel(1), foldlevel(2),
+        \ foldlevel(3), foldlevel(4), foldlevel(5)])
+
+  bw!
+endfunc
+
+" Test for using zj and zk to move downwards and upwards to the start and end
+" of the next fold.
+" Test for using [z and ]z in a closed fold to jump to the beginning and end
+" of the fold.
+func Test_fold_jump()
+  new
+  call setline(1, ["\t1", "\t2", "\t\t3", "\t\t4", "\t\t\t5", "\t\t\t6", "\t\t7", "\t\t8", "\t9", "\t10"])
+  setlocal foldmethod=indent
+  normal zR
+  normal zj
+  call assert_equal(3, line('.'))
+  normal zj
+  call assert_equal(5, line('.'))
+  call assert_beeps('normal zj')
+  call assert_equal(5, line('.'))
+  call assert_beeps('normal 9Gzj')
+  call assert_equal(9, line('.'))
+  normal Gzk
+  call assert_equal(8, line('.'))
+  normal zk
+  call assert_equal(6, line('.'))
+  call assert_beeps('normal zk')
+  call assert_equal(6, line('.'))
+  call assert_beeps('normal 2Gzk')
+  call assert_equal(2, line('.'))
+
+  " Using [z or ]z in a closed fold should not move the cursor
+  %d _
+  call setline(1, ["1", "\t2", "\t3", "\t4", "\t5", "\t6", "7"])
+  normal zR4Gzc
+  call assert_equal(4, line('.'))
+  call assert_beeps('normal [z')
+  call assert_equal(4, line('.'))
+  call assert_beeps('normal ]z')
+  call assert_equal(4, line('.'))
+  bw!
+endfunc
+
+" Test for using a script-local function for 'foldexpr'
+func Test_foldexpr_scriptlocal_func()
+  func! s:FoldFunc()
+    let g:FoldLnum = v:lnum
+  endfunc
+  new | only
+  call setline(1, 'abc')
+  let g:FoldLnum = 0
+  set foldmethod=expr foldexpr=s:FoldFunc()
+  redraw!
+  call assert_equal(expand('<SID>') .. 'FoldFunc()', &foldexpr)
+  call assert_equal(expand('<SID>') .. 'FoldFunc()', &g:foldexpr)
+  call assert_equal(1, g:FoldLnum)
+  set foldmethod& foldexpr=
+  bw!
+  new | only
+  call setline(1, 'abc')
+  let g:FoldLnum = 0
+  set foldmethod=expr foldexpr=<SID>FoldFunc()
+  redraw!
+  call assert_equal(expand('<SID>') .. 'FoldFunc()', &foldexpr)
+  call assert_equal(expand('<SID>') .. 'FoldFunc()', &g:foldexpr)
+  call assert_equal(1, g:FoldLnum)
+  bw!
+  call setline(1, 'abc')
+  setlocal foldmethod& foldexpr&
+  setglobal foldmethod=expr foldexpr=s:FoldFunc()
+  call assert_equal(expand('<SID>') .. 'FoldFunc()', &g:foldexpr)
+  call assert_equal('0', &foldexpr)
+  enew!
+  call setline(1, 'abc')
+  redraw!
+  call assert_equal(expand('<SID>') .. 'FoldFunc()', &foldexpr)
+  call assert_equal(1, g:FoldLnum)
+  bw!
+  call setline(1, 'abc')
+  setlocal foldmethod& foldexpr&
+  setglobal foldmethod=expr foldexpr=<SID>FoldFunc()
+  call assert_equal(expand('<SID>') .. 'FoldFunc()', &g:foldexpr)
+  call assert_equal('0', &foldexpr)
+  enew!
+  call setline(1, 'abc')
+  redraw!
+  call assert_equal(expand('<SID>') .. 'FoldFunc()', &foldexpr)
+  call assert_equal(1, g:FoldLnum)
+  set foldmethod& foldexpr&
+  delfunc s:FoldFunc
+  bw!
+endfunc
+
+" Test for using a script-local function for 'foldtext'
+func Test_foldtext_scriptlocal_func()
+  func! s:FoldText()
+    let g:FoldTextArgs = [v:foldstart, v:foldend]
+    return foldtext()
+  endfunc
+  new | only
+  call setline(1, range(50))
+  let g:FoldTextArgs = []
+  set foldtext=s:FoldText()
+  norm! 4Gzf4j
+  redraw!
+  call assert_equal(expand('<SID>') .. 'FoldText()', &foldtext)
+  call assert_equal(expand('<SID>') .. 'FoldText()', &g:foldtext)
+  call assert_equal([4, 8], g:FoldTextArgs)
+  set foldtext&
+  bw!
+  new | only
+  call setline(1, range(50))
+  let g:FoldTextArgs = []
+  set foldtext=<SID>FoldText()
+  norm! 8Gzf4j
+  redraw!
+  call assert_equal(expand('<SID>') .. 'FoldText()', &foldtext)
+  call assert_equal(expand('<SID>') .. 'FoldText()', &g:foldtext)
+  call assert_equal([8, 12], g:FoldTextArgs)
+  set foldtext&
+  bw!
+  call setline(1, range(50))
+  let g:FoldTextArgs = []
+  setlocal foldtext&
+  setglobal foldtext=s:FoldText()
+  call assert_equal(expand('<SID>') .. 'FoldText()', &g:foldtext)
+  call assert_equal('foldtext()', &foldtext)
+  enew!
+  call setline(1, range(50))
+  norm! 12Gzf4j
+  redraw!
+  call assert_equal(expand('<SID>') .. 'FoldText()', &foldtext)
+  call assert_equal([12, 16], g:FoldTextArgs)
+  set foldtext&
+  bw!
+  call setline(1, range(50))
+  let g:FoldTextArgs = []
+  setlocal foldtext&
+  setglobal foldtext=<SID>FoldText()
+  call assert_equal(expand('<SID>') .. 'FoldText()', &g:foldtext)
+  call assert_equal('foldtext()', &foldtext)
+  enew!
+  call setline(1, range(50))
+  norm! 16Gzf4j
+  redraw!
+  call assert_equal(expand('<SID>') .. 'FoldText()', &foldtext)
+  call assert_equal([16, 20], g:FoldTextArgs)
+  set foldtext&
+  bw!
+  delfunc s:FoldText
+endfunc
+
+" Make sure a fold containing a nested fold is split correctly when using
+" foldmethod=indent
+func Test_fold_split()
+  new
+  let lines =<< trim END
+    line 1
+      line 2
+      line 3
+        line 4
+        line 5
+  END
+  call setline(1, lines)
+  setlocal sw=2
+  setlocal foldmethod=indent foldenable
+  call assert_equal([0, 1, 1, 2, 2], range(1, 5)->map('foldlevel(v:val)'))
+  call append(2, 'line 2.5')
+  call assert_equal([0, 1, 0, 1, 2, 2], range(1, 6)->map('foldlevel(v:val)'))
+  3d
+  call assert_equal([0, 1, 1, 2, 2], range(1, 5)->map('foldlevel(v:val)'))
+  bw!
+endfunc
+
+" Make sure that when you append under a blank line that is under a fold with
+" the same indent level as your appended line, the fold expands across the
+" blank line
+func Test_indent_append_under_blank_line()
+  new
+  let lines =<< trim END
+    line 1
+      line 2
+      line 3
+  END
+  call setline(1, lines)
+  setlocal sw=2
+  setlocal foldmethod=indent foldenable
+  call assert_equal([0, 1, 1], range(1, 3)->map('foldlevel(v:val)'))
+  call append(3, '')
+  call append(4, '  line 5')
+  call assert_equal([0, 1, 1, 1, 1], range(1, 5)->map('foldlevel(v:val)'))
+  bw!
+endfunc
+
+" Make sure that when you delete 1 line of a fold whose length is 2 lines, the
+" fold can't be closed since its length (1) is now less than foldminlines.
+func Test_indent_one_line_fold_close()
+  let lines =<< trim END
+    line 1
+      line 2
+      line 3
+  END
+
+  new
+  setlocal sw=2 foldmethod=indent
+  call setline(1, lines)
+  " open all folds, delete line, then close all folds
+  normal zR
+  3delete
+  normal zM
+  call assert_equal(-1, foldclosed(2)) " the fold should not be closed
+
+  " Now do the same, but delete line 2 this time; this covers different code.
+  " (Combining this code with the above code doesn't expose both bugs.)
+  1,$delete
+  call setline(1, lines)
+  normal zR
+  2delete
+  normal zM
+  call assert_equal(-1, foldclosed(2))
+  bw!
+endfunc
+
+" Make sure that when appending [an indented line then a blank line] right
+" before a single indented line, the resulting extended fold can be closed
+func Test_indent_append_blank_small_fold_close()
+  new
+  setlocal sw=2 foldmethod=indent
+  " at first, the fold at the second line can't be closed since it's smaller
+  " than foldminlines
+  let lines =<< trim END
+    line 1
+      line 4
+  END
+  call setline(1, lines)
+  call append(1, ['  line 2', ''])
+  " close all folds
+  normal zM
+  call assert_notequal(-1, foldclosed(2)) " the fold should be closed now
+  bw!
+endfunc
+
+func Test_sort_closed_fold()
+  CheckExecutable sort
+
+  call setline(1, [
+        \ 'Section 1',
+        \ '   how',
+        \ '   now',
+        \ '   brown',
+        \ '   cow',
+        \ 'Section 2',
+        \ '   how',
+        \ '   now',
+        \ '   brown',
+        \ '   cow',
+        \])
+  setlocal foldmethod=indent sw=3
+  normal 2G
+
+  " The "!!" expands to ".,.+3" and must only sort four lines
+  call feedkeys("!!sort\<CR>", 'xt')
+  call assert_equal([
+        \ 'Section 1',
+        \ '   brown',
+        \ '   cow',
+        \ '   how',
+        \ '   now',
+        \ 'Section 2',
+        \ '   how',
+        \ '   now',
+        \ '   brown',
+        \ '   cow',
+        \ ], getline(1, 10))
+
+  bwipe!
+endfunc
+
+func Test_indent_with_L_command()
+  " The "L" command moved the cursor to line zero, causing the text saved for
+  " undo to use line number -1, which caused trouble for undo later.
+  new
+  sil! norm 8RV{zf8=Lu
+  bwipe!
+endfunc
+
+" Make sure that when there is a fold at the bottom of the buffer and a newline
+" character is appended to the line, the fold gets expanded (instead of the new
+" line not being part of the fold).
+func Test_expand_fold_at_bottom_of_buffer()
+  new
+  " create a fold on the only line
+  fold
+  execute "normal A\<CR>"
+  call assert_equal([1, 1], range(1, 2)->map('foldlevel(v:val)'))
+
+  bwipe!
+endfunc
+
+func Test_fold_screenrow_motion()
+  call setline(1, repeat(['aaaa'], 5))
+  1,4fold
+  norm Ggkzo
+  call assert_equal(1, line('.'))
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab
