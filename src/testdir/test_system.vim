@@ -55,7 +55,7 @@ func Test_system_exmode()
     let cmd = ' -es -c "source Xscript" +q; echo "result=$?"'
     " Need to put this in a script, "catch" isn't found after an unknown
     " function.
-    call writefile(['try', 'call doesnotexist()', 'catch', 'endtry'], 'Xscript')
+    call writefile(['try', 'call doesnotexist()', 'catch', 'endtry'], 'Xscript', 'D')
     let a = system(GetVimCommand() . cmd)
     call assert_match('result=0', a)
     call assert_equal(0, v:shell_error)
@@ -71,7 +71,6 @@ func Test_system_exmode()
   let cmd = ' -es -c "source Xscript" +q'
   let a = system(GetVimCommand() . cmd)
   call assert_notequal(0, v:shell_error)
-  call delete('Xscript')
 
   if has('unix') " echo $? only works on Unix
     let cmd = ' -es -c "call doesnotexist()" +q; echo $?'
@@ -142,42 +141,6 @@ func Test_system_with_shell_quote()
     let &shellxquote = shellxquote_save
     call delete('Xdir with spaces', 'rf')
   endtry
-endfunc
-
-" Test for 'shellxquote'
-func Test_Shellxquote()
-  CheckUnix
-
-  let save_shell = &shell
-  let save_sxq = &shellxquote
-  let save_sxe = &shellxescape
-
-  call writefile(['#!/bin/sh', 'echo "Cmd: [$*]" > Xlog'], 'Xtestshell')
-  call setfperm('Xtestshell', "r-x------")
-  set shell=./Xtestshell
-
-  set shellxquote=\\"
-  call feedkeys(":!pwd\<CR>\<CR>", 'xt')
-  call assert_equal(['Cmd: [-c "pwd"]'], readfile('Xlog'))
-
-  set shellxquote=(
-  call feedkeys(":!pwd\<CR>\<CR>", 'xt')
-  call assert_equal(['Cmd: [-c (pwd)]'], readfile('Xlog'))
-
-  set shellxquote=\\"(
-  call feedkeys(":!pwd\<CR>\<CR>", 'xt')
-  call assert_equal(['Cmd: [-c "(pwd)"]'], readfile('Xlog'))
-
-  set shellxescape=\"&<<()@^
-  set shellxquote=(
-  call feedkeys(":!pwd\"&<<{}@^\<CR>\<CR>", 'xt')
-  call assert_equal(['Cmd: [-c (pwd^"^&^<^<{}^@^^)]'], readfile('Xlog'))
-
-  let &shell = save_shell
-  let &shellxquote = save_sxq
-  let &shellxescape = save_sxe
-  call delete('Xtestshell')
-  call delete('Xlog')
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

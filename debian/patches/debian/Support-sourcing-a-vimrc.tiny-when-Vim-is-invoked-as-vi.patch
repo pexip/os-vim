@@ -11,16 +11,16 @@ Closes: #222138
 Signed-off-by: Stefano Zacchiroli <zack@debian.org>
 Signed-off-by: James Vega <jamessan@debian.org>
 ---
- src/main.c    | 14 +++++++++++++-
+ src/main.c    | 23 ++++++++++++++++++++++-
  src/os_unix.h |  3 +++
  src/structs.h |  3 +++
- 3 files changed, 19 insertions(+), 1 deletion(-)
+ 3 files changed, 28 insertions(+), 1 deletion(-)
 
 diff --git a/src/main.c b/src/main.c
-index ef53b33..6e67e72 100644
+index d1c42ed..c3e6bda 100644
 --- a/src/main.c
 +++ b/src/main.c
-@@ -1868,6 +1868,10 @@ parse_command_name(mparm_T *parmp)
+@@ -1929,6 +1929,10 @@ parse_command_name(mparm_T *parmp)
      }
      else if (STRNICMP(initstr, "vim", 3) == 0)
  	initstr += 3;
@@ -31,7 +31,7 @@ index ef53b33..6e67e72 100644
  
      // Catch "[r][g]vimdiff" and "[r][g]viewdiff".
      if (STRICMP(initstr, "diff") == 0)
-@@ -3130,7 +3134,12 @@ source_startup_scripts(mparm_T *parmp)
+@@ -3224,7 +3228,12 @@ source_startup_scripts(mparm_T *parmp)
  	 * Get system wide defaults, if the file name is defined.
  	 */
  #ifdef SYS_VIMRC_FILE
@@ -45,7 +45,7 @@ index ef53b33..6e67e72 100644
  #endif
  #ifdef MACOS_X
  	(void)do_source((char_u *)"$VIMRUNTIME/macmap.vim", FALSE,
-@@ -3169,6 +3178,9 @@ source_startup_scripts(mparm_T *parmp)
+@@ -3263,13 +3272,25 @@ source_startup_scripts(mparm_T *parmp)
  #ifdef USR_EXRC_FILE2
  		&& do_source((char_u *)USR_EXRC_FILE2, FALSE,
  						       DOSO_NONE, NULL) == FAIL
@@ -55,11 +55,27 @@ index ef53b33..6e67e72 100644
  #endif
  		&& !has_dash_c_arg)
  	    {
+ 		// When no .vimrc file was found: source defaults.vim.
+ 		if (do_source((char_u *)VIM_DEFAULTS_FILE, FALSE, DOSO_NONE,
+ 								 NULL) == FAIL)
++		{
++		    /*
++		     * If running as the vim.tiny executable, regardless how what argv[0] is, we
++		     * don't want to error due to missing defaults.vim.  That's provided by
++		     * vim-runtime, which isn't typically installed with vim-tiny.
++		     */
++#ifndef TINY_VIMRC
+ 		    emsg(e_failed_to_source_defaults);
++#endif
++		}
+ 	    }
+ 	}
+ 
 diff --git a/src/os_unix.h b/src/os_unix.h
-index 83fe66d..8880fec 100644
+index d87ec90..3f5ce0f 100644
 --- a/src/os_unix.h
 +++ b/src/os_unix.h
-@@ -219,6 +219,9 @@ typedef struct dsc$descriptor   DESC;
+@@ -205,6 +205,9 @@ typedef struct dsc$descriptor   DESC;
  /*
   * Unix system-dependent file names
   */
@@ -70,10 +86,10 @@ index 83fe66d..8880fec 100644
  # define SYS_VIMRC_FILE "$VIM/vimrc"
  #endif
 diff --git a/src/structs.h b/src/structs.h
-index bd59656..6e6499c 100644
+index 46a71cb..ac661a6 100644
 --- a/src/structs.h
 +++ b/src/structs.h
-@@ -4130,6 +4130,9 @@ typedef struct
+@@ -4468,6 +4468,9 @@ typedef struct
  #ifdef FEAT_DIFF
      int		diff_mode;		// start with 'diff' set
  #endif

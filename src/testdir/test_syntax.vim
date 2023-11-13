@@ -111,6 +111,9 @@ func Test_syntime()
   let a = execute('syntime report')
   call assert_equal("\nNo Syntax items defined for this buffer", a)
 
+  let a = execute('syntime clear')
+  call assert_equal("\nNo Syntax items defined for this buffer", a)
+
   view ../memfile_test.c
   setfiletype cpp
   redraw
@@ -198,6 +201,10 @@ func Test_syntax_completion()
 
   call feedkeys(":syn match \<C-A>\<C-B>\"\<CR>", 'tx')
   call assert_match('^"syn match Boolean Character ', @:)
+
+  syn cluster Aax contains=Aap
+  call feedkeys(":syn list @A\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_match('^"syn list @Aax', @:)
 endfunc
 
 func Test_echohl_completion()
@@ -448,7 +455,7 @@ func Test_invalid_name()
 endfunc
 
 func Test_ownsyntax()
-  new Xfoo
+  new XfooOwnSyntax
   call setline(1, '#define FOO')
   syntax on
   set filetype=c
@@ -499,8 +506,7 @@ endfunc
 func Test_bg_detection()
   CheckNotGui
 
-  " auto-detection of &bg, make sure sure it isn't set anywhere before
-  " this test
+  " auto-detection of &bg, make sure it isn't set anywhere before this test
   hi Normal ctermbg=0
   call assert_equal('dark', &bg)
   hi Normal ctermbg=4
@@ -525,6 +531,15 @@ func Test_syntax_hangs()
   CheckFunction reltimefloat
   CheckFeature syntax
 
+  " So, it turns out the Windows 7 implements TimerQueue timers differently
+  " and they can expire *before* the requested time has elapsed. So allow for
+  " the timeout occurring after 80 ms (5 * 16 (the typical clock tick)).
+  if has("win32")
+    let min_timeout = 0.08
+  else
+    let min_timeout = 0.1
+  endif
+
   " This pattern takes a long time to match, it should timeout.
   new
   call setline(1, ['aaa', repeat('abc ', 1000), 'ccc'])
@@ -533,22 +548,20 @@ func Test_syntax_hangs()
   syn match Error /\%#=1a*.*X\@<=b*/
   redraw
   let elapsed = reltimefloat(reltime(start))
-  call assert_true(elapsed > 0.1)
-  call assert_true(elapsed < 1.0)
+  call assert_inrange(min_timeout, 1.0, elapsed)
 
   " second time syntax HL is disabled
   let start = reltime()
   redraw
   let elapsed = reltimefloat(reltime(start))
-  call assert_true(elapsed < 0.1)
+  call assert_inrange(0, 0.1, elapsed)
 
   " after CTRL-L the timeout flag is reset
   let start = reltime()
   exe "normal \<C-L>"
   redraw
   let elapsed = reltimefloat(reltime(start))
-  call assert_true(elapsed > 0.1)
-  call assert_true(elapsed < 1.0)
+  call assert_inrange(min_timeout, 1.0, elapsed)
 
   set redrawtime&
   bwipe!
@@ -639,8 +652,8 @@ func Test_syntax_c()
 	\ "\t}",
 	\ "\tNote: asdf",
 	\ '}',
-	\ ], 'Xtest.c')
- 
+	\ ], 'Xtest.c', 'D')
+
   " This makes the default for 'background' use "dark", check that the
   " response to t_RB corrects it to "light".
   let $COLORFGBG = '15;0'
@@ -657,8 +670,25 @@ func Test_syntax_c()
   call StopVimInTerminal(buf)
 
   let $COLORFGBG = ''
-  call delete('Xtest.c')
 endfun
+
+" Test \z(...) along with \z1
+func Test_syn_zsub()
+  new
+  syntax on
+  call setline(1,  'xxx start foo xxx not end foo xxx end foo xxx')
+  let l:expected = '    ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ    '
+
+  for l:re in [0, 1, 2]
+    " Example taken from :help :syn-ext-match
+    syntax region Z start="start \z(\I\i*\)" skip="not end \z1" end="end \z1"
+    eval AssertHighlightGroups(1, 1, l:expected, 1, 'regexp=' .. l:re)
+    syntax clear Z
+  endfor
+
+  set re&
+  bw!
+endfunc
 
 " Using \z() in a region with NFA failing should not crash.
 func Test_syn_wrong_z_one()
@@ -673,10 +703,10 @@ func Test_syn_wrong_z_one()
 endfunc
 
 func Test_syntax_after_bufdo()
-  call writefile(['/* aaa comment */'], 'Xaaa.c')
-  call writefile(['/* bbb comment */'], 'Xbbb.c')
-  call writefile(['/* ccc comment */'], 'Xccc.c')
-  call writefile(['/* ddd comment */'], 'Xddd.c')
+  call writefile(['/* aaa comment */'], 'Xaaa.c', 'D')
+  call writefile(['/* bbb comment */'], 'Xbbb.c', 'D')
+  call writefile(['/* ccc comment */'], 'Xccc.c', 'D')
+  call writefile(['/* ddd comment */'], 'Xddd.c', 'D')
 
   let bnr = bufnr('%')
   new Xaaa.c
@@ -704,10 +734,6 @@ func Test_syntax_after_bufdo()
   bwipe! Xccc.c
   bwipe! Xddd.c
   syntax off
-  call delete('Xaaa.c')
-  call delete('Xbbb.c')
-  call delete('Xccc.c')
-  call delete('Xddd.c')
 endfunc
 
 func Test_syntax_foldlevel()
@@ -811,8 +837,9 @@ func Test_search_syntax_skip()
   1
   call search('VIM', 'w', '', 0, 'synIDattr(synID(line("."), col("."), 1), "name") =~? "comment"')
   call assert_equal('Another Text for VIM', getline('.'))
+
   1
-  call search('VIM', 'w', '', 0, 'synIDattr(synID(line("."), col("."), 1), "name") !~? "string"')
+  call search('VIM', 'cw', '', 0, 'synIDattr(synID(line("."), col("."), 1), "name") !~? "string"')
   call assert_equal(' let a = "VIM"', getline('.'))
 
   " Skip argument using Lambda.
@@ -821,26 +848,27 @@ func Test_search_syntax_skip()
   call assert_equal('Another Text for VIM', getline('.'))
 
   1
-  call search('VIM', 'w', '', 0, { -> synIDattr(synID(line("."), col("."), 1), "name") !~? "string"})
+  call search('VIM', 'cw', '', 0, { -> synIDattr(synID(line("."), col("."), 1), "name") !~? "string"})
   call assert_equal(' let a = "VIM"', getline('.'))
 
   " Skip argument using funcref.
   func InComment()
     return synIDattr(synID(line("."), col("."), 1), "name") =~? "comment"
   endfunc
-  func InString()
+  func NotInString()
     return synIDattr(synID(line("."), col("."), 1), "name") !~? "string"
   endfunc
+
   1
   call search('VIM', 'w', '', 0, function('InComment'))
   call assert_equal('Another Text for VIM', getline('.'))
 
   1
-  call search('VIM', 'w', '', 0, function('InString'))
+  call search('VIM', 'cw', '', 0, function('NotInString'))
   call assert_equal(' let a = "VIM"', getline('.'))
 
   delfunc InComment
-  delfunc InString
+  delfunc NotInString
   bwipe!
 endfunc
 
@@ -919,5 +947,35 @@ func Test_syn_contained_transparent()
   syntax clear Y X
   bw!
 endfunc
+
+func Test_syn_include_contains_TOP()
+  let l:case = "TOP in included syntax means its group list name"
+  new
+  syntax include @INCLUDED syntax/c.vim
+  syntax region FencedCodeBlockC start=/```c/ end=/```/ contains=@INCLUDED
+
+  call setline(1,  ['```c', '#if 0', 'int', '#else', 'int', '#endif', '```' ])
+  let l:expected = ["cCppOutIf2"]
+  eval AssertHighlightGroups(3, 1, l:expected, 1)
+  " cCppOutElse has contains=TOP
+  let l:expected = ["cType"]
+  eval AssertHighlightGroups(5, 1, l:expected, 1, l:case)
+  syntax clear
+  bw!
+endfunc
+
+" This was using freed memory
+func Test_WinEnter_synstack_synID()
+  autocmd WinEnter * call synstack(line("."), col("."))
+  autocmd WinEnter * call synID(line('.'), col('.') - 1, 1)
+  call setline(1, 'aaaaa')
+  normal! $
+  new
+  close
+
+  au! WinEnter
+  bw!
+endfunc
+
 
 " vim: shiftwidth=2 sts=2 expandtab

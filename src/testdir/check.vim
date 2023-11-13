@@ -14,6 +14,17 @@ func CheckFeature(name)
   endif
 endfunc
 
+" Command to check for the absence of a feature.
+command -nargs=1 CheckNotFeature call CheckNotFeature(<f-args>)
+func CheckNotFeature(name)
+  if !has(a:name, 1)
+    throw 'Checking for non-existent feature ' .. a:name
+  endif
+  if has(a:name)
+    throw 'Skipped: ' .. a:name .. ' feature present'
+  endif
+endfunc
+
 " Command to check for the presence of a working option.
 command -nargs=1 CheckOption call CheckOption(<f-args>)
 func CheckOption(name)
@@ -84,12 +95,35 @@ func CheckUnix()
   endif
 endfunc
 
+" Command to check for running on Linux
+command CheckLinux call CheckLinux()
+func CheckLinux()
+  if !has('linux')
+    throw 'Skipped: only works on Linux'
+  endif
+endfunc
+
 " Command to check for not running on a BSD system.
-" TODO: using this checks should not be needed
 command CheckNotBSD call CheckNotBSD()
 func CheckNotBSD()
   if has('bsd')
     throw 'Skipped: does not work on BSD'
+  endif
+endfunc
+
+" Command to check for not running on a MacOS
+command CheckNotMac call CheckNotMac()
+func CheckNotMac()
+  if has('mac')
+    throw 'Skipped: does not work on MacOS'
+  endif
+endfunc
+
+" Command to check for not running on a MacOS M1 system.
+command CheckNotMacM1 call CheckNotMacM1()
+func CheckNotMacM1()
+  if has('mac') && system('uname -a') =~ '\<arm64\>'
+    throw 'Skipped: does not work on MacOS M1'
   endif
 endfunc
 
@@ -115,6 +149,14 @@ command CheckCanRunGui call CheckCanRunGui()
 func CheckCanRunGui()
   if !has('gui') || ($DISPLAY == "" && !has('gui_running'))
     throw 'Skipped: cannot start the GUI'
+  endif
+endfunc
+
+" Command to Check for an environment variable
+command -nargs=1 CheckEnv call CheckEnv(<f-args>)
+func CheckEnv(name)
+  if empty(eval('$' .. a:name))
+    throw 'Skipped: Environment variable ' .. a:name .. ' is not set'
   endif
 endfunc
 
@@ -189,6 +231,56 @@ func CheckNotAsan()
   if execute('version') =~# '-fsanitize=[a-z,]*\<address\>'
     throw 'Skipped: does not work with ASAN'
   endif
+endfunc
+
+" Command to check for not running under valgrind
+command CheckNotValgrind call CheckNotValgrind()
+func CheckNotValgrind()
+  if RunningWithValgrind()
+    throw 'Skipped: does not work well with valgrind'
+  endif
+endfunc
+
+" Command to check for X11 based GUI
+command CheckX11BasedGui call CheckX11BasedGui()
+func CheckX11BasedGui()
+  if !g:x11_based_gui
+    throw 'Skipped: requires X11 based GUI'
+  endif
+endfunc
+
+" Command to check that there are two clipboards
+command CheckTwoClipboards call CheckTwoClipboards()
+func CheckTwoClipboards()
+  " avoid changing the clipboard here, only X11 supports both
+  if !has('X11')
+    throw 'Skipped: requires two clipboards'
+  endif
+endfunc
+
+" Command to check for satisfying any of the conditions.
+" e.g. CheckAnyOf Feature:bsd Feature:sun Linux
+command -nargs=+ CheckAnyOf call CheckAnyOf(<f-args>)
+func CheckAnyOf(...)
+  let excp = []
+  for arg in a:000
+    try
+      exe 'Check' .. substitute(arg, ':', ' ', '')
+      return
+    catch /^Skipped:/
+      let excp += [substitute(v:exception, '^Skipped:\s*', '', '')]
+    endtry
+  endfor
+  throw 'Skipped: ' .. join(excp, '; ')
+endfunc
+
+" Command to check for satisfying all of the conditions.
+" e.g. CheckAllOf Unix Gui Option:ballooneval
+command -nargs=+ CheckAllOf call CheckAllOf(<f-args>)
+func CheckAllOf(...)
+  for arg in a:000
+    exe 'Check' .. substitute(arg, ':', ' ', '')
+  endfor
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

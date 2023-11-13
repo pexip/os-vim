@@ -3,6 +3,10 @@
   <year>2008</year>
   <holder>Stefano Zacchiroli</holder>
 </copyright>
+<copyright>
+  <year>2021</year>
+  <holder>James McCoy</holder>
+</copyright>
 <legalnotice>
   <para>
     This manual is free software; you can redistribute it and/or modify
@@ -18,10 +22,10 @@
   </para>
   <para>
     A copy of the GNU General Public License is available as
-    <filename>/usr/share/common-licenses/GPL</filename> in the Debian
+    <filename>/usr/share/common-licenses/GPL-2</filename> in the Debian
     GNU/Linux distribution or on the World Wide Web at <ulink
-      url="http://www.gnu.org/copyleft/gpl.html">The GNU Public
-      Licence</ulink>.
+      url="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">The GNU Public
+      License</ulink>.
   </para>
   <para>
     You can also obtain it by writing to the Free Software Foundation,

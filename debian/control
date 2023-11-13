@@ -5,25 +5,24 @@ Maintainer: Pexip AS <packaging@pexip.com>
 XSBC-Pexip-Original-Maintainer: Debian Vim Maintainers <team+vim@tracker.debian.org>
 XSBC-Pexip-Original-Uploaders:
  James McCoy <jamessan@debian.org>,
-Standards-Version: 4.5.0
+Standards-Version: 4.6.1
 Rules-Requires-Root: no
 Build-Depends:
  autoconf,
  cscope <!nocheck>,
- debhelper-compat (= 12),
+ debhelper-compat (= 13),
  libacl1-dev,
  libcanberra-dev,
  libgpmg1-dev [linux-any],
  libgtk-3-dev,
  liblua5.2-dev,
+ libmotif-dev,
  libperl-dev,
  libselinux1-dev [linux-any],
+ libsodium-dev,
  libncurses-dev,
 # Needed to run libvterm's tests
  libtool-bin <!nocheck>,
- libxaw7-dev,
- libxpm-dev,
- libxt-dev,
  lua5.2,
  procps <!nocheck>,
  python3-dev,
@@ -36,6 +35,9 @@ Build-Depends-Indep:
  docbook-utils,
  docbook-xml,
  ghostscript,
+# Explicitly depend on lynx since docbook2txt requires it, even though its
+# Depends suggests otherwise (c.f., #387035)
+ lynx,
  pdf2svg,
 Vcs-Git: https://salsa.debian.org/vim-team/vim.git
 Vcs-Browser: https://salsa.debian.org/vim-team/vim
@@ -47,10 +49,10 @@ Priority: important
 Architecture: all
 Multi-Arch: foreign
 Depends:
- xxd,
  ${misc:Depends},
 Recommends:
- vim | vim-gtk3 | vim-athena | vim-nox | vim-tiny,
+ xxd,
+ vim | vim-gtk3 | vim-motif | vim-nox | vim-tiny,
 Description: Vi IMproved - Common files
  Vim is an almost compatible version of the UNIX editor Vi.
  .
@@ -62,7 +64,7 @@ Package: vim-gui-common
 Architecture: all
 Multi-Arch: foreign
 Recommends:
- vim-gtk3 | vim-athena,
+ vim-gtk3 | vim-motif,
 Depends:
  ${misc:Depends},
 Description: Vi IMproved - Common GUI files
@@ -80,7 +82,7 @@ Depends:
 Breaks:
  vim-tiny (<< ${source:Version}),
 Recommends:
- vim | vim-gtk3 | vim-athena | vim-nox | vim-tiny,
+ vim | vim-gtk3 | vim-motif | vim-nox | vim-tiny,
 Enhances:
  vim-tiny,
 Description: Vi IMproved - Runtime files
@@ -123,7 +125,7 @@ Description: Vi IMproved - enhanced vi editor - compact version
  the vi binary for base installations.
  .
  If a vim binary is wanted, try one of the following more featureful
- packages: vim, vim-nox, vim-athena, or vim-gtk3.
+ packages: vim, vim-nox, vim-motif, or vim-gtk3.
 
 Package: vim
 Architecture: any
@@ -149,16 +151,6 @@ Description: Vi IMproved - enhanced vi editor
  standard set of features.  This package does not provide a GUI
  version of Vim.  See the other vim-* packages if you need more
  (or less).
-
-Package: vim-gtk
-Architecture: all
-Depends:
- vim-gtk3,
- ${misc:Depends},
-Section: oldlibs
-Description: Vi IMproved - enhanced vi editor (dummy package)
- This is a transitional package to install the vim-gtk3 package.  You may
- remove this package if nothing depends on it.
 
 Package: vim-gtk3
 Architecture: any
@@ -220,7 +212,7 @@ Description: Vi IMproved - enhanced vi editor - with scripting languages support
  This package contains a version of vim compiled with support for
  scripting with Lua, Perl, Python 3,${vim:Ruby-Desc} and Tcl but no GUI.
 
-Package: vim-athena
+Package: vim-motif
 Architecture: any
 Depends:
  vim-common (= ${source:Version}),
@@ -240,15 +232,25 @@ Provides:
  vim-python3 (= ${binary:Version}),
  ${vim:Ruby-Provides},
  vim-tcl (= ${binary:Version}),
-Description: Vi IMproved - enhanced vi editor - with Athena GUI
+Description: Vi IMproved - enhanced vi editor - with Motif GUI
  Vim is an almost compatible version of the UNIX editor Vi.
  .
  Many new features have been added: multi level undo, syntax
  highlighting, command line history, on-line help, filename
  completion, block operations, folding, Unicode support, etc.
  .
- This package contains a version of vim compiled with a Athena GUI
+ This package contains a version of vim compiled with a Motif GUI
  and support for scripting with Lua, Perl, Python 3,${vim-Ruby-Desc} and Tcl.
+
+Package: vim-athena
+Architecture: all
+Depends:
+ vim-motif,
+ ${misc:Depends},
+Section: oldlibs
+Description: Vi IMproved - enhanced vi editor (dummy package)
+ This is a transitional package to install the vim-motif package.  You may
+ remove this package if nothing depends on it.
 
 Package: xxd
 Architecture: any

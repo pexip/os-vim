@@ -32,7 +32,7 @@
 #endif
 
 #ifndef PROTO
-# if defined(FEAT_TITLE) && !defined(FEAT_GUI_MSWIN)
+# if !defined(FEAT_GUI_MSWIN)
 #  include <shellapi.h>
 # endif
 
@@ -92,6 +92,7 @@ typedef int HFONT;
 typedef int HICON;
 typedef int HWND;
 typedef int INPUT_RECORD;
+typedef int INT_PTR;
 typedef int KEY_EVENT_RECORD;
 typedef int LOGFONTW;
 typedef int LPARAM;
@@ -265,7 +266,6 @@ mch_input_isatty(void)
 #endif
 }
 
-#ifdef FEAT_TITLE
 /*
  * mch_settitle(): set titlebar of our window
  */
@@ -274,16 +274,16 @@ mch_settitle(
     char_u *title,
     char_u *icon UNUSED)
 {
-# ifdef FEAT_GUI_MSWIN
-#  ifdef VIMDLL
+#ifdef FEAT_GUI_MSWIN
+# ifdef VIMDLL
     if (gui.in_use)
-#  endif
+# endif
     {
 	gui_mch_settitle(title, icon);
 	return;
     }
-# endif
-# if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
+#endif
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
     if (title != NULL)
     {
 	WCHAR	*wp = enc_to_utf16(title, NULL);
@@ -295,7 +295,7 @@ mch_settitle(
 	vim_free(wp);
 	return;
     }
-# endif
+#endif
 }
 
 
@@ -309,12 +309,12 @@ mch_settitle(
     void
 mch_restore_title(int which UNUSED)
 {
-# if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
-#  ifdef VIMDLL
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
+# ifdef VIMDLL
     if (!gui.in_use)
-#  endif
-	SetConsoleTitle(g_szOrigTitle);
 # endif
+	SetConsoleTitle(g_szOrigTitle);
+#endif
 }
 
 
@@ -336,7 +336,6 @@ mch_can_restore_icon(void)
 {
     return FALSE;
 }
-#endif // FEAT_TITLE
 
 
 /*
@@ -391,6 +390,8 @@ mch_isFullName(char_u *fname)
     // Another way to check is to use mch_FullName() and see if the result is
     // the same as the name or mch_FullName() fails.  However, this has quite a
     // bit of overhead, so let's not do that.
+    if (*fname == NUL)
+	return FALSE;
     return ((ASCII_ISALPHA(fname[0]) && fname[1] == ':'
 				      && (fname[2] == '/' || fname[2] == '\\'))
 	    || (fname[0] == fname[1] && (fname[0] == '/' || fname[0] == '\\')));
@@ -429,23 +430,36 @@ slash_adjust(char_u *p)
     }
 }
 
-// Use 64-bit stat functions if available.
-#ifdef HAVE_STAT64
-# undef stat
-# undef _stat
-# undef _wstat
-# undef _fstat
-# define stat _stat64
-# define _stat _stat64
-# define _wstat _wstat64
-# define _fstat _fstat64
-#endif
+// Use 64-bit stat functions.
+#undef stat
+#undef _stat
+#undef _wstat
+#undef _fstat
+#define stat _stat64
+#define _stat _stat64
+#define _wstat _wstat64
+#define _fstat _fstat64
 
-#if (defined(_MSC_VER) && (_MSC_VER >= 1300)) || defined(__MINGW32__)
-# define OPEN_OH_ARGTYPE intptr_t
-#else
-# define OPEN_OH_ARGTYPE long
-#endif
+    static int
+read_reparse_point(const WCHAR *name, char_u *buf, DWORD *buf_len)
+{
+    HANDLE h;
+    BOOL ok;
+
+    h = CreateFileW(name, FILE_READ_ATTRIBUTES,
+	    FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+	    OPEN_EXISTING,
+	    FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+	    NULL);
+    if (h == INVALID_HANDLE_VALUE)
+	return FAIL;
+
+    ok = DeviceIoControl(h, FSCTL_GET_REPARSE_POINT, NULL, 0, buf, *buf_len,
+	    buf_len, NULL);
+    CloseHandle(h);
+
+    return ok ? OK : FAIL;
+}
 
     static int
 wstat_symlink_aware(const WCHAR *name, stat_T *stp)
@@ -487,7 +501,7 @@ wstat_symlink_aware(const WCHAR *name, stat_T *stp)
 	{
 	    int	    fd;
 
-	    fd = _open_osfhandle((OPEN_OH_ARGTYPE)h, _O_RDONLY);
+	    fd = _open_osfhandle((intptr_t)h, _O_RDONLY);
 	    n = _fstat(fd, (struct _stat *)stp);
 	    if ((n == 0) && (attr & FILE_ATTRIBUTE_DIRECTORY))
 		stp->st_mode = (stp->st_mode & ~S_IFREG) | S_IFDIR;
@@ -497,6 +511,61 @@ wstat_symlink_aware(const WCHAR *name, stat_T *stp)
     }
 #endif
     return _wstat(name, (struct _stat *)stp);
+}
+
+    char_u *
+resolve_appexeclink(char_u *fname)
+{
+    DWORD		attr = 0;
+    int			idx;
+    WCHAR		*p, *end, *wname;
+    // The buffer size is arbitrarily chosen to be "big enough" (TM), the
+    // ceiling should be around 16k.
+    char_u		buf[4096];
+    DWORD		buf_len = sizeof(buf);
+    REPARSE_DATA_BUFFER *rb = (REPARSE_DATA_BUFFER *)buf;
+
+    wname = enc_to_utf16(fname, NULL);
+    if (wname == NULL)
+	return NULL;
+
+    attr = GetFileAttributesW(wname);
+    if (attr == INVALID_FILE_ATTRIBUTES ||
+	    (attr & FILE_ATTRIBUTE_REPARSE_POINT) == 0)
+    {
+	vim_free(wname);
+	return NULL;
+    }
+
+    // The applinks are similar to symlinks but with a huge difference: they can
+    // only be executed, any other I/O operation on them is bound to fail with
+    // ERROR_FILE_NOT_FOUND even though the file exists.
+    if (read_reparse_point(wname, buf, &buf_len) == FAIL)
+    {
+	vim_free(wname);
+	return NULL;
+    }
+    vim_free(wname);
+
+    if (rb->ReparseTag != IO_REPARSE_TAG_APPEXECLINK)
+	return NULL;
+
+    // The (undocumented) reparse buffer contains a set of N null-terminated
+    // Unicode strings, the application path is stored in the third one.
+    if (rb->AppExecLinkReparseBuffer.StringCount < 3)
+	return NULL;
+
+    p = rb->AppExecLinkReparseBuffer.StringList;
+    end = p + rb->ReparseDataLength / sizeof(WCHAR);
+    for (idx = 0; p < end
+	    && idx < (int)rb->AppExecLinkReparseBuffer.StringCount
+	    && idx != 2; )
+    {
+	if (*p++ == L'\0')
+	    ++idx;
+    }
+
+    return utf16_to_enc(p, NULL);
 }
 
 /*
@@ -596,7 +665,7 @@ mch_suspend(void)
 display_errors(void)
 {
 # ifdef FEAT_GUI
-    char *p;
+    char_u *p;
 
 #  ifdef VIMDLL
     if (gui.in_use || gui.starting)
@@ -605,15 +674,18 @@ display_errors(void)
 	if (error_ga.ga_data != NULL)
 	{
 	    // avoid putting up a message box with blanks only
-	    for (p = (char *)error_ga.ga_data; *p; ++p)
+	    for (p = (char_u *)error_ga.ga_data; *p; ++p)
 		if (!isspace(*p))
 		{
-		    (void)gui_mch_dialog(
+		    // Only use a dialog when not using --gui-dialog-file:
+		    // write text to a file.
+		    if (!gui_dialog_log((char_u *)"Errors", p))
+			(void)gui_mch_dialog(
 				     gui.starting ? VIM_INFO :
 					     VIM_ERROR,
 				     gui.starting ? (char_u *)_("Message") :
 					     (char_u *)_("Error"),
-				     (char_u *)p, (char_u *)_("&Ok"),
+					     p, (char_u *)_("&Ok"),
 					1, NULL, FALSE);
 		    break;
 		}
@@ -763,24 +835,24 @@ check_str_len(char_u *str)
     GetSystemInfo(&si);
 
     // get memory information
-    if (VirtualQuery(str, &mbi, sizeof(mbi)))
-    {
-	// pre cast these (typing savers)
-	long_u dwStr = (long_u)str;
-	long_u dwBaseAddress = (long_u)mbi.BaseAddress;
+    if (!VirtualQuery(str, &mbi, sizeof(mbi)))
+	return 0;
 
-	// get start address of page that str is on
-	long_u strPage = dwStr - (dwStr - dwBaseAddress) % si.dwPageSize;
+    // pre cast these (typing savers)
+    long_u dwStr = (long_u)str;
+    long_u dwBaseAddress = (long_u)mbi.BaseAddress;
 
-	// get length from str to end of page
-	long_u pageLength = si.dwPageSize - (dwStr - strPage);
+    // get start address of page that str is on
+    long_u strPage = dwStr - (dwStr - dwBaseAddress) % si.dwPageSize;
 
-	for (p = str; !IsBadReadPtr(p, (UINT)pageLength);
-				  p += pageLength, pageLength = si.dwPageSize)
-	    for (i = 0; i < pageLength; ++i, ++length)
-		if (p[i] == NUL)
-		    return length + 1;
-    }
+    // get length from str to end of page
+    long_u pageLength = si.dwPageSize - (dwStr - strPage);
+
+    for (p = str; !IsBadReadPtr(p, (UINT)pageLength);
+	    p += pageLength, pageLength = si.dwPageSize)
+	for (i = 0; i < pageLength; ++i, ++length)
+	    if (p[i] == NUL)
+		return length + 1;
 
     return 0;
 }
@@ -881,7 +953,7 @@ mch_libcall(
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
 	    if (GetExceptionCode() == EXCEPTION_STACK_OVERFLOW)
-		RESETSTKOFLW();
+		_resetstkoflw();
 	    fRunTimeLinkSuccess = 0;
 	}
 # endif
@@ -892,7 +964,7 @@ mch_libcall(
 
     if (!fRunTimeLinkSuccess)
     {
-	semsg(_(e_libcall), funcname);
+	semsg(_(e_library_call_failed_for_str), funcname);
 	return FAIL;
     }
 
@@ -937,9 +1009,7 @@ Trace(
 #endif //_DEBUG
 
 #if !defined(FEAT_GUI) || defined(VIMDLL) || defined(PROTO)
-# ifdef FEAT_TITLE
 extern HWND g_hWnd;	// This is in os_win32.c.
-# endif
 
 /*
  * Showing the printer dialog is tricky since we have no GUI
@@ -953,14 +1023,12 @@ GetConsoleHwnd(void)
     if (s_hwnd != 0)
 	return;
 
-# ifdef FEAT_TITLE
     // Window handle may have been found by init code (Windows NT only)
     if (g_hWnd != 0)
     {
 	s_hwnd = g_hWnd;
 	return;
     }
-# endif
 
     s_hwnd = GetConsoleWindow();
 }
@@ -1047,14 +1115,7 @@ swap_me(COLORREF colorref)
     return colorref;
 }
 
-// Attempt to make this work for old and new compilers
-# if !defined(_WIN64) && (!defined(_MSC_VER) || _MSC_VER < 1300)
-#  define PDP_RETVAL BOOL
-# else
-#  define PDP_RETVAL INT_PTR
-# endif
-
-    static PDP_RETVAL CALLBACK
+    static INT_PTR CALLBACK
 PrintDlgProc(
 	HWND hDlg,
 	UINT message,
@@ -1127,12 +1188,12 @@ AbortProc(HDC hdcPrn UNUSED, int iCode UNUSED)
 {
     MSG msg;
 
-    while (!*bUserAbort && pPeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+    while (!*bUserAbort && PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
     {
-	if (!hDlgPrint || !pIsDialogMessage(hDlgPrint, &msg))
+	if (!hDlgPrint || !IsDialogMessageW(hDlgPrint, &msg))
 	{
 	    TranslateMessage(&msg);
-	    pDispatchMessage(&msg);
+	    DispatchMessageW(&msg);
 	}
     }
     return !*bUserAbort;
@@ -1152,43 +1213,43 @@ PrintHookProc(
     RECT	rc, rcDlg, rcOwner;
     PRINTDLGW	*pPD;
 
-    if (uiMsg == WM_INITDIALOG)
-    {
-	// Get the owner window and dialog box rectangles.
-	if ((hwndOwner = GetParent(hDlg)) == NULL)
-	    hwndOwner = GetDesktopWindow();
+    if (uiMsg != WM_INITDIALOG)
+	return FALSE;
 
-	GetWindowRect(hwndOwner, &rcOwner);
-	GetWindowRect(hDlg, &rcDlg);
-	CopyRect(&rc, &rcOwner);
+    // Get the owner window and dialog box rectangles.
+    if ((hwndOwner = GetParent(hDlg)) == NULL)
+	hwndOwner = GetDesktopWindow();
 
-	// Offset the owner and dialog box rectangles so that
-	// right and bottom values represent the width and
-	// height, and then offset the owner again to discard
-	// space taken up by the dialog box.
+    GetWindowRect(hwndOwner, &rcOwner);
+    GetWindowRect(hDlg, &rcDlg);
+    CopyRect(&rc, &rcOwner);
 
-	OffsetRect(&rcDlg, -rcDlg.left, -rcDlg.top);
-	OffsetRect(&rc, -rc.left, -rc.top);
-	OffsetRect(&rc, -rcDlg.right, -rcDlg.bottom);
+    // Offset the owner and dialog box rectangles so that
+    // right and bottom values represent the width and
+    // height, and then offset the owner again to discard
+    // space taken up by the dialog box.
 
-	// The new position is the sum of half the remaining
-	// space and the owner's original position.
+    OffsetRect(&rcDlg, -rcDlg.left, -rcDlg.top);
+    OffsetRect(&rc, -rc.left, -rc.top);
+    OffsetRect(&rc, -rcDlg.right, -rcDlg.bottom);
 
-	SetWindowPos(hDlg,
-		HWND_TOP,
-		rcOwner.left + (rc.right / 2),
-		rcOwner.top + (rc.bottom / 2),
-		0, 0,		// ignores size arguments
-		SWP_NOSIZE);
+    // The new position is the sum of half the remaining
+    // space and the owner's original position.
 
-	//  tackle the printdlg copiesctrl problem
-	pPD = (PRINTDLGW *)lParam;
-	pPD->nCopies = (WORD)pPD->lCustData;
-	SetDlgItemInt( hDlg, edt3, pPD->nCopies, FALSE );
-	//  Bring the window to top
-	BringWindowToTop(GetParent(hDlg));
-	SetForegroundWindow(hDlg);
-    }
+    SetWindowPos(hDlg,
+	    HWND_TOP,
+	    rcOwner.left + (rc.right / 2),
+	    rcOwner.top + (rc.bottom / 2),
+	    0, 0,		// ignores size arguments
+	    SWP_NOSIZE);
+
+    //  tackle the printdlg copiesctrl problem
+    pPD = (PRINTDLGW *)lParam;
+    pPD->nCopies = (WORD)pPD->lCustData;
+    SetDlgItemInt( hDlg, edt3, pPD->nCopies, FALSE );
+    //  Bring the window to top
+    BringWindowToTop(GetParent(hDlg));
+    SetForegroundWindow(hDlg);
 
     return FALSE;
 }
@@ -1328,6 +1389,7 @@ mch_print_init(prt_settings_T *psettings, char_u *jobname, int forceit)
     DEVMODEW		*mem;
     DEVNAMES		*devname;
     int			i;
+    DWORD		err;
 
     bUserAbort = &(psettings->user_abort);
     CLEAR_FIELD(prt_dlg);
@@ -1403,7 +1465,7 @@ mch_print_init(prt_settings_T *psettings, char_u *jobname, int forceit)
 
     if (prt_dlg.hDC == NULL)
     {
-	emsg(_("E237: Printer selection failed"));
+	emsg(_(e_printer_selection_failed));
 	mch_print_cleanup();
 	return FALSE;
     }
@@ -1462,7 +1524,7 @@ mch_print_init(prt_settings_T *psettings, char_u *jobname, int forceit)
     CLEAR_FIELD(fLogFont);
     if (get_logfont(&fLogFont, p_pfn, prt_dlg.hDC, TRUE) == FAIL)
     {
-	semsg(_("E613: Unknown printer font: %s"), p_pfn);
+	semsg(_(e_unknown_printer_font_str), p_pfn);
 	mch_print_cleanup();
 	return FALSE;
     }
@@ -1510,29 +1572,26 @@ mch_print_init(prt_settings_T *psettings, char_u *jobname, int forceit)
     return TRUE;
 
 init_fail_dlg:
+    err = CommDlgExtendedError();
+    if (err)
     {
-	DWORD err = CommDlgExtendedError();
+	char_u *buf;
 
-	if (err)
-	{
-	    char_u *buf;
-
-	    // I suspect FormatMessage() doesn't work for values returned by
-	    // CommDlgExtendedError().  What does?
-	    FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-			  FORMAT_MESSAGE_FROM_SYSTEM |
-			  FORMAT_MESSAGE_IGNORE_INSERTS,
-			  NULL, err, 0, (LPTSTR)(&buf), 0, NULL);
-	    semsg(_("E238: Print error: %s"),
-				  buf == NULL ? (char_u *)_("Unknown") : buf);
-	    LocalFree((LPVOID)(buf));
-	}
-	else
-	    msg_clr_eos(); // Maybe canceled
-
-	mch_print_cleanup();
-	return FALSE;
+	// I suspect FormatMessage() doesn't work for values returned by
+	// CommDlgExtendedError().  What does?
+	FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		FORMAT_MESSAGE_FROM_SYSTEM |
+		FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL, err, 0, (LPTSTR)(&buf), 0, NULL);
+	semsg(_(e_print_error_str),
+		buf == NULL ? (char_u *)_("Unknown") : buf);
+	LocalFree((LPVOID)(buf));
     }
+    else
+	msg_clr_eos(); // Maybe canceled
+
+    mch_print_cleanup();
+    return FALSE;
 }
 
 
@@ -1683,13 +1742,6 @@ mch_print_set_fg(long_u fgcol)
 #  include <shlobj.h>
 # endif
 
-typedef BOOL (WINAPI *pfnGetFinalPathNameByHandleW)(
-	HANDLE	hFile,
-	LPWSTR	lpszFilePath,
-	DWORD	cchFilePath,
-	DWORD	dwFlags);
-static pfnGetFinalPathNameByHandleW pGetFinalPathNameByHandleW = NULL;
-
 # define is_path_sep(c)	    ((c) == L'\\' || (c) == L'/')
 
     static int
@@ -1731,20 +1783,6 @@ resolve_reparse_point(char_u *fname)
     WCHAR	    *p, *wp;
     char_u	    *rfname = NULL;
     WCHAR	    *buff = NULL;
-    static BOOL	    loaded = FALSE;
-
-    if (pGetFinalPathNameByHandleW == NULL)
-    {
-	HMODULE hmod = GetModuleHandle("kernel32.dll");
-
-	if (loaded == TRUE)
-	    return NULL;
-	pGetFinalPathNameByHandleW = (pfnGetFinalPathNameByHandleW)
-		GetProcAddress(hmod, "GetFinalPathNameByHandleW");
-	loaded = TRUE;
-	if (pGetFinalPathNameByHandleW == NULL)
-	    return NULL;
-    }
 
     p = enc_to_utf16(fname, NULL);
     if (p == NULL)
@@ -1763,13 +1801,13 @@ resolve_reparse_point(char_u *fname)
     if (h == INVALID_HANDLE_VALUE)
 	goto fail;
 
-    size = pGetFinalPathNameByHandleW(h, NULL, 0, 0);
+    size = GetFinalPathNameByHandleW(h, NULL, 0, 0);
     if (size == 0)
 	goto fail;
     buff = ALLOC_MULT(WCHAR, size);
     if (buff == NULL)
 	goto fail;
-    if (pGetFinalPathNameByHandleW(h, buff, size, 0) == 0)
+    if (GetFinalPathNameByHandleW(h, buff, size, 0) == 0)
 	goto fail;
 
     if (wcsncmp(buff, L"\\\\?\\UNC\\", 8) == 0)
@@ -1911,7 +1949,11 @@ HWND message_window = 0;	    // window that's handling messages
 # define VIM_CLASSNAME      "VIM_MESSAGES"
 # define VIM_CLASSNAME_LEN  (sizeof(VIM_CLASSNAME) - 1)
 
-// Communication is via WM_COPYDATA messages. The message type is send in
+// Timeout for sending a message to another Vim instance.  Normally this works
+// instantly, but it may hang when the other Vim instance is halted.
+# define SENDMESSAGE_TIMEOUT	(5 * 1000)
+
+// Communication is via WM_COPYDATA messages. The message type is sent in
 // the dwData parameter. Types are defined here.
 # define COPYDATA_KEYS		0
 # define COPYDATA_REPLY		1
@@ -1932,9 +1974,9 @@ static char_u	*client_enc = NULL;
 
 /*
  * Tell the other side what encoding we are using.
- * Errors are ignored.
+ * Return -1 if timeout happens.  Other errors are ignored.
  */
-    static void
+    static int
 serverSendEnc(HWND target)
 {
     COPYDATASTRUCT data;
@@ -1942,8 +1984,11 @@ serverSendEnc(HWND target)
     data.dwData = COPYDATA_ENCODING;
     data.cbData = (DWORD)STRLEN(p_enc) + 1;
     data.lpData = p_enc;
-    (void)SendMessage(target, WM_COPYDATA, (WPARAM)message_window,
-							     (LPARAM)(&data));
+    if (SendMessageTimeout(target, WM_COPYDATA,
+	    (WPARAM)message_window, (LPARAM)&data,
+	    SMTO_ABORTIFHUNG, SENDMESSAGE_TIMEOUT, NULL) == 0)
+	return -1;
+    return 0;
 }
 
 /*
@@ -1952,11 +1997,11 @@ serverSendEnc(HWND target)
     static void
 CleanUpMessaging(void)
 {
-    if (message_window != 0)
-    {
-	DestroyWindow(message_window);
-	message_window = 0;
-    }
+    if (message_window == 0)
+	return;
+
+    DestroyWindow(message_window);
+    message_window = 0;
 }
 
 static int save_reply(HWND server, char_u *reply, int expr);
@@ -2001,6 +2046,7 @@ Messaging_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	COPYDATASTRUCT	reply;
 	char_u		*res;
 	int		retval;
+	DWORD_PTR	dwret = 0;
 	char_u		*str;
 	char_u		*tofree;
 
@@ -2041,7 +2087,7 @@ Messaging_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	    if (res == NULL)
 	    {
-		char	*err = _(e_invexprmsg);
+		char	*err = _(e_invalid_expression_received);
 		size_t	len = STRLEN(str) + STRLEN(err) + 5;
 
 		res = alloc(len);
@@ -2054,9 +2100,17 @@ Messaging_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	    reply.lpData = res;
 	    reply.cbData = (DWORD)STRLEN(res) + 1;
 
-	    serverSendEnc(sender);
-	    retval = (int)SendMessage(sender, WM_COPYDATA,
-				    (WPARAM)message_window, (LPARAM)(&reply));
+	    if (serverSendEnc(sender) < 0)
+		retval = -1;
+	    else
+	    {
+		if (SendMessageTimeout(sender, WM_COPYDATA,
+			(WPARAM)message_window, (LPARAM)&reply,
+			SMTO_ABORTIFHUNG, SENDMESSAGE_TIMEOUT, &dwret) == 0)
+		    retval = -1;
+		else
+		    retval = (int)dwret;
+	    }
 	    vim_free(tofree);
 	    vim_free(res);
 	    return retval;
@@ -2301,9 +2355,7 @@ serverSetName(char_u *name)
     {
 	// Remember the name
 	serverName = ok_name;
-# ifdef FEAT_TITLE
 	need_maketitle = TRUE;	// update Vim window title later
-# endif
 
 	// Update the message window title
 	SetWindowText(message_window, (LPCSTR)ok_name);
@@ -2336,6 +2388,7 @@ serverSendReply(
     HWND	target;
     COPYDATASTRUCT data;
     long_u	n = 0;
+    DWORD_PTR	dwret = 0;
 
     // The "name" argument is a magic cookie obtained from expand("<client>").
     // It should be of the form 0xXXXXX - i.e. a C hex literal, which is the
@@ -2352,12 +2405,13 @@ serverSendReply(
     data.cbData = (DWORD)STRLEN(reply) + 1;
     data.lpData = reply;
 
-    serverSendEnc(target);
-    if (SendMessage(target, WM_COPYDATA, (WPARAM)message_window,
-							     (LPARAM)(&data)))
-	return 0;
-
-    return -1;
+    if (serverSendEnc(target) < 0)
+	return -1;
+    if (SendMessageTimeout(target, WM_COPYDATA,
+		(WPARAM)message_window, (LPARAM)&data,
+		SMTO_ABORTIFHUNG, SENDMESSAGE_TIMEOUT, &dwret) == 0)
+	return -1;
+    return dwret ? 0 : -1;
 }
 
     int
@@ -2374,6 +2428,7 @@ serverSendToVim(
     COPYDATASTRUCT data;
     char_u	*retval = NULL;
     int		retcode = 0;
+    DWORD_PTR	dwret = 0;
     char_u	altname_buf[MAX_PATH];
 
     // Execute locally if no display or target is ourselves
@@ -2381,7 +2436,7 @@ serverSendToVim(
 	return sendToLocalVim(cmd, asExpr, result);
 
     // If the server name does not end in a digit then we look for an
-    // alternate name.  e.g. when "name" is GVIM the we may find GVIM2.
+    // alternate name.  e.g. when "name" is GVIM then we may find GVIM2.
     if (STRLEN(name) > 1 && !vim_isdigit(name[STRLEN(name) - 1]))
 	altname_buf_ptr = altname_buf;
     altname_buf[0] = NUL;
@@ -2394,7 +2449,7 @@ serverSendToVim(
     if (target == 0)
     {
 	if (!silent)
-	    semsg(_(e_noserver), name);
+	    semsg(_(e_no_registered_server_named_str), name);
 	return -1;
     }
 
@@ -2405,9 +2460,13 @@ serverSendToVim(
     data.cbData = (DWORD)STRLEN(cmd) + 1;
     data.lpData = cmd;
 
-    serverSendEnc(target);
-    if (SendMessage(target, WM_COPYDATA, (WPARAM)message_window,
-							(LPARAM)(&data)) == 0)
+    if (serverSendEnc(target) < 0)
+	return -1;
+    if (SendMessageTimeout(target, WM_COPYDATA,
+		(WPARAM)message_window, (LPARAM)&data,
+		SMTO_ABORTIFHUNG, SENDMESSAGE_TIMEOUT, &dwret) == 0)
+	return -1;
+    if (dwret == 0)
 	return -1;
 
     if (asExpr)
@@ -2582,10 +2641,10 @@ serverProcessPendingMessages(void)
 {
     MSG msg;
 
-    while (pPeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+    while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
     {
 	TranslateMessage(&msg);
-	pDispatchMessage(&msg);
+	DispatchMessageW(&msg);
     }
 }
 
@@ -2967,7 +3026,9 @@ get_logfont(
 		    if (cp->name == NULL && verbose)
 		    {
 			char_u *s = utf16_to_enc(p, NULL);
-			semsg(_("E244: Illegal charset name \"%s\" in font name \"%s\""), s, name);
+
+			semsg(_(e_illegal_str_name_str_in_font_name_str),
+							   "charset", s, name);
 			vim_free(s);
 			break;
 		    }
@@ -2987,7 +3048,8 @@ get_logfont(
 		    if (qp->name == NULL && verbose)
 		    {
 			char_u *s = utf16_to_enc(p, NULL);
-			semsg(_("E244: Illegal quality name \"%s\" in font name \"%s\""), s, name);
+			semsg(_(e_illegal_str_name_str_in_font_name_str),
+							   "quality", s, name);
 			vim_free(s);
 			break;
 		    }
@@ -2995,7 +3057,7 @@ get_logfont(
 		}
 	    default:
 		if (verbose)
-		    semsg(_("E245: Illegal char '%c' in font name \"%s\""), p[-1], name);
+		    semsg(_(e_illegal_char_nr_in_font_name_str), p[-1], name);
 		goto theend;
 	}
 	while (*p == L':')

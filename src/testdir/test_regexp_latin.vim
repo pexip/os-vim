@@ -6,7 +6,10 @@ scriptencoding latin1
 source check.vim
 
 func s:equivalence_test()
-  let str = "AÀÁÂÃÄÅ B C D EÈÉÊË F G H IÌÍÎÏ J K L M NÑ OÒÓÔÕÖØ P Q R S T UÙÚÛÜ V W X Yİ Z aàáâãäå b c d eèéêë f g h iìíîï j k l m nñ oòóôõöø p q r s t uùúûü v w x yıÿ z"
+  let str = 'AÀÁÂÃÄÅ B C D EÈÉÊË F G H IÌÍÎÏ J K L M NÑ OÒÓÔÕÖØ P Q R S T UÙÚÛÜ V W X Yİ Z '
+  \      .. 'aàáâãäå b c d eèéêë f g h iìíîï j k l m nñ oòóôõöø p q r s t uùúûü v w x yıÿ z '
+  \      .. "0 1 2 3 4 5 6 7 8 9 "
+  \      .. "` ~ ! ? ; : . , / \\ ' \" | < > [ ] { } ( ) @ # $ % ^ & * _ - + \b \e \f \n \r \t"
   let groups = split(str)
   for group1 in groups
       for c in split(group1, '\zs')
@@ -27,11 +30,13 @@ endfunc
 func Test_equivalence_re1()
   set re=1
   call s:equivalence_test()
+  set re=0
 endfunc
 
 func Test_equivalence_re2()
   set re=2
   call s:equivalence_test()
+  set re=0
 endfunc
 
 func Test_recursive_substitute()
@@ -64,6 +69,7 @@ func Test_eow_with_optional()
     let actual = matchlist('abc def', '\(abc\>\)\?\s*\(def\)')
     call assert_equal(expected, actual)
   endfor
+  set re=0
 endfunc
 
 func Test_backref()
@@ -86,6 +92,31 @@ func Test_multi_failure()
   call assert_fails('/a*\+', 'E871:')
   call assert_fails('/a\{a}', 'E554:')
   set re=0
+endfunc
+
+func Test_column_success_failure()
+  new
+  call setline(1, 'xbar')
+
+  set re=1
+  %s/\%>0v./A/
+  call assert_equal('Abar', getline(1))
+  call assert_fails('/\%v', 'E71:')
+  call assert_fails('/\%>v', 'E71:')
+  call assert_fails('/\%c', 'E71:')
+  call assert_fails('/\%<c', 'E71:')
+  call assert_fails('/\%l', 'E71:')
+  set re=2
+  %s/\%>0v./B/
+  call assert_equal('Bbar', getline(1))
+  call assert_fails('/\%v', 'E1273:')
+  call assert_fails('/\%>v', 'E1273:')
+  call assert_fails('/\%c', 'E1273:')
+  call assert_fails('/\%<c', 'E1273:')
+  call assert_fails('/\%l', 'E1273:')
+
+  set re=0
+  bwipe!
 endfunc
 
 func Test_recursive_addstate()
@@ -796,7 +827,7 @@ func Test_matchstr_with_ze()
   bwipe!
 endfunc
 
-" Check a pattern with a look beind crossing a line boundary
+" Check a pattern with a look behind crossing a line boundary
 func Test_lookbehind_across_line()
   new
   call append(0, ['Behind:', 'asdfasd<yyy', 'xxstart1', 'asdfasd<yy',
@@ -924,8 +955,17 @@ func Test_regexp_error()
   call assert_fails("call matchlist('x x', '\\%#=1 \\ze*')", 'E888:')
   call assert_fails("call matchlist('x x', '\\%#=2 \\zs*')", 'E888:')
   call assert_fails("call matchlist('x x', '\\%#=2 \\ze*')", 'E888:')
-  call assert_fails('exe "normal /\\%#=1\\%[x\\%[x]]\<CR>"', 'E369:')
   call assert_fails("call matchstr('abcd', '\\%o841\\%o142')", 'E678:')
+  call assert_fails("call matchstr('abcd', '\\%#=2\\%2147483647c')", 'E951:')
+  call assert_fails("call matchstr('abcd', '\\%#=2\\%2147483647l')", 'E951:')
+  call assert_fails("call matchstr('abcd', '\\%#=2\\%2147483647v')", 'E951:')
+  call assert_fails('exe "normal /\\%#=1\\%[x\\%[x]]\<CR>"',   'E369:')
+  call assert_fails('exe "normal /\\%#=2\\%2147483647l\<CR>"', 'E951:')
+  call assert_fails('exe "normal /\\%#=2\\%2147483647c\<CR>"', 'E951:')
+  call assert_fails('exe "normal /\\%#=2\\%102261126v\<CR>"',  'E951:')
+  call assert_fails('exe "normal /\\%#=2\\%2147483646l\<CR>"', 'E486:')
+  call assert_fails('exe "normal /\\%#=2\\%2147483646c\<CR>"', 'E486:')
+  call assert_fails('exe "normal /\\%#=2\\%102261125v\<CR>"',  'E486:')
   call assert_equal('', matchstr('abcd', '\%o181\%o142'))
 endfunc
 
@@ -937,5 +977,187 @@ func Test_regexp_last_subst_string()
   call assert_equal(matchstr("foo\nbaz\nbar", "\\%#=2\~"), "baz")
   close!
 endfunc
+
+" Check patterns matching cursor position.
+func s:curpos_test2()
+  new
+  call setline(1, ['1', '2 foobar eins zwei drei vier fünf sechse',
+        \ '3 foobar eins zwei drei vier fünf sechse',
+        \ '4 foobar eins zwei drei vier fünf sechse',
+        \ '5	foobar eins zwei drei vier fünf sechse',
+        \ '6	foobar eins zwei drei vier fünf sechse',
+        \ '7	foobar eins zwei drei vier fünf sechse'])
+  call setpos('.', [0, 2, 10, 0])
+  s/\%.c.*//g
+  call setpos('.', [0, 3, 15, 0])
+  s/\%.l.*//g
+  call setpos('.', [0, 5, 3, 0])
+  s/\%.v.*/_/g
+  call assert_equal(['1',
+        \ '2 foobar ',
+        \ '',
+        \ '4 foobar eins zwei drei vier fünf sechse',
+        \ '5	_',
+        \ '6	foobar eins zwei drei vier fünf sechse',
+        \ '7	foobar eins zwei drei vier fünf sechse'],
+        \ getline(1, '$'))
+  call assert_fails('call search("\\%.1l")', 'E1204:')
+  call assert_fails('call search("\\%.1c")', 'E1204:')
+  call assert_fails('call search("\\%.1v")', 'E1204:')
+  bwipe!
+endfunc
+
+" Check patterns matching before or after cursor position.
+func s:curpos_test3()
+  new
+  call setline(1, ['1', '2 foobar eins zwei drei vier fünf sechse',
+        \ '3 foobar eins zwei drei vier fünf sechse',
+        \ '4 foobar eins zwei drei vier fünf sechse',
+        \ '5	foobar eins zwei drei vier fünf sechse',
+        \ '6	foobar eins zwei drei vier fünf sechse',
+        \ '7	foobar eins zwei drei vier fünf sechse'])
+  call setpos('.', [0, 2, 10, 0])
+  " Note: This removes all columns, except for the column directly in front of
+  " the cursor. Bug????
+  :s/^.*\%<.c//
+  call setpos('.', [0, 3, 10, 0])
+  :s/\%>.c.*$//
+  call setpos('.', [0, 5, 4, 0])
+  " Note: This removes all columns, except for the column directly in front of
+  " the cursor. Bug????
+  :s/^.*\%<.v/_/
+  call setpos('.', [0, 6, 4, 0])
+  :s/\%>.v.*$/_/
+  call assert_equal(['1',
+        \ ' eins zwei drei vier fünf sechse',
+        \ '3 foobar e',
+        \ '4 foobar eins zwei drei vier fünf sechse',
+        \ '_foobar eins zwei drei vier fünf sechse',
+        \ '6	fo_',
+        \ '7	foobar eins zwei drei vier fünf sechse'],
+        \ getline(1, '$'))
+  sil %d
+  call setline(1, ['1', '2 foobar eins zwei drei vier fünf sechse',
+        \ '3 foobar eins zwei drei vier fünf sechse',
+        \ '4 foobar eins zwei drei vier fünf sechse',
+        \ '5	foobar eins zwei drei vier fünf sechse',
+        \ '6	foobar eins zwei drei vier fünf sechse',
+        \ '7	foobar eins zwei drei vier fünf sechse'])
+  call setpos('.', [0, 4, 4, 0])
+  %s/\%<.l.*//
+  call setpos('.', [0, 5, 4, 0])
+  %s/\%>.l.*//
+  call assert_equal(['', '', '',
+        \ '4 foobar eins zwei drei vier fünf sechse',
+        \ '5	foobar eins zwei drei vier fünf sechse',
+        \ '', ''],
+        \ getline(1, '$'))
+  bwipe!
+endfunc
+
+" Test that matching below, at or after the
+" cursor position work
+func Test_matching_pos()
+  for val in range(3)
+    exe "set re=" .. val
+    " Match at cursor position
+    call s:curpos_test2()
+    " Match before or after cursor position
+    call s:curpos_test3()
+  endfor
+  set re&
+endfunc
+
+func Test_using_mark_position()
+  " this was using freed memory
+  " new engine
+  new
+  norm O0
+  call assert_fails("s/\\%')", 'E486:')
+  bwipe!
+
+  " old engine
+  new
+  norm O0
+  call assert_fails("s/\\%#=1\\%')", 'E486:')
+  bwipe!
+endfunc
+
+func Test_using_visual_position()
+  " this was using freed memory
+  new
+  exe "norm 0o\<Esc>\<C-V>k\<C-X>o0"
+  /\%V
+  bwipe!
+endfunc
+
+func Test_using_invalid_visual_position()
+  " this was going beyond the end of the line
+  new
+  exe "norm 0o000\<Esc>0\<C-V>$s0"
+  /\%V
+  bwipe!
+endfunc
+
+func Test_using_two_engines_pattern()
+  new
+  call setline(1, ['foobar=0', 'foobar=1', 'foobar=2'])
+  " \%#= at the end of the pattern
+  for i in range(0, 2)
+    for j in range(0, 2)
+      exe "set re=" .. i
+      call cursor(j + 1, 7)
+      call assert_fails("%s/foobar\\%#=" .. j, 'E1281:')
+    endfor
+  endfor
+  set re=0
+
+  " \%#= at the start of the pattern
+  for i in range(0, 2)
+    call cursor(i + 1, 7)
+    exe ":%s/\\%#=" .. i .. "foobar=" .. i .. "/xx"
+  endfor
+  call assert_equal(['xx', 'xx', 'xx'], getline(1, '$'))
+  bwipe!
+endfunc
+
+func Test_recursive_substitute_expr()
+  new
+  func Repl()
+    s
+  endfunc
+  silent! s/\%')/~\=Repl()
+
+  bwipe!
+  delfunc Repl
+endfunc
+
+def Test_compare_columns()
+  # this was using a line below the last line
+  enew
+  setline(1, ['', ''])
+  prop_type_add('name', {highlight: 'ErrorMsg'})
+  prop_add(1, 1, {length: 1, type: 'name'})
+  search('\%#=1\%>.l\n.*\%<2v', 'nW')
+  search('\%#=2\%>.l\n.*\%<2v', 'nW')
+  bwipe!
+  prop_type_delete('name')
+enddef
+
+def Test_compare_column_matchstr()
+  # do some search in text to set the line number, it should be ignored in
+  # matchstr().
+  enew
+  setline(1, ['one', 'two', 'three'])
+  :3
+  :/ee
+  bwipe!
+  set re=1
+  call assert_equal('aaa', matchstr('aaaaaaaaaaaaaaaaaaaa', '.*\%<5v'))
+  set re=2
+  call assert_equal('aaa', matchstr('aaaaaaaaaaaaaaaaaaaa', '.*\%<5v'))
+  set re=0
+enddef
+
 
 " vim: shiftwidth=2 sts=2 expandtab

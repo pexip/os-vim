@@ -12,7 +12,7 @@ func Create_vim_dict()
   return {'a': 1}
 endfunction
 
-let s:system_error_pat = 'Vim(py3):SystemError: \(<built-in function eval> returned NULL without setting an error\|error return without exception set\)'
+let s:system_error_pat = 'Vim(py3):SystemError: \(<built-in function eval> returned NULL without setting an \(error\|exception\)\|error return without exception set\)'
 
 " This function should be called first. This sets up python functions used by
 " the other tests.
@@ -25,6 +25,7 @@ func Test_AAA_python3_setup()
     py33_type_error_pattern = re.compile('^__call__\(\) takes (\d+) positional argument but (\d+) were given$')
     py37_exception_repr = re.compile(r'([^\(\),])(\)+)$')
     py39_type_error_pattern = re.compile('\w+\.([^(]+\(\) takes)')
+    py310_type_error_pattern = re.compile('takes (\d+) positional argument but (\d+) were given')
 
     def emsg(ei):
       return ei[0].__name__ + ':' + repr(ei[1].args)
@@ -60,6 +61,7 @@ func Test_AAA_python3_setup()
                             msg = msg.replace(newmsg2, oldmsg2)
                         # Python 3.9 reports errors like "vim.command() takes ..." instead of "command() takes ..."
                         msg = py39_type_error_pattern.sub(r'\1', msg)
+                        msg = py310_type_error_pattern.sub(r'takes exactly \1 positional argument (\2 given)', msg)
                 elif sys.version_info >= (3, 5) and e.__class__ is ValueError and str(e) == 'embedded null byte':
                     msg = repr((TypeError, TypeError('expected bytes with no null')))
                 else:
@@ -284,16 +286,14 @@ endfunc
 " Test vim.eval() with various types.
 func Test_python3_vim_val()
   call assert_equal("\n8",             execute('py3 print(vim.eval("3+5"))'))
-  if has('float')
-    call assert_equal("\n3.140000",    execute('py3 print(vim.eval("1.01+2.13"))'))
-    call assert_equal("\n0.000000",    execute('py3 print(vim.eval("0.0/(1.0/0.0)"))'))
-    call assert_equal("\n0.000000",    execute('py3 print(vim.eval("0.0/(1.0/0.0)"))'))
-    call assert_equal("\n-0.000000",   execute('py3 print(vim.eval("0.0/(-1.0/0.0)"))'))
-    " Commented out: output of infinity and nan depend on platforms.
-    " call assert_equal("\ninf",         execute('py3 print(vim.eval("1.0/0.0"))'))
-    " call assert_equal("\n-inf",        execute('py3 print(vim.eval("-1.0/0.0"))'))
-    " call assert_equal("\n-nan",        execute('py3 print(vim.eval("0.0/0.0"))'))
-  endif
+  call assert_equal("\n3.140000",    execute('py3 print(vim.eval("1.01+2.13"))'))
+  call assert_equal("\n0.000000",    execute('py3 print(vim.eval("0.0/(1.0/0.0)"))'))
+  call assert_equal("\n0.000000",    execute('py3 print(vim.eval("0.0/(1.0/0.0)"))'))
+  call assert_equal("\n-0.000000",   execute('py3 print(vim.eval("0.0/(-1.0/0.0)"))'))
+  " Commented out: output of infinity and nan depend on platforms.
+  " call assert_equal("\ninf",         execute('py3 print(vim.eval("1.0/0.0"))'))
+  " call assert_equal("\n-inf",        execute('py3 print(vim.eval("-1.0/0.0"))'))
+  " call assert_equal("\n-nan",        execute('py3 print(vim.eval("0.0/0.0"))'))
   call assert_equal("\nabc",           execute('py3 print(vim.eval("\"abc\""))'))
   call assert_equal("\n['1', '2']",    execute('py3 print(vim.eval("[1, 2]"))'))
   call assert_equal("\n{'1': '2'}",    execute('py3 print(vim.eval("{1:2}"))'))
@@ -379,11 +379,13 @@ func Test_python3_opt_reset_local_to_global()
         \ ['errorformat', '%f:%l:%m', '%s-%l-%m', ''],
         \ ['grepprg', 'ggprg', 'lgprg', ''],
         \ ['makeprg', 'gmprg', 'lmprg', ''],
-        \ ['balloonexpr', 'gbexpr', 'lbexpr', ''],
         \ ['cryptmethod', 'blowfish2', 'zip', ''],
         \ ['lispwords', 'abc', 'xyz', ''],
         \ ['makeencoding', 'utf-8', 'latin1', ''],
         \ ['undolevels', 100, 200, -123456]]
+  if has('balloon_eval')
+    call add(bopts, ['balloonexpr', 'gbexpr', 'lbexpr', ''])
+  endif
 
   " Set the global and buffer-local option values and then clear the
   " buffer-local option value.
@@ -511,6 +513,8 @@ func Test_python3_window()
   10new
   py3 vim.current.window.height = 5
   call assert_equal(5, winheight(0))
+  py3 vim.current.window.height = 3.2
+  call assert_equal(3, winheight(0))
 
   " Test for setting the window width
   10vnew
@@ -534,6 +538,24 @@ func Test_python3_window()
         \ 'Vim(py3):vim.error: attempt to refer to deleted window')
   call assert_match('<window object (deleted)', py3eval("repr(w)"))
   %bw!
+endfunc
+
+" This was causing trouble because "curbuf" was not matching curwin->w_buffer
+func Test_python3_window_set_height()
+  enew!
+  call setline(1, ['aaa', 'bbb', 'ccc'])
+  call cursor(2, 1)
+  set foldmethod=expr
+  new
+  wincmd w
+  python3 vim.windows[0].height = 5
+  call assert_equal(5, winheight(1))
+
+  call feedkeys('j', 'xt')
+  call assert_equal(3, getpos('.')[1])
+
+  bwipe!
+  bwipe!
 endfunc
 
 " Test for the python List object
@@ -574,6 +596,9 @@ func Test_python3_list()
   py3 ll[2] = 8
   call assert_equal([1, 2, 8], l)
 
+  " iterating over list from Python
+  py3 print([x for x in vim.Function("getline")(1, 2)])
+
   " Using dict as an index
   call AssertException(['py3 ll[{}] = 10'],
         \ 'Vim(py3):TypeError: index must be int or slice, not dict')
@@ -598,7 +623,7 @@ func Test_python3_dict()
   py3 d = vim.bindeval('d')
   call assert_equal(2, py3eval('len(d)'))
 
-  " Deleting an non-existing key
+  " Deleting a non-existing key
   call AssertException(["py3 del d['c']"], "Vim(py3):KeyError: 'c'")
 endfunc
 
@@ -870,7 +895,6 @@ func Test_python3_function_call()
 endfunc
 
 func Test_python3_float()
-  CheckFeature float
   let l = [0.0]
   py3 l = vim.bindeval('l')
   py3 l.extend([0.0])
@@ -973,9 +997,7 @@ func Test_python3_pyeval()
   py3 v = vim.eval('test_null_function()')
   call assert_equal(v:none, py3eval('v'))
 
-  if has('float')
-    call assert_equal(0.0, py3eval('0.0'))
-  endif
+  call assert_equal(0.0, py3eval('0.0'))
 
   " Evaluate an invalid values
   call AssertException(['let v = py3eval(''"\0"'')'], 'E859:')
@@ -1004,8 +1026,12 @@ func Test_python3_vim_bindeval()
   call assert_equal(v:none, py3eval("vim.bindeval('v:none')"))
 
   " channel/job
-  call assert_equal(v:none, py3eval("vim.bindeval('test_null_channel()')"))
-  call assert_equal(v:none, py3eval("vim.bindeval('test_null_job()')"))
+  if has('channel')
+    call assert_equal(v:none, py3eval("vim.bindeval('test_null_channel()')"))
+  endif
+  if has('job')
+    call assert_equal(v:none, py3eval("vim.bindeval('test_null_job()')"))
+  endif
 endfunc
 
 " threading
@@ -1749,11 +1775,11 @@ func Test_python3_buffer()
   %bw!
 
   " Range object for a deleted buffer
-  new Xfile
+  new Xp3buffile
   call setline(1, ['one', 'two', 'three'])
   py3 b = vim.current.buffer
   py3 r = vim.current.buffer.range(0, 2)
-  call assert_equal('<range Xfile (0:2)>', py3eval('repr(r)'))
+  call assert_equal('<range Xp3buffile (0:2)>', py3eval('repr(r)'))
   %bw!
   call AssertException(['py3 r[:] = []'],
         \ 'Vim(py3):vim.error: attempt to refer to deleted buffer')
@@ -1782,7 +1808,7 @@ endfunc
 " Test vim.buffers object
 func Test_python3_buffers()
   %bw!
-  edit Xfile
+  edit Xp3buffile
   py3 cb = vim.current.buffer
   set hidden
   edit a
@@ -1806,8 +1832,8 @@ func Test_python3_buffers()
     cb.append('i3:' + str(next(i3)))
     del i3
   EOF
-  call assert_equal(['i:<buffer Xfile>',
-        \ 'i2:<buffer Xfile>', 'i:<buffer a>', 'i3:<buffer Xfile>'],
+  call assert_equal(['i:<buffer Xp3buffile>',
+        \ 'i2:<buffer Xp3buffile>', 'i:<buffer a>', 'i3:<buffer Xp3buffile>'],
         \ getline(2, '$'))
   %d
 
@@ -1825,7 +1851,7 @@ func Test_python3_buffers()
 
     cb.append(str(len(vim.buffers)))
   EOF
-  call assert_equal([bufnr('Xfile') .. ':<buffer Xfile>=<buffer Xfile>',
+  call assert_equal([bufnr('Xp3buffile') .. ':<buffer Xp3buffile>=<buffer Xp3buffile>',
         \ bufnr('a') .. ':<buffer a>=<buffer a>',
         \ bufnr('b') .. ':<buffer b>=<buffer b>',
         \ bufnr('c') .. ':<buffer c>=<buffer c>', '4'], getline(2, '$'))
@@ -1855,15 +1881,15 @@ func Test_python3_buffers()
     del i4
     del bnums
   EOF
-  call assert_equal(['i4:<buffer Xfile>',
-        \ 'i4:<buffer Xfile>', 'StopIteration'], getline(2, '$'))
+  call assert_equal(['i4:<buffer Xp3buffile>',
+        \ 'i4:<buffer Xp3buffile>', 'StopIteration'], getline(2, '$'))
   %bw!
 endfunc
 
 " Test vim.{tabpage,window}list and vim.{tabpage,window} objects
 func Test_python3_tabpage_window()
   %bw
-  edit Xfile
+  edit Xp3buffile
   py3 cb = vim.current.buffer
   tabnew 0
   tabnew 1
@@ -1924,7 +1950,7 @@ func Test_python3_tabpage_window()
     Current tab pages:
       <tabpage 0>(1): 1 windows, current is <window object (unknown)>
       Windows:
-        <window object (unknown)>(1): displays buffer <buffer Xfile>; cursor is at (2, 0)
+        <window object (unknown)>(1): displays buffer <buffer Xp3buffile>; cursor is at (2, 0)
       <tabpage 1>(2): 1 windows, current is <window object (unknown)>
       Windows:
         <window object (unknown)>(1): displays buffer <buffer 0>; cursor is at (1, 0)
@@ -1940,14 +1966,14 @@ func Test_python3_tabpage_window()
         <window 3>(4): displays buffer <buffer 2>; cursor is at (1, 0)
     Number of windows in current tab page: 4
   END
-  call assert_equal(expected, getbufline(bufnr('Xfile'), 2, '$'))
+  call assert_equal(expected, getbufline(bufnr('Xp3buffile'), 2, '$'))
   %bw!
 endfunc
 
 " Test vim.current
 func Test_python3_vim_current()
   %bw
-  edit Xfile
+  edit Xpy3cfile
   py3 cb = vim.current.buffer
   tabnew 0
   tabnew 1
@@ -1973,8 +1999,8 @@ func Test_python3_vim_current()
     Current window: <window 0>: <window 0> is <window 0>
     Current buffer: <buffer c.2>: <buffer c.2> is <buffer c.2> is <buffer c.2>
   END
-  call assert_equal(expected, getbufline(bufnr('Xfile'), 2, '$'))
-  call deletebufline(bufnr('Xfile'), 1, '$')
+  call assert_equal(expected, getbufline(bufnr('Xpy3cfile'), 2, '$'))
+  call deletebufline(bufnr('Xpy3cfile'), 1, '$')
 
   " Assigning: fails
   py3 << trim EOF
@@ -1997,10 +2023,10 @@ func Test_python3_vim_current()
     Type error at assigning None to vim.current.tabpage
     Type error at assigning None to vim.current.buffer
   END
-  call assert_equal(expected, getbufline(bufnr('Xfile'), 2, '$'))
-  call deletebufline(bufnr('Xfile'), 1, '$')
+  call assert_equal(expected, getbufline(bufnr('Xpy3cfile'), 2, '$'))
+  call deletebufline(bufnr('Xpy3cfile'), 1, '$')
 
-  call setbufline(bufnr('Xfile'), 1, 'python interface')
+  call setbufline(bufnr('Xpy3cfile'), 1, 'python interface')
   py3 << trim EOF
     # Assigning: success
     vim.current.tabpage = vim.tabpages[-2]
@@ -2016,13 +2042,13 @@ func Test_python3_vim_current()
   let expected =<< trim END
     Current tab page: <tabpage 2>
     Current window: <window 0>
-    Current buffer: <buffer Xfile>
+    Current buffer: <buffer Xpy3cfile>
     Current line: 'python interface'
   END
-  call assert_equal(expected, getbufline(bufnr('Xfile'), 2, '$'))
+  call assert_equal(expected, getbufline(bufnr('Xpy3cfile'), 2, '$'))
   py3 vim.current.line = 'one line'
   call assert_equal('one line', getline('.'))
-  call deletebufline(bufnr('Xfile'), 1, '$')
+  call deletebufline(bufnr('Xpy3cfile'), 1, '$')
 
   py3 << trim EOF
     ws = list(vim.windows)
@@ -2042,7 +2068,7 @@ func Test_python3_vim_current()
     w.valid: [True, False]
     t.valid: [True, False, True, False]
   END
-  call assert_equal(expected, getbufline(bufnr('Xfile'), 2, '$'))
+  call assert_equal(expected, getbufline(bufnr('Xpy3cfile'), 2, '$'))
   %bw!
 endfunc
 
@@ -2585,7 +2611,7 @@ endfunc
 
 " Test chdir
 func Test_python3_chdir()
-  new Xfile
+  new Xp3cdfile
   py3 cb = vim.current.buffer
   py3 << trim EOF
     import os
@@ -2596,7 +2622,7 @@ func Test_python3_chdir()
     path = fnamemodify('.', ':p:h:t')
     if path != b'src' and path != b'src2':
       # Running tests from a shadow directory, so move up another level
-      # This will result in @% looking like shadow/testdir/Xfile, hence the
+      # This will result in @% looking like shadow/testdir/Xp3cdfile, hence the
       # slicing to remove the leading path and path separator
       os.chdir('..')
       cb.append(str(fnamemodify('.', ':p:h:t')))
@@ -2612,8 +2638,8 @@ func Test_python3_chdir()
     cb.append(vim.eval('@%'))
     del fnamemodify
   EOF
-  call assert_equal(["b'testdir'", 'Xfile', "b'src'", 'testdir/Xfile',
-        \"b'testdir'", 'Xfile'], getline(2, '$'))
+  call assert_equal(["b'testdir'", 'Xp3cdfile', "b'src'", 'testdir/Xp3cdfile',
+        \"b'testdir'", 'Xp3cdfile'], getline(2, '$'))
   close!
   call AssertException(["py3 vim.chdir(None)"], "Vim(py3):TypeError:")
 endfunc
@@ -2630,6 +2656,7 @@ func Test_python3_errors()
   py3 cb = vim.current.buffer
 
   py3 << trim EOF
+    import os
     d = vim.Dictionary()
     ned = vim.Dictionary(foo='bar', baz='abcD')
     dl = vim.Dictionary(a=1)
@@ -4035,7 +4062,7 @@ func Test_python3_fold_hidden_buffer()
   endfunc
 
   call setline(1, repeat([''], 15) + repeat(['from'], 3))
-  eval repeat(['x'], 17)->writefile('Xa.txt')
+  eval repeat(['x'], 17)->writefile('Xa.txt', 'D')
   split Xa.txt
   py3 import vim
   py3 b = vim.current.buffer
@@ -4043,10 +4070,45 @@ func Test_python3_fold_hidden_buffer()
   hide
   py3 b[:] = aaa
 
-  call delete('Xa.txt')
   set fdm& fde&
   delfunc Fde
   bwipe! Xa.txt
+endfunc
+
+" Test to catch regression fix #10437.
+func Test_python3_hidden_buf_mod_does_not_mess_up_display()
+  CheckRunVimInTerminal
+
+  let testfile = 'Xtest.vim'
+  let lines =<< trim END
+        set hidden number
+        new
+        hide
+        sil call setline(1, repeat(['aaa'], &lines) + ['bbbbbb'])
+        fu Func()
+        python3 << EOF
+        import vim
+        b = vim.buffers[2]
+        b[:] = ['', '']
+        EOF
+        endfu
+        norm! Gzb
+        call feedkeys(":call Func()\r", 'n')
+  END
+  call writefile(lines, testfile, 'D')
+
+  let rows = 10
+  let bufnr = term_start([GetVimProg(), '--clean', '-S', testfile], {'term_rows': rows})
+  call TermWait(bufnr, 100)
+  call assert_equal('run', job_status(term_getjob(bufnr)))
+  let g:test_is_flaky = 0
+  call WaitForAssert({-> assert_match('^  3 aaa$', term_getline(bufnr, 1))})
+  call WaitForAssert({-> assert_match('^ 11 bbbbbb$', term_getline(bufnr, rows - 1))})
+
+  call term_sendkeys(bufnr, ":qall!\<CR>")
+  call WaitForAssert({-> assert_equal('dead', job_status(term_getjob(bufnr)))})
+
+  exe bufnr . 'bwipe!'
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

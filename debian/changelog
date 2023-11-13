@@ -1,3 +1,296 @@
+vim (2:9.0.1378-2) unstable; urgency=medium
+
+  * Backport 9.0.1499 to fix CVE-2023-2426 (Closes: #1035323)
+  * Backport fix for indenting of Perl subroutines (Closes: #1034529)
+
+ -- James McCoy <jamessan@debian.org>  Thu, 04 May 2023 06:24:44 -0400
+
+vim (2:9.0.1378-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.1378
+    + Vulnerability fixes
+      - 9.0.1143: Invalid memory access with bad 'statusline' value,
+        CVE-2023-0049
+      - 9.0.1144: Reading beyond text, CVE-2023-0051
+      - 9.0.1145: Invalid memory access with recursive substitute expression,
+        (Closes: #1031875, CVE-2023-0054)
+      - 9.0.1189: Invalid memory access with folding and using "L",
+        CVE-2023-0288
+      - 9.0.1225: Reading past the end of a line when formatting text,
+        CVE-2023-0433
+      - 9.0.1247: Divide by zero with 'smoothscroll' set and a narrow window,
+        CVE-2023-0512
+      - 9.0.1367: Divide by zero in zero-width window, CVE-2023-1127
+      - 9.0.1376: Accessing invalid memory with put in Visual block mode,
+        CVE-2023-1170
+    + 9.0.1073, 9.0.1080: Fix keyboard input/mapping support for some
+      terminals (e.g., foot and kitty).  (Closes: #1029049)
+    + 9.0.1213: Fix inconsistent behavior when adding text after a fold at the
+      end of the buffer (Closes: #868252)
+    + syntax/2html.vim: Fix reference to undefined s:settings_no_doc variable
+      (Closes: #1030151)
+    + syntax/debcontrol.vim, syntax/debsources.vim: Add support for
+      non-free-firmware.  (Closes: #1029986)
+
+ -- James McCoy <jamessan@debian.org>  Sat, 04 Mar 2023 14:41:33 -0500
+
+vim (2:9.0.1000-4) unstable; urgency=medium
+
+  * Backport patch to fix tests on IPv6-only hosts (Closes: #1027824)
+
+ -- James McCoy <jamessan@debian.org>  Tue, 10 Jan 2023 22:16:36 -0500
+
+vim (2:9.0.1000-3) unstable; urgency=medium
+
+  * Fix substitution of VIMCUR in vim-common.install (Closes: #1027766)
+  * Backport v9.0.1129 to fix sporadic Test_range failure
+
+ -- James McCoy <jamessan@debian.org>  Tue, 03 Jan 2023 10:15:51 -0500
+
+vim (2:9.0.1000-2) unstable; urgency=medium
+
+  * Restore man page translations for da, de, and ja (Closes: #1027318)
+  * Update to debhelper-compat 13
+  * Remove obsolete maintscript files for versions earlier than oldstable
+  * Remove PER_VARIANT_FILES handling in debian/rules
+  * Add future=+lfs to DEB_BUILD_MAINT_OPTIONS
+  * Backport v9.0.1118 to fix sporadic test failures
+  * ci: Run tests against installed xxd
+  * ci: Install python3 for vim tests
+  * Backport v9.0.1117 to fix bracketed paste with new ncurses
+    (Closes: #1027674)
+
+ -- James McCoy <jamessan@debian.org>  Mon, 02 Jan 2023 06:31:55 -0500
+
+vim (2:9.0.1000-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.1000
+    + Security fixes
+      - 9.0.0882: using freed memory after SpellFileMissing autocmd uses
+        bwipe, CVE-2022-4292
+      - 9.0.0947: invalid memory access in substitute with function that goes
+        to another file (Closes: #1027146, CVE-2022-4141)
+  * Backport v9.0.1087 to fix test_autocmd flakiness
+
+ -- James McCoy <jamessan@debian.org>  Wed, 28 Dec 2022 11:51:10 -0500
+
+vim (2:9.0.0813-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.0813
+    + syntax/markdown.vim: Fix performance of markdownLinkText highlighting.
+      (Closes: #994209)
+
+ -- James McCoy <jamessan@debian.org>  Sun, 30 Oct 2022 16:59:44 -0400
+
+vim (2:9.0.0626-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.0626
+    + Various CVE fixes (Closes: #1019590)
+      - 9.0.0246: using freed memory when 'tagfunc' deletes the buffer,
+        CVE-2022-2946
+      - 9.0.0260: using freed memory when using 'quickfixtextfunc'
+        recursively, CVE-2022-2982
+      - 9.0.0322: crash when no errors and 'quickfixtextfunc' is set,
+        CVE-2022-3037
+      - 9.0.0360: crash when invalid line number on :for is ignored,
+        CVE-2022-3099
+      - 9.0.0389: crash when 'tagfunc' closes the window, CVE-2022-3134
+      - 9.0.0483: illegal memory access when replacing in virtualedit mode,
+        CVE-2022-3234
+      - 9.0.0490: using freed memory with cmdwin and BufEnter autocmd,
+        CVE-2022-3235
+      - 9.0.0530: using freed memory when autocmd changes mark, CVE-2022-3256
+      - 9.0.0577: buffer underflow with unexpected :finally, CVE-2022-3296
+      - 9.0.0598: using negative array index with negative width window,
+        CVE-2022-3324
+      - 9.0.0614: CVE-2022-3352
+    + 9.0.0509: confusing error for "saveas" command with "nofile" buffer
+      (Closes: #796872)
+
+ -- James McCoy <jamessan@debian.org>  Fri, 30 Sep 2022 00:38:50 -0400
+
+vim (2:9.0.0242-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.0242
+   + 9.0.241/242: Install the shared syntax files (Closes: #1017856)
+  * Add historic changelog entry for #947120 fix
+  * Adjust lintian overrides for new []-format
+  * Declare compliance with Policy 4.6.1, no changes needed
+
+ -- James McCoy <jamessan@debian.org>  Mon, 22 Aug 2022 22:46:33 -0400
+
+vim (2:9.0.0229-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.0229
+    + Various CVE fixes
+      - 9.0.0211: invalid memory access when compiling :lockvar, CVE-2022-2819
+      - 9.0.0212: invalid memory access when compiling :unlet, CVE-2022-2816
+      - 9.0.0213: using freed memory with error in assert argument,
+        CVE-2022-2817
+      - 9.0.0218: reading before the start of the line, CVE-2022-2845
+      - 9.0.0220: invalid memory access with for loop over NULL string,
+        CVE-2022-2849
+      - 9.0.0221: accessing freed memory if compiling nested function fails,
+        CVE-2022-2862
+      - 9.0.0225: using freed memory with multiple line breaks in expression,
+        CVE-2022-2889
+  * Add Recommends: xxd to vim-common
+  * Minor fixes for vim-tiny's fake help file (Closes: #1017715)
+  * Revert "Temporarily skip Test_Debugger_breakadd_expr", test fixed upstream
+
+ -- James McCoy <jamessan@debian.org>  Sat, 20 Aug 2022 09:56:52 -0400
+
+vim (2:9.0.0135-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.2.5172
+    + ftplugin/perl.vim: Only add : to 'isfname' in Perl buffers.  (Closes:
+      #761800)
+    + ftplugin/tap.vim: Set fold-related options local to the buffer. (Closes:
+      #954113)
+    + syntax/debcontrol.vim: Fix highlighting of sections with a slash (e.g.,
+      "non-free/utils").  (Closes: #1010839)
+    + syntax/tap.vim: Match TODO/SKIP markers case-insensitively. (Closes:
+      #954016)
+    + syntax/perl.vim: Properly highlight code on the same line as the start
+      of a here-doc block.  (Closes: #136455)
+    + Various CVE fixes (Closes: #1015984, #1016068)
+      - 8.2.5043: can open a cmdline window from a substitute expression,
+        CVE-2022-1942
+      - 8.2.5050: using freed memory when searching for pattern in path,
+        CVE-2022-1968
+      - 8.2.5063: error for a command may go over the end of IObuff,
+        CVE-2022-2000
+      - 8.2.5120: searching for quotes may go over the end of the line,
+        CVE-2022-2124
+      - 8.2.5122: lisp indenting may run over the end of the line,
+        CVE-2022-2125
+      - 8.2.5123: using invalid index when looking for spell suggestions,
+        CVE-2022-2126
+      - 8.2.5126: substitute may overrun destination buffer, CVE-2022-2129
+      - 9.0.0018: going over the end of the typeahead, CVE-2022-2285
+      - 9.0.0025: accessing beyond allocated memory with the cmdline window,
+        CVE-2022-2288
+      - 9.0.0035: spell dump may go beyond end of an array, CVE-2022-2304
+      - 8.2.5162: reading before the start of the line with BS in Replace
+        mode, CVE-2022-2207
+      - 8.2.4895: buffer overflow with invalid command with composing chars,
+        CVE-2022-1616
+      - 8.2.4899: with latin1 encoding CTRL-W might go before the cmdline,
+        CVE-2022-1619
+      - 8.2.4919: can add invalid bytes with :spellgood, CVE-2022-1621
+      - 8.2.4956: reading past end of line with "gf" in Visual block mode,
+        CVE-2022-1720
+      - 8.2.4977: memory access error when substitute expression changes
+        window, CVE-2022-1785
+      - 8.2.5013: after text formatting cursor may be in an invalid position,
+        CVE-2022-1851
+      - 8.2.5023: substitute overwrites allocated buffer, CVE-2022-1897
+      - 8.2.5024: using freed memory with "]d", CVE-2022-1898
+      - 9.0.0060: accessing uninitialized memory when completing long line,
+        CVE-2022-2522
+  * Temporarily skip Test_Debugger_breakadd_expr
+  * Remove "Depends: xxd" from vim-common (Closes: #1007887)
+  * Suppress error about missing defaults.vim in vim-tiny (Closes: #1004118)
+
+ -- James McCoy <jamessan@debian.org>  Wed, 03 Aug 2022 19:00:35 -0400
+
+vim (2:8.2.4793-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.2.4793
+
+ -- James McCoy <jamessan@debian.org>  Wed, 20 Apr 2022 20:23:54 -0400
+
+vim (2:8.2.4659-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.2.4659
+    + 8.2.4151: reading beyond end of a line (Closes: #1004859, CVE-2022-0318)
+    + autoload/phpcomplete.vim: Fix E565 error in omni-completion (Closes:
+      #1008710)
+  * Remove outdated NEWS and README.Debian entries
+  * README.Debian: Fix links to vim-policy
+  * Improve docs about purpose and effect of defaults.vim (Closes: #856273)
+  * Define system (g)vimrc location as /etc/vim/(g)vimrc, rather than
+    symlinking from /usr/share/vim/(g)vimrc -> /etc/vim/(g)vimrc.
+  * Replace vim-athena with vim-motif, Athena GUI deprecated upstream
+  * Remove lintian override for rgb.txt, removed upstream
+  * Declare compliance with Policy 4.6.0, no changes needed
+  * Remove vim-gtk transitional package
+
+ -- James McCoy <jamessan@debian.org>  Sun, 03 Apr 2022 10:44:13 -0400
+
+vim (2:8.2.3995-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.2.3918
+    + 8.2.3610: crash when ModeChanged triggered too early (Closes: #1001900,
+      CVE-2021-3968)
+    + 8.2.3611: crash when using CTRL-W f without finding a file name (Closes:
+      #1001899, CVE-2021-3973)
+    + 8.2.3612: using freed memory with regexp using a mark (Closes: #1001897,
+      CVE-2021-3974)
+    + 8.2.3625: illegal memory access when C-indenting (Closes: #1001896,
+      CVE-2021-3984)
+    + 8.2.3847: illegal memory access when using a lambda with an error
+      (Closes: #1002534, CVE-2021-4136)
+    + autoload/zip.vim: Use URI syntax for pseudo-filename to avoid empty
+      buffer after 8.2.3468 (Closes: #1000767)
+  * Revert "Disable Test_very_large_count since it fails on 32-bit systems",
+    fixed upstream
+
+ -- James McCoy <jamessan@debian.org>  Mon, 03 Jan 2022 17:57:10 -0500
+
+vim (2:8.2.3565-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.2.3565
+    + 8.2.3489: ml_get error after search with range (Closes: #996593,
+      CVE-2021-3875)
+    + syntax/{debchangelog,debsources}.vim: Add jammy as a recognized Ubuntu
+      release (Closes: #996760)
+  * Drop patches applied upstream
+    + Fix test_recover.vim's checks for endianness and size of long
+    + Use explicitly signed type for tt_min_argcount to fix unsigned char
+      systems
+  * Revert "Temporarily depend on xxd for build tests/autopkgtests"
+  * Disable Test_very_large_count since it fails on 32-bit systems
+
+ -- James McCoy <jamessan@debian.org>  Sat, 30 Oct 2021 10:56:38 -0400
+
+vim (2:8.2.3455-2) unstable; urgency=medium
+
+  * Fix test_recover.vim's checks for endianness and size of long
+  * Use explicitly signed type for tt_min_argcount to fix unsigned char systems
+
+ -- James McCoy <jamessan@debian.org>  Sun, 03 Oct 2021 09:17:57 -0400
+
+vim (2:8.2.3455-1) unstable; urgency=medium
+
+  * Merge upstream patch v8.2.3455
+    + 8.2.2761: Don't add current_syn_inc_tag to topgrp. (Closes: #947120)
+    + 8.2.3022: Add support for xchacha20 encryption, using libsodium
+    + 8.2.3068: Update Unicode support to Unicode 13
+    + 8.2.3402, 8.2.3403: invalid memory access when using :retab with large
+      value (Closes: CVE-2021-3770, #994076)
+    + 8.2.3409: reading beyond end of line with invalid utf-8 character
+      (Closes: CVE-2021-3778, #994498)
+    + 8.2.3428: using freed memory when replacing (Closes: CVE-2021-3796,
+      #994497)
+    + 8.2.3430: Add the ModeChanged autocommand event
+    + ftplugin/scala.vim: Fix syntax of includeexpr option  (Closes: #895629)
+    + syntax/{debchangelog,debsources}.vim: Add impish as a recognized Ubuntu
+      release (Closes: #995151)
+  * Vim addons policy
+    + Automatically publish policy to https://vim-team.pages.debian.net/vim/
+      (Closes: #989223)
+    + Rewrite policy to document use of dh_vim-addon instead of
+      vim-addon-manager
+  * Explicitly Depend on lynx to ensure docbook2txt works
+  * Build against libsodium for non-tiny builds
+  * Define a writable $HOME for the tests
+  * Temporarily depend on xxd for build tests/autopkgtests, otherwise
+    new tests for the xchacha20 encryption fail.
+  * Switch to salsa-ci-team pipeline for CI
+
+ -- James McCoy <jamessan@debian.org>  Thu, 30 Sep 2021 12:54:53 -0400
+
 vim (2:8.2.2434-3+deb11u1pexip3) pexip-bullseye; urgency=medium
 
   * Bullseye rebuild for ARM64 inclusion
@@ -16,19 +309,6 @@ vim (2:8.2.2434-3+deb11u1pexip1) pexip; urgency=medium
   * Disable two tests which fail in the CI sbuild environment.
 
  -- Mark Hymers <mark.hymers@pexip.com>  Thu, 02 Jun 2022 14:43:02 +0100
-
-vim (2:8.2.2434-3+deb11u1) bullseye; urgency=medium
-
-  * Switch gbp.conf and CI to bullseye
-  * Remove vim-gtk alternatives during vim-gtk -> vim-gtk3 transition
-    (Closes: #993766)
-  * Backport patches 8.2.3402 and 8.2.3403 to fix heap overflow in :retab
-    (Closes: #994076, CVE-2021-3770)
-  * Backport 8.2.3409 to fix heap overflow (Closes: #994498, CVE-2021-3778)
-  * Backport patch 8.2.3428 to fix use after free (Closes: #994497,
-    CVE-2021-3796)
-
- -- James McCoy <jamessan@debian.org>  Thu, 30 Sep 2021 21:51:08 -0400
 
 vim (2:8.2.2434-3) unstable; urgency=medium
 

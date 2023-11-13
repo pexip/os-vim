@@ -1,0 +1,3 @@
+src/vim-tiny/vim.tiny  usr/bin/
+debian/tiny/doc/  usr/share/vim/${env:VIMCUR}/
+debian/tiny/vimrc.tiny  etc/vim/

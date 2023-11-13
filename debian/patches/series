@@ -2,8 +2,6 @@ debian/Support-sourcing-a-vimrc.tiny-when-Vim-is-invoked-as-vi.patch
 debian/Detect-the-rst-filetype-using-the-contents-of-the-file.patch
 debian/Add-recognition-of-more-LaTeX-commands-for-tex-filetype-d.patch
 debian/Document-Debian-s-decision-to-disable-modelines-by-defaul.patch
-upstream/patch-8.2.3402-invalid-memory-access-when-using-retab-wit.patch
-upstream/patch-8.2.3403-memory-leak-for-retab-with-invalid-argumen.patch
-upstream/patch-8.2.3409-reading-beyond-end-of-line-with-invalid-ut.patch
-upstream/patch-8.2.3428-using-freed-memory-when-replacing.patch
+patch-9.0.1499-using-uninitialized-memory-with-fuzzy-matc.patch
+Fix-GH-267-where-indent-after-a-sub-would-not-work.patch
 pexip_failing_tests

@@ -1,5 +1,5 @@
 # Provided by vim (virtual) packages
-vim-common binary: desktop-command-not-in-package usr/share/applications/vim.desktop vim
+vim-common binary: desktop-command-not-in-package vim [usr/share/applications/vim.desktop]
 
 # Provided by vim (virtual) packages
 vim-common binary: spare-manual-page

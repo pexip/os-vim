@@ -328,7 +328,68 @@ func Test_searchpair()
   call assert_equal(3, searchpair('\<if\>', '\<else\>', '\<endif\>', 'W'))
   call assert_equal([0, 3, 3, 0], getpos('.'))
 
-  q!
+  bwipe!
+endfunc
+
+func Test_searchpair_timeout()
+  CheckFeature reltime
+  let g:test_is_flaky = 1
+
+  func Waitabit()
+    sleep 20m
+    return 1  " skip match
+  endfunc
+
+  new
+  call setline(1, range(100))
+  call setline(1, "(start here")
+  call setline(100, "end here)")
+  let starttime = reltime()
+
+  " A timeout of 100 msec should happen after about five times of 20 msec wait
+  " in Waitabit().  When the timeout applies to each search the elapsed time
+  " will be much longer.
+  call assert_equal(0, searchpair('(', '\d', ')', '', "Waitabit()", 0, 100))
+  let elapsed = reltime(starttime)->reltimefloat()
+  call assert_inrange(0.09, 0.300, elapsed)
+
+  delfunc Waitabit
+  bwipe!
+endfunc
+
+func SearchpairSkip()
+  let id = synID(line('.'), col('.'), 0)
+  let attr = synIDattr(id, 'name')
+  return attr !~ 'comment'
+endfunc
+
+func Test_searchpair_timeout_with_skip()
+  let g:test_is_flaky = 1
+
+  edit ../evalfunc.c
+  if has('win32')
+    " Windows timeouts are rather coarse grained, about 16ms.
+    let ms = 20
+    let min_time = 0.016
+    let max_time = min_time * 10.0
+  else
+    let ms = 1
+    let min_time = 0.001
+    let max_time = min_time * 15.0
+    if RunningWithValgrind()
+      let max_time += 0.04  " this can be slow with valgrind
+    endif
+    if has('bsd')
+      " test often fails with FreeBSD
+      let max_time = max_time * 2.0
+    endif
+  endif
+  let start = reltime()
+  let found = searchpair('(', '', ')', 'crnm', 'SearchpairSkip()', 0, ms)
+  let elapsed = reltimefloat(reltime(start))
+  call assert_inrange(min_time, max_time, elapsed)
+
+  bwipe!
 endfunc
 
 func Test_searchpairpos()
@@ -373,9 +434,9 @@ func Test_searchpairpos()
 endfunc
 
 func Test_searchpair_errors()
-  call assert_fails("call searchpair([0], 'middle', 'end', 'bW', 'skip', 99, 100)", 'E730: using List as a String')
-  call assert_fails("call searchpair('start', {-> 0}, 'end', 'bW', 'skip', 99, 100)", 'E729: using Funcref as a String')
-  call assert_fails("call searchpair('start', 'middle', {'one': 1}, 'bW', 'skip', 99, 100)", 'E731: using Dictionary as a String')
+  call assert_fails("call searchpair([0], 'middle', 'end', 'bW', 'skip', 99, 100)", 'E730: Using a List as a String')
+  call assert_fails("call searchpair('start', {-> 0}, 'end', 'bW', 'skip', 99, 100)", 'E729: Using a Funcref as a String')
+  call assert_fails("call searchpair('start', 'middle', {'one': 1}, 'bW', 'skip', 99, 100)", 'E731: Using a Dictionary as a String')
   call assert_fails("call searchpair('start', 'middle', 'end', 'flags', 'skip', 99, 100)", 'E475: Invalid argument: flags')
   call assert_fails("call searchpair('start', 'middle', 'end', 'bW', 'func', -99, 100)", 'E475: Invalid argument: -99')
   call assert_fails("call searchpair('start', 'middle', 'end', 'bW', 'func', 99, -100)", 'E475: Invalid argument: -100')
@@ -384,9 +445,9 @@ func Test_searchpair_errors()
 endfunc
 
 func Test_searchpairpos_errors()
-  call assert_fails("call searchpairpos([0], 'middle', 'end', 'bW', 'skip', 99, 100)", 'E730: using List as a String')
-  call assert_fails("call searchpairpos('start', {-> 0}, 'end', 'bW', 'skip', 99, 100)", 'E729: using Funcref as a String')
-  call assert_fails("call searchpairpos('start', 'middle', {'one': 1}, 'bW', 'skip', 99, 100)", 'E731: using Dictionary as a String')
+  call assert_fails("call searchpairpos([0], 'middle', 'end', 'bW', 'skip', 99, 100)", 'E730: Using a List as a String')
+  call assert_fails("call searchpairpos('start', {-> 0}, 'end', 'bW', 'skip', 99, 100)", 'E729: Using a Funcref as a String')
+  call assert_fails("call searchpairpos('start', 'middle', {'one': 1}, 'bW', 'skip', 99, 100)", 'E731: Using a Dictionary as a String')
   call assert_fails("call searchpairpos('start', 'middle', 'end', 'flags', 'skip', 99, 100)", 'E475: Invalid argument: flags')
   call assert_fails("call searchpairpos('start', 'middle', 'end', 'bW', 'func', -99, 100)", 'E475: Invalid argument: -99')
   call assert_fails("call searchpairpos('start', 'middle', 'end', 'bW', 'func', 99, -100)", 'E475: Invalid argument: -100')
@@ -663,7 +724,7 @@ func Test_search_cmdline8()
   endif
   " Prepare buffer text
   let lines = ['abb vim vim vi', 'vimvivim']
-  call writefile(lines, 'Xsearch.txt')
+  call writefile(lines, 'Xsearch.txt', 'D')
   let buf = term_start([GetVimProg(), '--clean', '-c', 'set noswapfile', 'Xsearch.txt'], {'term_rows': 3})
 
   call WaitForAssert({-> assert_equal(lines, [term_getline(buf, 1), term_getline(buf, 2)])})
@@ -682,9 +743,8 @@ func Test_search_cmdline8()
   call assert_notequal(a1, a2)
   call assert_equal(a0, a2)
   call assert_equal(a1, a3)
-  " clean up
-  call delete('Xsearch.txt')
 
+  " clean up
   bwipe!
 endfunc
 
@@ -798,7 +858,7 @@ func Test_search_cmdline_incsearch_highlight_attr()
 
   " Prepare buffer text
   let lines = ['abb vim vim vi', 'vimvivim']
-  call writefile(lines, 'Xsearch.txt')
+  call writefile(lines, 'Xsearch.txt', 'D')
   let buf = term_start([GetVimProg(), '--clean', '-c', 'set noswapfile', 'Xsearch.txt'], {'term_rows': 3})
 
   call WaitForAssert({-> assert_equal(lines, [term_getline(buf, 1), term_getline(buf, 2)])})
@@ -867,9 +927,7 @@ func Test_search_cmdline_incsearch_highlight_attr()
   let attr_line2 = [a0,a0,a0,a0,a0,a0,a0,a0]
   call assert_equal(attr_line1, map(term_scrape(buf, 1)[:len(attr_line1)-1], 'v:val.attr'))
   call assert_equal(attr_line2, map(term_scrape(buf, 2)[:len(attr_line2)-1], 'v:val.attr'))
-  call delete('Xsearch.txt')
 
-  call delete('Xsearch.txt')
   bwipe!
 endfunc
 
@@ -895,7 +953,7 @@ func Test_incsearch_scrolling()
 	\ 'call setline(1, [dots, dots, dots, "", "target", dots, dots])',
 	\ 'normal gg',
 	\ 'redraw',
-	\ ], 'Xscript')
+	\ ], 'Xscript', 'D')
   let buf = RunVimInTerminal('-S Xscript', {'rows': 9, 'cols': 70})
   " Need to send one key at a time to force a redraw
   call term_sendkeys(buf, '/')
@@ -911,7 +969,6 @@ func Test_incsearch_scrolling()
 
   call term_sendkeys(buf, "\<Esc>")
   call StopVimInTerminal(buf)
-  call delete('Xscript')
 endfunc
 
 func Test_incsearch_search_dump()
@@ -924,7 +981,7 @@ func Test_incsearch_search_dump()
 	\ '  call setline(n, "foo " . n)',
 	\ 'endfor',
 	\ '3',
-	\ ], 'Xis_search_script')
+	\ ], 'Xis_search_script', 'D')
   let buf = RunVimInTerminal('-S Xis_search_script', {'rows': 9, 'cols': 70})
   " Give Vim a chance to redraw to get rid of the spaces in line 2 caused by
   " the 'ambiwidth' check.
@@ -941,7 +998,63 @@ func Test_incsearch_search_dump()
   call term_sendkeys(buf, "\<Esc>")
 
   call StopVimInTerminal(buf)
-  call delete('Xis_search_script')
+endfunc
+
+func Test_hlsearch_dump()
+  CheckOption hlsearch
+  CheckScreendump
+
+  call writefile([
+	\ 'set hlsearch cursorline',
+        \ 'call setline(1, ["xxx", "xxx", "xxx"])',
+	\ '/.*',
+	\ '2',
+	\ ], 'Xhlsearch_script', 'D')
+  let buf = RunVimInTerminal('-S Xhlsearch_script', {'rows': 6, 'cols': 50})
+  call VerifyScreenDump(buf, 'Test_hlsearch_1', {})
+
+  call term_sendkeys(buf, "/\\_.*\<CR>")
+  call VerifyScreenDump(buf, 'Test_hlsearch_2', {})
+
+  call StopVimInTerminal(buf)
+endfunc
+
+func Test_hlsearch_and_visual()
+  CheckOption hlsearch
+  CheckScreendump
+
+  call writefile([
+	\ 'set hlsearch',
+        \ 'call setline(1, repeat(["xxx yyy zzz"], 3))',
+        \ 'hi Search cterm=bold',
+	\ '/yyy',
+	\ 'call cursor(1, 6)',
+	\ ], 'Xhlvisual_script', 'D')
+  let buf = RunVimInTerminal('-S Xhlvisual_script', {'rows': 6, 'cols': 40})
+  call term_sendkeys(buf, "vjj")
+  call VerifyScreenDump(buf, 'Test_hlsearch_visual_1', {})
+  call term_sendkeys(buf, "\<Esc>")
+
+  call StopVimInTerminal(buf)
+endfunc
+
+func Test_hlsearch_block_visual_match()
+  CheckScreendump
+
+  let lines =<< trim END
+    set hlsearch
+    call setline(1, ['aa', 'bbbb', 'cccccc'])
+  END
+  call writefile(lines, 'Xhlsearch_block', 'D')
+  let buf = RunVimInTerminal('-S Xhlsearch_block', {'rows': 9, 'cols': 60})
+
+  call term_sendkeys(buf, "G\<C-V>$kk\<Esc>")
+  sleep 100m
+  call term_sendkeys(buf, "/\\%V\<CR>")
+  sleep 100m
+  call VerifyScreenDump(buf, 'Test_hlsearch_block_visual_match', {})
+
+  call StopVimInTerminal(buf)
 endfunc
 
 func Test_incsearch_substitute()
@@ -978,6 +1091,55 @@ func Test_incsearch_substitute_long_line()
   bwipe!
 endfunc
 
+func Test_hlsearch_cursearch()
+  CheckScreendump
+
+  let lines =<< trim END
+    set hlsearch scrolloff=0
+    call setline(1, ['one', 'foo', 'bar', 'baz', 'foo the foo and foo', 'bar'])
+    hi Search ctermbg=yellow
+    hi CurSearch ctermbg=blue
+  END
+  call writefile(lines, 'Xhlsearch_cursearch', 'D')
+  let buf = RunVimInTerminal('-S Xhlsearch_cursearch', {'rows': 9, 'cols': 60})
+
+  call term_sendkeys(buf, "gg/foo\<CR>")
+  call VerifyScreenDump(buf, 'Test_hlsearch_cursearch_single_line_1', {})
+
+  call term_sendkeys(buf, "n")
+  call VerifyScreenDump(buf, 'Test_hlsearch_cursearch_single_line_2', {})
+
+  call term_sendkeys(buf, "n")
+  call VerifyScreenDump(buf, 'Test_hlsearch_cursearch_single_line_2a', {})
+
+  call term_sendkeys(buf, "n")
+  call VerifyScreenDump(buf, 'Test_hlsearch_cursearch_single_line_2b', {})
+
+  call term_sendkeys(buf, ":call setline(5, 'foo')\<CR>")
+  call term_sendkeys(buf, "0?\<CR>")
+  call VerifyScreenDump(buf, 'Test_hlsearch_cursearch_single_line_3', {})
+
+  call term_sendkeys(buf, "gg/foo\\nbar\<CR>")
+  call VerifyScreenDump(buf, 'Test_hlsearch_cursearch_multiple_line_1', {})
+
+  call term_sendkeys(buf, ":call setline(1, ['---', 'abcdefg', 'hijkl', '---', 'abcdefg', 'hijkl'])\<CR>")
+  call term_sendkeys(buf, "gg/efg\\nhij\<CR>")
+  call VerifyScreenDump(buf, 'Test_hlsearch_cursearch_multiple_line_2', {})
+  call term_sendkeys(buf, "h\<C-L>")
+  call VerifyScreenDump(buf, 'Test_hlsearch_cursearch_multiple_line_3', {})
+  call term_sendkeys(buf, "j\<C-L>")
+  call VerifyScreenDump(buf, 'Test_hlsearch_cursearch_multiple_line_4', {})
+  call term_sendkeys(buf, "h\<C-L>")
+  call VerifyScreenDump(buf, 'Test_hlsearch_cursearch_multiple_line_5', {})
+
+  " check clearing CurSearch when using it for another match
+  call term_sendkeys(buf, "G?^abcd\<CR>Y")
+  call term_sendkeys(buf, "kkP")
+  call VerifyScreenDump(buf, 'Test_hlsearch_cursearch_changed_1', {})
+
+  call StopVimInTerminal(buf)
+endfunc
+
 " Similar to Test_incsearch_substitute() but with a screendump halfway.
 func Test_incsearch_substitute_dump()
   CheckOption incsearch
@@ -990,7 +1152,7 @@ func Test_incsearch_substitute_dump()
 	\ 'endfor',
 	\ 'call setline(11, "bar 11")',
 	\ '3',
-	\ ], 'Xis_subst_script')
+	\ ], 'Xis_subst_script', 'D')
   let buf = RunVimInTerminal('-S Xis_subst_script', {'rows': 9, 'cols': 70})
   " Give Vim a chance to redraw to get rid of the spaces in line 2 caused by
   " the 'ambiwidth' check.
@@ -1085,7 +1247,6 @@ func Test_incsearch_substitute_dump()
   call term_sendkeys(buf, "<Esc>")
 
   call StopVimInTerminal(buf)
-  call delete('Xis_subst_script')
 endfunc
 
 func Test_incsearch_highlighting()
@@ -1095,7 +1256,7 @@ func Test_incsearch_highlighting()
   call writefile([
 	\ 'set incsearch hlsearch',
 	\ 'call setline(1, "hello/there")',
-	\ ], 'Xis_subst_hl_script')
+	\ ], 'Xis_subst_hl_script', 'D')
   let buf = RunVimInTerminal('-S Xis_subst_hl_script', {'rows': 4, 'cols': 20})
   " Give Vim a chance to redraw to get rid of the spaces in line 2 caused by
   " the 'ambiwidth' check.
@@ -1108,7 +1269,6 @@ func Test_incsearch_highlighting()
   call term_sendkeys(buf, "<Esc>")
 
   call StopVimInTerminal(buf)
-  call delete('Xis_subst_hl_script')
 endfunc
 
 func Test_incsearch_with_change()
@@ -1120,7 +1280,7 @@ func Test_incsearch_with_change()
 	\ 'set incsearch hlsearch scrolloff=0',
 	\ 'call setline(1, ["one", "two ------ X", "three"])',
 	\ 'call timer_start(200, { _ -> setline(2, "x")})',
-	\ ], 'Xis_change_script')
+	\ ], 'Xis_change_script', 'D')
   let buf = RunVimInTerminal('-S Xis_change_script', {'rows': 9, 'cols': 70})
   " Give Vim a chance to redraw to get rid of the spaces in line 2 caused by
   " the 'ambiwidth' check.
@@ -1132,7 +1292,6 @@ func Test_incsearch_with_change()
   call term_sendkeys(buf, "\<Esc>")
 
   call StopVimInTerminal(buf)
-  call delete('Xis_change_script')
 endfunc
 
 " Similar to Test_incsearch_substitute_dump() for :sort
@@ -1143,7 +1302,7 @@ func Test_incsearch_sort_dump()
   call writefile([
 	\ 'set incsearch hlsearch scrolloff=0',
 	\ 'call setline(1, ["another one 2", "that one 3", "the one 1"])',
-	\ ], 'Xis_sort_script')
+	\ ], 'Xis_sort_script', 'D')
   let buf = RunVimInTerminal('-S Xis_sort_script', {'rows': 9, 'cols': 70})
   " Give Vim a chance to redraw to get rid of the spaces in line 2 caused by
   " the 'ambiwidth' check.
@@ -1158,7 +1317,6 @@ func Test_incsearch_sort_dump()
   call term_sendkeys(buf, "\<Esc>")
 
   call StopVimInTerminal(buf)
-  call delete('Xis_sort_script')
 endfunc
 
 " Similar to Test_incsearch_substitute_dump() for :vimgrep famiry
@@ -1169,7 +1327,7 @@ func Test_incsearch_vimgrep_dump()
   call writefile([
 	\ 'set incsearch hlsearch scrolloff=0',
 	\ 'call setline(1, ["another one 2", "that one 3", "the one 1"])',
-	\ ], 'Xis_vimgrep_script')
+	\ ], 'Xis_vimgrep_script', 'D')
   let buf = RunVimInTerminal('-S Xis_vimgrep_script', {'rows': 9, 'cols': 70})
   " Give Vim a chance to redraw to get rid of the spaces in line 2 caused by
   " the 'ambiwidth' check.
@@ -1197,7 +1355,6 @@ func Test_incsearch_vimgrep_dump()
   call term_sendkeys(buf, "\<Esc>")
 
   call StopVimInTerminal(buf)
-  call delete('Xis_vimgrep_script')
 endfunc
 
 func Test_keep_last_search_pattern()
@@ -1254,6 +1411,22 @@ func Test_subst_word_under_cursor()
   set noincsearch
 endfunc
 
+func Test_search_skip_all_matches()
+  enew
+  call setline(1, ['no match here',
+        \ 'match this line',
+        \ 'nope',
+        \ 'match in this line',
+        \ 'last line',
+        \ ])
+  call cursor(1, 1)
+  let lnum = search('this', '', 0, 0, 'getline(".") =~ "this line"')
+  " Only check that no match is found.  Previously it searched forever.
+  call assert_equal(0, lnum)
+
+  bwipe!
+endfunc
+
 func Test_search_undefined_behaviour()
   CheckFeature terminal
 
@@ -1292,13 +1465,28 @@ func Test_look_behind()
   bwipe!
 endfunc
 
+func Test_search_visual_area_linewise()
+  new
+  call setline(1, ['aa', 'bb', 'cc'])
+  exe "normal 2GV\<Esc>"
+  for engine in [1, 2]
+    exe 'set regexpengine=' .. engine
+    exe "normal gg/\\%'<\<CR>>"
+    call assert_equal([0, 2, 1, 0, 1], getcurpos(), 'engine ' .. engine)
+    exe "normal gg/\\%'>\<CR>"
+    call assert_equal([0, 2, 2, 0, 2], getcurpos(), 'engine ' .. engine)
+  endfor
+
+  bwipe!
+  set regexpengine&
+endfunc
+
 func Test_search_sentence()
   new
   " this used to cause a crash
-  call assert_fails("/\\%')", 'E486:')
-  call assert_fails("/", 'E486:')
   /\%'(
   /
+  bwipe
 endfunc
 
 " Test that there is no crash when there is a last search pattern but no last
@@ -1306,11 +1494,9 @@ endfunc
 func Test_no_last_substitute_pat()
   " Use viminfo to set the last search pattern to a string and make the last
   " substitute pattern the most recent used and make it empty (NULL).
-  call writefile(['~MSle0/bar', '~MSle0~&'], 'Xviminfo')
+  call writefile(['~MSle0/bar', '~MSle0~&'], 'Xviminfo', 'D')
   rviminfo! Xviminfo
   call assert_fails('normal n', 'E35:')
-
-  call delete('Xviminfo')
 endfunc
 
 func Test_search_Ctrl_L_combining()
@@ -1425,6 +1611,43 @@ func Test_search_errors()
   bwipe!
 endfunc
 
+func Test_search_timeout()
+  let g:test_is_flaky = 1
+  new
+  " use a complicated pattern that should be slow with the BT engine
+  let pattern = '\%#=1a*.*X\@<=b*'
+
+  " use a timeout of 50 msec
+  let search_timeout = 0.05
+
+  " fill the buffer so that it takes 15 times the timeout to search
+  let slow_target_timeout = search_timeout * 15.0
+
+  " Fill the buffer with more and more text until searching takes more time
+  " than slow_target_timeout.
+  for n in range(40, 400, 30)
+      call setline(1, ['aaa', repeat('abc ', n), 'ccc'])
+      let start = reltime()
+      call search(pattern, '', 0)
+      let elapsed = reltimefloat(reltime(start))
+      if elapsed > slow_target_timeout
+          break
+      endif
+  endfor
+  call assert_true(elapsed > slow_target_timeout)
+
+  " Check that the timeout kicks in, the time should be less than half of what
+  " we measured without the timeout.  This is permissive, because the timer is
+  " known to overrun, especially when using valgrind.
+  let max_time = elapsed / 2.0
+  let start = reltime()
+  call search(pattern, '', 0, float2nr(search_timeout * 1000))
+  let elapsed = reltimefloat(reltime(start))
+  call assert_inrange(search_timeout * 0.9, max_time, elapsed)
+
+  bwipe!
+endfunc
+
 func Test_search_display_pattern()
   new
   call setline(1, ['foo', 'bar', 'foobar'])
@@ -1516,12 +1739,11 @@ func Test_search_with_no_last_pat()
     call writefile(v:errors, 'Xresult')
     qall!
   [SCRIPT]
-  call writefile(lines, 'Xscript')
+  call writefile(lines, 'Xscript', 'D')
 
   if RunVim([], [], '--clean -S Xscript')
     call assert_equal([], readfile('Xresult'))
   endif
-  call delete('Xscript')
   call delete('Xresult')
 endfunc
 
@@ -1539,11 +1761,10 @@ func Test_search_tilde_pat()
     call writefile(v:errors, 'Xresult')
     qall!
   [SCRIPT]
-  call writefile(lines, 'Xscript')
+  call writefile(lines, 'Xscript', 'D')
   if RunVim([], [], '--clean -S Xscript')
     call assert_equal([], readfile('Xresult'))
   endif
-  call delete('Xscript')
   call delete('Xresult')
 endfunc
 
@@ -1607,6 +1828,8 @@ func Test_invalid_regexp()
   call assert_fails("call search('\\(')", 'E54:')
   call assert_fails("call search('\\)')", 'E55:')
   call assert_fails("call search('\\z\\(\\)')", 'E66:')
+  call assert_fails("call search('\\z2')", 'E67:')
+  call assert_fails("call search('\\zx')", 'E867:')
   call assert_fails("call search('\\%[ab')", 'E69:')
   call assert_fails("call search('\\%[]')", 'E70:')
   call assert_fails("call search('\\%9999999999999999999999999999v')", 'E951:')
@@ -1677,7 +1900,7 @@ func Test_search_smartcase_utf8()
 
   set ignorecase& smartcase&
   let &encoding = save_enc
-  close!
+  bwipe!
 endfunc
 
 " Test searching past the end of a file
@@ -1686,7 +1909,29 @@ func Test_search_past_eof()
   call setline(1, ['Line'])
   exe "normal /\\n\\zs\<CR>"
   call assert_equal([1, 4], [line('.'), col('.')])
-  close!
+  bwipe!
+endfunc
+
+" Test setting the start of the match and still finding a next match in the
+" same line.
+func Test_search_set_start_same_line()
+  new
+  set cpo-=c
+
+  call setline(1, ['1', '2', '3 .', '4', '5'])
+  exe "normal /\\_s\\zs\\S\<CR>"
+  call assert_equal([2, 1], [line('.'), col('.')])
+  exe 'normal n'
+  call assert_equal([3, 1], [line('.'), col('.')])
+  exe 'normal n'
+  call assert_equal([3, 3], [line('.'), col('.')])
+  exe 'normal n'
+  call assert_equal([4, 1], [line('.'), col('.')])
+  exe 'normal n'
+  call assert_equal([5, 1], [line('.'), col('.')])
+
+  set cpo+=c
+  bwipe!
 endfunc
 
 " Test for various search offsets
@@ -1787,7 +2032,7 @@ func Test_incsearch_highlighting_newline()
     set incsearch nohls
     call setline(1, ['test', 'xxx'])
   [CODE]
-  call writefile(commands, 'Xincsearch_nl')
+  call writefile(commands, 'Xincsearch_nl', 'D')
   let buf = RunVimInTerminal('-S Xincsearch_nl', {'rows': 5, 'cols': 10})
   call term_sendkeys(buf, '/test')
   call VerifyScreenDump(buf, 'Test_incsearch_newline1', {})
@@ -1803,7 +2048,6 @@ func Test_incsearch_highlighting_newline()
   call StopVimInTerminal(buf)
 
   " clean up
-  call delete('Xincsearch_nl')
   call test_override("char_avail", 0)
   bw
 endfunc
@@ -1819,7 +2063,7 @@ func Test_incsearch_substitute_dump2()
 	\ 'endfor',
 	\ 'call setline(5, "abc|def")',
 	\ '3',
-	\ ], 'Xis_subst_script2')
+	\ ], 'Xis_subst_script2', 'D')
   let buf = RunVimInTerminal('-S Xis_subst_script2', {'rows': 9, 'cols': 70})
 
   call term_sendkeys(buf, ':%s/\vabc|')
@@ -1834,7 +2078,97 @@ func Test_incsearch_substitute_dump2()
 
 
   call StopVimInTerminal(buf)
-  call delete('Xis_subst_script2')
 endfunc
+
+func Test_pattern_is_uppercase_smartcase()
+  new
+  let input=['abc', 'ABC', 'Abc', 'abC']
+  call setline(1, input)
+  call cursor(1,1)
+  " default, matches firstline
+  %s/abc//g
+  call assert_equal(['', 'ABC', 'Abc', 'abC'],
+        \ getline(1, '$'))
+
+  set smartcase ignorecase
+  sil %d
+  call setline(1, input)
+  call cursor(1,1)
+  " with smartcase and incsearch set, matches everything
+  %s/abc//g
+  call assert_equal(['', '', '', ''], getline(1, '$'))
+
+  sil %d
+  call setline(1, input)
+  call cursor(1,1)
+  " with smartcase and incsearch set and found an uppercase letter,
+  " match only that.
+  %s/abC//g
+  call assert_equal(['abc', 'ABC', 'Abc', ''],
+        \ getline(1, '$'))
+
+  sil %d
+  call setline(1, input)
+  call cursor(1,1)
+  exe "norm! vG$\<esc>"
+  " \%V should not be detected as uppercase letter
+  %s/\%Vabc//g
+  call assert_equal(['', '', '', ''], getline(1, '$'))
+
+  call setline(1, input)
+  call cursor(1,1)
+  exe "norm! vG$\<esc>"
+  " \v%V should not be detected as uppercase letter
+  %s/\v%Vabc//g
+  call assert_equal(['', '', '', ''], getline(1, '$'))
+
+  call setline(1, input)
+  call cursor(1,1)
+  exe "norm! vG$\<esc>"
+  " \v%VabC should be detected as uppercase letter
+  %s/\v%VabC//g
+  call assert_equal(['abc', 'ABC', 'Abc', ''],
+        \ getline(1, '$'))
+
+  call setline(1, input)
+  call cursor(1,1)
+  " \Vabc should match everything
+  %s/\Vabc//g
+  call assert_equal(['', '', '', ''], getline(1, '$'))
+
+  call setline(1, input + ['_abc'])
+  " _ matches normally
+  %s/\v_.*//g
+  call assert_equal(['abc', 'ABC', 'Abc', 'abC', ''], getline(1, '$'))
+
+  set smartcase& ignorecase&
+  bw!
+endfunc
+
+func Test_no_last_search_pattern()
+  CheckOption incsearch
+
+  let @/ = ""
+  set incsearch
+  " these were causing a crash
+  call feedkeys("//\<C-G>", 'xt')
+  call feedkeys("//\<C-T>", 'xt')
+  call feedkeys("??\<C-G>", 'xt')
+  call feedkeys("??\<C-T>", 'xt')
+endfunc
+
+func Test_search_with_invalid_range()
+  new
+  let lines =<< trim END
+    /\%.v
+    5/
+    c
+  END
+  call writefile(lines, 'Xrangesearch', 'D')
+  source Xrangesearch
+
+  bwipe!
+endfunc
+
 
 " vim: shiftwidth=2 sts=2 expandtab

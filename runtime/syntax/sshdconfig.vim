@@ -7,8 +7,8 @@
 " Contributor:  Leonard Ehrenfried <leonard.ehrenfried@web.de>	
 " Contributor:  Karsten Hopp <karsten@redhat.com>
 " Originally:	2009-07-09
-" Last Change:	2020-10-20
-" SSH Version:	8.4p1
+" Last Change:	2022 Nov 10
+" SSH Version:	8.5p1
 "
 
 " Setup
@@ -59,12 +59,12 @@ syn match sshdconfigCiphers "\<aes256-gcm@openssh\.com\>"
 syn match sshdconfigCiphers "\<chacha20-poly1305@openssh\.com\>"
 
 syn keyword sshdconfigMAC hmac-sha1
-syn keyword sshdconfigMAC mac-sha1-96
-syn keyword sshdconfigMAC mac-sha2-256
-syn keyword sshdconfigMAC mac-sha2-512
-syn keyword sshdconfigMAC mac-md5
-syn keyword sshdconfigMAC mac-md5-96
-syn keyword sshdconfigMAC mac-ripemd160
+syn keyword sshdconfigMAC hmac-sha1-96
+syn keyword sshdconfigMAC hmac-sha2-256
+syn keyword sshdconfigMAC hmac-sha2-512
+syn keyword sshdconfigMAC hmac-md5
+syn keyword sshdconfigMAC hmac-md5-96
+syn keyword sshdconfigMAC hmac-ripemd160
 syn match   sshdconfigMAC "\<hmac-ripemd160@openssh\.com\>"
 syn match   sshdconfigMAC "\<umac-64@openssh\.com\>"
 syn match   sshdconfigMAC "\<umac-128@openssh\.com\>"
@@ -195,6 +195,7 @@ syn keyword sshdconfigKeyword HostCertificate
 syn keyword sshdconfigKeyword HostKey
 syn keyword sshdconfigKeyword HostKeyAgent
 syn keyword sshdconfigKeyword HostKeyAlgorithms
+syn keyword sshdconfigKeyword HostbasedAcceptedAlgorithms
 syn keyword sshdconfigKeyword HostbasedAcceptedKeyTypes
 syn keyword sshdconfigKeyword HostbasedAuthentication
 syn keyword sshdconfigKeyword HostbasedUsesNameFromPacketOnly
@@ -213,13 +214,17 @@ syn keyword sshdconfigKeyword KexAlgorithms
 syn keyword sshdconfigKeyword KeyRegenerationInterval
 syn keyword sshdconfigKeyword ListenAddress
 syn keyword sshdconfigKeyword LogLevel
+syn keyword sshdconfigKeyword LogVerbose
 syn keyword sshdconfigKeyword LoginGraceTime
 syn keyword sshdconfigKeyword MACs
 syn keyword sshdconfigKeyword Match
 syn keyword sshdconfigKeyword MaxAuthTries
 syn keyword sshdconfigKeyword MaxSessions
 syn keyword sshdconfigKeyword MaxStartups
+syn keyword sshdconfigKeyword ModuliFile
 syn keyword sshdconfigKeyword PasswordAuthentication
+syn keyword sshdconfigKeyword PerSourceMaxStartups
+syn keyword sshdconfigKeyword PerSourceNetBlockSize
 syn keyword sshdconfigKeyword PermitBlacklistedKeys
 syn keyword sshdconfigKeyword PermitEmptyPasswords
 syn keyword sshdconfigKeyword PermitListen
@@ -234,11 +239,13 @@ syn keyword sshdconfigKeyword Port
 syn keyword sshdconfigKeyword PrintLastLog
 syn keyword sshdconfigKeyword PrintMotd
 syn keyword sshdconfigKeyword Protocol
+syn keyword sshdconfigKeyword PubkeyAcceptedAlgorithms
 syn keyword sshdconfigKeyword PubkeyAcceptedKeyTypes
 syn keyword sshdconfigKeyword PubkeyAuthentication
 syn keyword sshdconfigKeyword PubkeyAuthOptions
 syn keyword sshdconfigKeyword RSAAuthentication
 syn keyword sshdconfigKeyword RekeyLimit
+syn keyword sshdconfigKeyword RequiredRSASize
 syn keyword sshdconfigKeyword RevokedKeys
 syn keyword sshdconfigKeyword RDomain
 syn keyword sshdconfigKeyword RhostsRSAAuthentication
@@ -253,6 +260,8 @@ syn keyword sshdconfigKeyword Subsystem
 syn keyword sshdconfigKeyword SyslogFacility
 syn keyword sshdconfigKeyword TCPKeepAlive
 syn keyword sshdconfigKeyword TrustedUserCAKeys
+syn keyword sshdconfigKeyword UseBlacklist
+syn keyword sshdconfigKeyword UseBlocklist
 syn keyword sshdconfigKeyword UseDNS
 syn keyword sshdconfigKeyword UseLogin
 syn keyword sshdconfigKeyword UsePAM

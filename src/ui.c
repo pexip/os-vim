@@ -18,10 +18,14 @@
 #include "vim.h"
 
     void
-ui_write(char_u *s, int len)
+ui_write(char_u *s, int len, int console UNUSED)
 {
 #ifdef FEAT_GUI
-    if (gui.in_use && !gui.dying && !gui.starting)
+    if (gui.in_use && !gui.dying && !gui.starting
+# ifndef NO_CONSOLE
+	    && !console
+# endif
+	    )
     {
 	gui_write(s, len);
 	if (p_wd)
@@ -33,7 +37,7 @@ ui_write(char_u *s, int len)
     // Don't output anything in silent mode ("ex -s") unless 'verbose' set
     if (!(silent_mode && p_verbose == 0))
     {
-#if !defined(MSWIN)
+# if !defined(MSWIN)
 	char_u	*tofree = NULL;
 
 	if (output_conv.vc_type != CONV_NONE)
@@ -43,9 +47,13 @@ ui_write(char_u *s, int len)
 	    if (tofree != NULL)
 		s = tofree;
 	}
-#endif
+# endif
 
 	mch_write(s, len);
+# if defined(HAVE_FSYNC)
+	if (console && s[len - 1] == '\n')
+	    vim_fsync(1);
+# endif
 
 # if !defined(MSWIN)
 	if (output_conv.vc_type != CONV_NONE)
@@ -75,20 +83,20 @@ ui_inchar_undo(char_u *s, int len)
     if (ta_str != NULL)
 	newlen += ta_len - ta_off;
     new = alloc(newlen);
-    if (new != NULL)
+    if (new == NULL)
+	return;
+
+    if (ta_str != NULL)
     {
-	if (ta_str != NULL)
-	{
-	    mch_memmove(new, ta_str + ta_off, (size_t)(ta_len - ta_off));
-	    mch_memmove(new + ta_len - ta_off, s, (size_t)len);
-	    vim_free(ta_str);
-	}
-	else
-	    mch_memmove(new, s, (size_t)len);
-	ta_str = new;
-	ta_len = newlen;
-	ta_off = 0;
+	mch_memmove(new, ta_str + ta_off, (size_t)(ta_len - ta_off));
+	mch_memmove(new + ta_len - ta_off, s, (size_t)len);
+	vim_free(ta_str);
     }
+    else
+	mch_memmove(new, s, (size_t)len);
+    ta_str = new;
+    ta_len = newlen;
+    ta_off = 0;
 }
 #endif
 
@@ -191,10 +199,10 @@ ui_inchar(
      * while (not timed out)
      * {
      *     if (any-timer-triggered)
-     *        invoke-timer-callback;
+     *	      invoke-timer-callback;
      *     wait-for-character();
      *     if (character available)
-     *        break;
+     *	      break;
      * }
      *
      * wait-for-character() does:
@@ -202,13 +210,13 @@ ui_inchar(
      * {
      *     Wait for event;
      *     if (something on channel)
-     *        read/write channel;
-     *     else if (resized)
-     *        handle_resize();
-     *     else if (system event)
-     *        deal-with-system-event;
-     *     else if (character available)
-     *        break;
+     *	      read/write channel;
+     *	   else if (resized)
+     *	      handle_resize();
+     *	   else if (system event)
+     *	      deal-with-system-event;
+     *	   else if (character available)
+     *	      break;
      * }
      *
      */
@@ -452,7 +460,7 @@ ui_wait_for_chars_or_timer(
 	}
 	if (due_time <= 0 || (wtime > 0 && due_time > remaining))
 	    due_time = remaining;
-# if defined(FEAT_JOB_CHANNEL) || defined(FEAT_SOUND_CANBERRA)
+# if defined(FEAT_JOB_CHANNEL) || defined(FEAT_SOUND_CANBERRA) || defined(FEAT_SOUND_MACOSX)
 	if ((due_time < 0 || due_time > 10L) && (
 #  if defined(FEAT_JOB_CHANNEL)
 		(
@@ -460,11 +468,11 @@ ui_wait_for_chars_or_timer(
 		!gui.in_use &&
 #   endif
 		(has_pending_job() || channel_any_readahead()))
-#   ifdef FEAT_SOUND_CANBERRA
+#   if defined(FEAT_SOUND_CANBERRA) || defined(FEAT_SOUND_MACOSX)
 		||
 #   endif
 #  endif
-#  ifdef FEAT_SOUND_CANBERRA
+#  if defined(FEAT_SOUND_CANBERRA) ||  defined(FEAT_SOUND_MACOSX)
 		    has_any_sound_callback()
 #  endif
 		    ))
@@ -530,8 +538,6 @@ ui_delay(long msec_arg, int ignoreinput)
 #ifdef FEAT_EVAL
     if (ui_delay_for_testing > 0)
 	msec = ui_delay_for_testing;
-#endif
-#ifdef FEAT_JOB_CHANNEL
     ch_log(NULL, "ui_delay(%ld)", msec);
 #endif
 #ifdef FEAT_GUI
@@ -569,7 +575,7 @@ ui_suspend(void)
 suspend_shell(void)
 {
     if (*p_sh == NUL)
-	emsg(_(e_shellempty));
+	emsg(_(e_shell_option_is_empty));
     else
     {
 	msg_puts(_("new shell started\n"));
@@ -802,22 +808,32 @@ get_input_buf(void)
 /*
  * Restore the input buffer with a pointer returned from get_input_buf().
  * The allocated memory is freed, this only works once!
+ * When "overwrite" is FALSE input typed later is kept.
  */
     void
-set_input_buf(char_u *p)
+set_input_buf(char_u *p, int overwrite)
 {
     garray_T	*gap = (garray_T *)p;
 
-    if (gap != NULL)
+    if (gap == NULL)
+	return;
+
+    if (gap->ga_data != NULL)
     {
-	if (gap->ga_data != NULL)
+	if (overwrite || inbufcount + gap->ga_len >= INBUFLEN)
 	{
 	    mch_memmove(inbuf, gap->ga_data, gap->ga_len);
 	    inbufcount = gap->ga_len;
-	    vim_free(gap->ga_data);
 	}
-	vim_free(gap);
+	else
+	{
+	    mch_memmove(inbuf + gap->ga_len, inbuf, inbufcount);
+	    mch_memmove(inbuf, gap->ga_data, gap->ga_len);
+	    inbufcount += gap->ga_len;
+	}
+	vim_free(gap->ga_data);
     }
+    vim_free(gap);
 }
 
 /*
@@ -879,7 +895,8 @@ read_from_input_buf(char_u *buf, long maxlen)
 	maxlen = inbufcount;
     mch_memmove(buf, inbuf, (size_t)maxlen);
     inbufcount -= maxlen;
-    if (inbufcount)
+    // check "maxlen" to avoid clang warning
+    if (inbufcount > 0 && maxlen > 0)
 	mch_memmove(inbuf, inbuf + maxlen, (size_t)inbufcount);
     return (int)maxlen;
 }
@@ -949,7 +966,7 @@ fill_input_buf(int exit_on_error UNUSED)
 #  else
 	len = read(read_cmd_fd, (char *)inbuf + inbufcount, readlen);
 #  endif
-#  ifdef FEAT_JOB_CHANNEL
+#  ifdef FEAT_EVAL
 	if (len > 0)
 	{
 	    inbuf[inbufcount + len] = NUL;
@@ -1010,22 +1027,27 @@ fill_input_buf(int exit_on_error UNUSED)
 				     len + unconverted, INBUFLEN - inbufcount,
 				       rest == NULL ? &rest : NULL, &restlen);
 	}
-	while (len-- > 0)
+	while (len > 0)
 	{
 	    // If a CTRL-C was typed, remove it from the buffer and set
-	    // got_int.  Also recognize CTRL-C with modifyOtherKeys set, in two
-	    // forms.
+	    // got_int.  Also recognize CTRL-C with modifyOtherKeys set, lower
+	    // and upper case, in two forms.
 	    if (ctrl_c_interrupts && (inbuf[inbufcount] == 3
 			|| (len >= 10 && STRNCMP(inbuf + inbufcount,
 						   "\033[27;5;99~", 10) == 0)
+			|| (len >= 10 && STRNCMP(inbuf + inbufcount,
+						   "\033[27;5;67~", 10) == 0)
 			|| (len >= 7 && STRNCMP(inbuf + inbufcount,
-						       "\033[99;5u", 7) == 0)))
+						       "\033[99;5u", 7) == 0)
+			|| (len >= 7 && STRNCMP(inbuf + inbufcount,
+						       "\033[67;5u", 7) == 0)))
 	    {
 		// remove everything typed before the CTRL-C
-		mch_memmove(inbuf, inbuf + inbufcount, (size_t)(len + 1));
+		mch_memmove(inbuf, inbuf + inbufcount, (size_t)(len));
 		inbufcount = 0;
 		got_int = TRUE;
 	    }
+	    --len;
 	    ++inbufcount;
 	}
     }
@@ -1064,7 +1086,7 @@ ui_cursor_shape_forced(int forced)
 # endif
 
 # ifdef FEAT_CONCEAL
-    conceal_check_cursor_line();
+    conceal_check_cursor_line(FALSE);
 # endif
 }
 
@@ -1083,8 +1105,8 @@ check_col(int col)
 {
     if (col < 0)
 	return 0;
-    if (col >= (int)screen_Columns)
-	return (int)screen_Columns - 1;
+    if (col >= screen_Columns)
+	return screen_Columns - 1;
     return col;
 }
 
@@ -1096,9 +1118,78 @@ check_row(int row)
 {
     if (row < 0)
 	return 0;
-    if (row >= (int)screen_Rows)
-	return (int)screen_Rows - 1;
+    if (row >= screen_Rows)
+	return screen_Rows - 1;
     return row;
+}
+
+/*
+ * Return length of line "lnum" in screen cells for horizontal scrolling.
+ */
+    long
+scroll_line_len(linenr_T lnum)
+{
+    char_u	*p = ml_get(lnum);
+    colnr_T	col = 0;
+
+    if (*p != NUL)
+	for (;;)
+	{
+	    int	    w = chartabsize(p, col);
+	    MB_PTR_ADV(p);
+	    if (*p == NUL)		// don't count the last character
+		break;
+	    col += w;
+	}
+    return col;
+}
+
+/*
+ * Find the longest visible line number.  This is used for horizontal
+ * scrolling.  If this is not possible (or not desired, by setting 'h' in
+ * "guioptions") then the current line number is returned.
+ */
+    linenr_T
+ui_find_longest_lnum(void)
+{
+    linenr_T ret = 0;
+
+    // Calculate maximum for horizontal scrollbar.  Check for reasonable
+    // line numbers, topline and botline can be invalid when displaying is
+    // postponed.
+    if (
+# ifdef FEAT_GUI
+	    (!gui.in_use || vim_strchr(p_go, GO_HORSCROLL) == NULL) &&
+# endif
+	    curwin->w_topline <= curwin->w_cursor.lnum
+	    && curwin->w_botline > curwin->w_cursor.lnum
+	    && curwin->w_botline <= curbuf->b_ml.ml_line_count + 1)
+    {
+	linenr_T    lnum;
+	long	    n;
+	long	    max = 0;
+
+	// Use maximum of all visible lines.  Remember the lnum of the
+	// longest line, closest to the cursor line.  Used when scrolling
+	// below.
+	for (lnum = curwin->w_topline; lnum < curwin->w_botline; ++lnum)
+	{
+	    n = scroll_line_len(lnum);
+	    if (n > max)
+	    {
+		max = n;
+		ret = lnum;
+	    }
+	    else if (n == max && abs((int)(lnum - curwin->w_cursor.lnum))
+				     < abs((int)(ret - curwin->w_cursor.lnum)))
+		ret = lnum;
+	}
+    }
+    else
+	// Use cursor line only.
+	ret = curwin->w_cursor.lnum;
+
+    return ret;
 }
 
 /*
@@ -1127,6 +1218,10 @@ ui_focus_change(
 	last_time = time(NULL);
     }
 
+#ifdef FEAT_TERMINAL
+    term_focus_change(in_focus);
+#endif
+
     /*
      * Fire the focus gained/lost autocommand.
      */
@@ -1134,34 +1229,11 @@ ui_focus_change(
 				: EVENT_FOCUSLOST, NULL, NULL, FALSE, curbuf);
 
     if (need_redraw)
-    {
-	// Something was executed, make sure the cursor is put back where it
-	// belongs.
-	need_wait_return = FALSE;
+	redraw_after_callback(TRUE, TRUE);
 
-	if (State & CMDLINE)
-	    redrawcmdline();
-	else if (State == HITRETURN || State == SETWSIZE || State == ASKMORE
-		|| State == EXTERNCMD || State == CONFIRM || exmode_active)
-	    repeat_message();
-	else if ((State & NORMAL) || (State & INSERT))
-	{
-	    if (must_redraw != 0)
-		update_screen(0);
-	    setcursor();
-	}
-	cursor_on();	    // redrawing may have switched it off
-	out_flush_cursor(FALSE, TRUE);
-# ifdef FEAT_GUI
-	if (gui.in_use)
-	    gui_update_scrollbars(FALSE);
-# endif
-    }
-#ifdef FEAT_TITLE
     // File may have been changed from 'readonly' to 'noreadonly'
     if (need_maketitle)
 	maketitle();
-#endif
 }
 
 #if defined(HAVE_INPUT_METHOD) || defined(PROTO)

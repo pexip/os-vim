@@ -11,10 +11,10 @@ set nomore
 " Clear out t_WS, we don't want to resize the actual terminal.
 let script = [
       \ '" DO NOT EDIT: Generated with gen_opt_test.vim',
+      \ '" Used by test_options.vim.',
       \ '',
       \ 'let save_columns = &columns',
       \ 'let save_lines = &lines',
-      \ 'let save_term = &term',
       \ 'set t_WS=',
       \ ]
 
@@ -90,7 +90,7 @@ let test_values = {
       \ 'display': [['', 'lastline', 'lastline,uhex'], ['xxx']],
       \ 'eadirection': [['', 'both', 'ver'], ['xxx', 'ver,hor']],
       \ 'encoding': [['latin1'], ['xxx', '']],
-      \ 'eventignore': [['', 'WinEnter', 'WinLeave,winenter'], ['xxx']],
+      \ 'eventignore': [['', 'WinEnter', 'WinLeave,winenter', 'all,WinEnter'], ['xxx']],
       \ 'fileencoding': [['', 'latin1', 'xxx'], []],
       \ 'fileformat': [['', 'dos', 'unix'], ['xxx']],
       \ 'fileformats': [['', 'dos', 'dos,unix'], ['xxx']],
@@ -104,6 +104,7 @@ let test_values = {
       \ 'guifont': [['', fontname], []],
       \ 'guifontwide': [['', fontname], []],
       \ 'guifontset': [['', fontname], []],
+      \ 'guioptions': [['', 'a'], ['Q']],
       \ 'helplang': [['', 'de', 'de,it'], ['xxx']],
       \ 'highlight': [['', 'e:Error'], ['xxx']],
       \ 'imactivatekey': [['', 'S-space'], ['xxx']],
@@ -113,7 +114,10 @@ let test_values = {
       \ 'isprint': [['', '@', '@,48-52'], ['xxx', '@48']],
       \ 'keymap': [['', 'accents'], ['xxx']],
       \ 'keymodel': [['', 'startsel', 'startsel,stopsel'], ['xxx']],
+      \ 'keyprotocol': [['', 'xxx:none', 'yyy:mok2', 'zzz:kitty'],
+      \		[':none', 'xxx:', 'x:non', 'y:mok3', 'z:kittty']],
       \ 'langmap': [['', 'xX', 'aA,bB'], ['xxx']],
+      \ 'lispoptions': [['', 'expr:0', 'expr:1'], ['xxx']],
       \ 'listchars': [['', 'eol:x', 'eol:x,space:y'], ['xxx']],
       \ 'matchpairs': [['', '(:)', '(:),<:>'], ['xxx']],
       \ 'mkspellmem': [['10000,100,12'], ['', 'xxx']],
@@ -126,14 +130,18 @@ let test_values = {
       \ 'printoptions': [['', 'header:0', 'left:10pc,top:5pc'], ['xxx']],
       \ 'scrollopt': [['', 'ver', 'ver,hor'], ['xxx']],
       \ 'renderoptions': [[''], ['xxx']],
+      \ 'rightleftcmd': [['search'], ['xxx']],
       \ 'selection': [['old', 'inclusive'], ['', 'xxx']],
       \ 'selectmode': [['', 'mouse', 'key,cmd'], ['xxx']],
       \ 'sessionoptions': [['', 'blank', 'help,options,slash'], ['xxx']],
+      \ 'showcmdloc': [['last', 'statusline', 'tabline'], ['xxx']],
       \ 'signcolumn': [['', 'auto', 'no'], ['xxx', 'no,yes']],
       \ 'spellfile': [['', 'file.en.add', '/tmp/dir\ with\ space/en.utf-8.add'], ['xxx', '/tmp/file']],
       \ 'spelllang': [['', 'xxx', 'sr@latin'], ['not&lang', "that\\\rthere"]],
       \ 'spelloptions': [['', 'camel'], ['xxx']],
       \ 'spellsuggest': [['', 'best', 'double,33'], ['xxx']],
+      \ 'splitkeep': [['cursor', 'screen', 'topline'], ['xxx']],
+      \ 'swapsync': [['', 'sync', 'fsync'], ['xxx']],
       \ 'switchbuf': [['', 'useopen', 'split,newtab'], ['xxx']],
       \ 'tagcase': [['smart', 'match'], ['', 'xxx', 'smart,match']],
       \ 'term': [[], []],
@@ -152,7 +160,7 @@ let test_values = {
       \ 'virtualedit': [['', 'all', 'all,block'], ['xxx']],
       \ 'whichwrap': [['', 'b,s', 'bs'], ['xxx']],
       \ 'wildmode': [['', 'full', 'list:full', 'full,longest'], ['xxx', 'a4', 'full,full,full,full,full']],
-      \ 'wildoptions': [['', 'tagfile'], ['xxx']],
+      \ 'wildoptions': [['', 'tagfile', 'pum', 'fuzzy'], ['xxx']],
       \ 'winaltkeys': [['menu', 'no'], ['', 'xxx']],
       \
       \ 'luadll': [[], []],
@@ -223,7 +231,6 @@ while 1
   endif
 endwhile
 
-call add(script, 'let &term = save_term')
 call add(script, 'let &columns = save_columns')
 call add(script, 'let &lines = save_lines')
 

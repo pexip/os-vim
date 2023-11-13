@@ -3,7 +3,7 @@
 export DH_OPTIONS
 
 # Upstream handles the _FORTIFY_SOURCE flag on their own
-DEB_BUILD_MAINT_OPTIONS = hardening=+all,-fortify
+DEB_BUILD_MAINT_OPTIONS = hardening=+all,-fortify future=+lfs
 
 include /usr/share/dpkg/default.mk
 
@@ -49,6 +49,7 @@ TINYFLAGS += --enable-nls
 TINYFLAGS += --enable-acl
 TINYFLAGS += --disable-terminal
 TINYFLAGS += --disable-canberra
+TINYFLAGS += --disable-libsodium
 
 OPTFLAGS = --enable-cscope
 ifeq ($(DEB_HOST_ARCH_OS),linux)
@@ -61,6 +62,7 @@ endif
 OPTFLAGS += --with-features=huge
 OPTFLAGS += --enable-acl
 OPTFLAGS += --enable-terminal
+OPTFLAGS += --enable-libsodium
 
 NOXFLAGS = --without-x
 NOXFLAGS += --enable-gui=no
@@ -74,16 +76,16 @@ GTK3FLAGS = --enable-gui=gtk3
 GTK3FLAGS += --enable-gtk3-check
 GTK3FLAGS += --disable-gnome-check
 GTK3FLAGS += --disable-motif-check
-GTK3FLAGS += --disable-athena-check
+GTK3FLAGS += --disable-motif-check
 GTK3FLAGS += --disable-fontset
 
-ATHENAFLAGS = --enable-gui=athena
-ATHENAFLAGS += --disable-gtk2-check
-ATHENAFLAGS += --disable-gtk3-check
-ATHENAFLAGS += --disable-gnome-check
-ATHENAFLAGS += --disable-motif-check
-ATHENAFLAGS += --enable-athena-check
-ATHENAFLAGS += --enable-fontset
+MOTIFFLAGS = --enable-gui=motif
+MOTIFFLAGS += --disable-gtk2-check
+MOTIFFLAGS += --disable-gtk3-check
+MOTIFFLAGS += --disable-gnome-check
+MOTIFFLAGS += --disable-motif-check
+MOTIFFLAGS += --enable-motif-check
+MOTIFFLAGS += --enable-fontset
 
 NOINTERPFLAGS = --disable-luainterp
 NOINTERPFLAGS += --disable-mzschemeinterp
@@ -115,7 +117,7 @@ ALLINTERPFLAGS += --with-tclsh=/usr/bin/tclsh
 
 VARIANTS += vim-tiny
 VARIANTS += vim-gtk3
-VARIANTS += vim-athena
+VARIANTS += vim-motif
 VARIANTS += vim-nox
 VARIANTS += vim-basic
 
@@ -123,17 +125,19 @@ ifneq ($(origin VARIANT), undefined)
   VARIANTS = $(VARIANT) vim-basic
 endif
 
+CFLAGS += -DSYS_VIMRC_FILE="'\"/etc/vim/vimrc\"'" -DSYS_GVIMRC_FILE="'\"/etc/vim/gvimrc\"'"
+
 CFLAGS_vim-basic = $(CFLAGS)
 CFGFLAGS_vim-basic = $(CFGFLAGS) $(OPTFLAGS) $(NOXFLAGS) $(NOINTERPFLAGS)
 
-CFLAGS_vim-tiny = $(CFLAGS) -DTINY_VIMRC
+CFLAGS_vim-tiny = $(CFLAGS) -DTINY_VIMRC -DSYS_TINYRC_FILE="'\"/etc/vim/vimrc.tiny\"'"
 CFGFLAGS_vim-tiny = $(CFGFLAGS) $(TINYFLAGS)
 
 CFLAGS_vim-gtk3 = $(CFLAGS)
 CFGFLAGS_vim-gtk3 = $(CFGFLAGS) $(OPTFLAGS) $(GUIFLAGS) $(ALLINTERPFLAGS) $(GTK3FLAGS) $(RUBY_CFGFLAGS)
 
-CFLAGS_vim-athena = $(CFLAGS)
-CFGFLAGS_vim-athena = $(CFGFLAGS) $(OPTFLAGS) $(GUIFLAGS) $(ATHENAFLAGS) $(ALLINTERPFLAGS) $(RUBY_CFGFLAGS)
+CFLAGS_vim-motif = $(CFLAGS)
+CFGFLAGS_vim-motif = $(CFGFLAGS) $(OPTFLAGS) $(GUIFLAGS) $(MOTIFFLAGS) $(ALLINTERPFLAGS) $(RUBY_CFGFLAGS)
 
 CFLAGS_vim-nox = $(CFLAGS)
 CFGFLAGS_vim-nox = $(CFGFLAGS) $(OPTFLAGS) $(NOXFLAGS) $(ALLINTERPFLAGS) $(RUBY_CFGFLAGS)
@@ -142,12 +146,9 @@ NAME = vim
 # Convert x.y.z to x.y
 VERSION = $(basename $(DEB_VERSION_UPSTREAM))
 VIMCUR = $(NAME)$(subst .,,$(VERSION))
-PER_VARIANT_FILES = install postinst prerm lintian-overrides maintscript
-LANGS = da de fr it ja pl ru
+LANGS = da de fr it ja pl ru tr
 
-DOT_IN_DEPS = debian/vim-common.install
-DOT_IN_DEPS += debian/vim-runtime.links
-DOT_IN_DEPS += debian/vim-runtime.postrm
+DOT_IN_DEPS = debian/vim-runtime.postrm
 DOT_IN_DEPS += debian/vim-runtime.preinst
 DOT_IN_DEPS_TINY = debian/tiny/vimrc.tiny
 
@@ -168,9 +169,6 @@ override_dh_auto_clean:
 	[ ! -f debian/configure.dist ] || mv debian/configure.dist src/auto/configure
 	find src/testdir -name '*.pyc' -delete
 	for v in $(VARIANTS); do \
-	  for x in $(PER_VARIANT_FILES); do \
-	    rm -f debian/$${v}.$${x}; \
-	  done; \
 	  if [ "$${v}" = vim-basic ]; then \
 	    [ ! -L src/"$${v}"/po ] || $(MAKE) -C src/"$${v}"/po clean; \
 	  fi; \
@@ -289,7 +287,7 @@ override_dh_install-indep:
 	ps2pdf debian/tmplogo.ps debian/tmplogo.pdf
 	pdf2svg debian/tmplogo.pdf debian/vim-common/usr/share/icons/hicolor/scalable/apps/gvim.svg
 
-	dh_install -X vim2html.pl -X 'README*.txt' -X README.el.txt -X README.el.cp737.txt
+	env VIMCUR=$(VIMCUR) dh_install -X vim2html.pl -X 'README*.txt' -X README.el.txt -X README.el.cp737.txt
 	# adjust things for vim-gui-common
 	cp debian/vim-common/usr/share/man/man1/vim.1 \
 	   debian/vim-gui-common/usr/share/man/man1/gvim.1
@@ -331,40 +329,14 @@ override_dh_bugfiles:
 
 install-vim-%: SHADOWDIR=vim-$*
 install-vim-%: VARIANT=$*
-install-vim-%: PKG=$(subst -basic,,vim-$(VARIANT))
 install-vim-%: BIN=$(subst -,.,vim-$(VARIANT))
 install-vim-%:
 	cp src/$(SHADOWDIR)/vim src/$(SHADOWDIR)/$(BIN)
-	# variant-related installations
-	for x in $(PER_VARIANT_FILES) ; do \
-	  case "$(PKG)" in \
-	    vim-nox|vim|vim-tiny) \
-	      sed -e "s:@PKG@:$(PKG):g" -e "s:@VARIANT@:$(VARIANT):g" \
-	          -e "s:@COMMON@:vim-common:g" \
-	          debian/vim-variant.$$x > debian/$(PKG).$$x ;\
-	      ;; \
-	    *) \
-	      sed -e "s:@PKG@:$(PKG):g" -e "s:@VARIANT@:$(VARIANT):g" \
-	          -e "s:@COMMON@:vim-gui-common:g" \
-	          debian/vim-variant.$$x > debian/$(PKG).$$x ;\
-	      ;; \
-	  esac \
-	done
-	for L in $(LANGS); do \
-	  sed -e "s:\(.*\)@LANG_ALTS@:\1--slave \$$mandir/$$L/man1/\$$i.1.gz \$$i.$$L.1.gz \$$mandir/$$L/man1/vim.1.gz \\\\\n&:" \
-	      -i debian/$(PKG).postinst; \
-	done
-	sed -i "/@LANG_ALTS@/d" debian/$(PKG).postinst
-	# fake help installation for vim-tiny
-	if [ "$(PKG)" = "vim-tiny" ]; then \
-	  $(MAKE) -f debian/rules $(DOT_IN_DEPS_TINY); \
-	  echo "debian/tiny/doc/	usr/share/vim/$(VIMCUR)" >> debian/vim-tiny.install; \
-	  echo "debian/tiny/vimrc.tiny	etc/vim" >> debian/vim-tiny.install; \
-	fi
+	[ $(VARIANT) != tiny ] || $(MAKE) -f debian/rules $(DOT_IN_DEPS_TINY)
 
 override_dh_install-arch:
 	$(call foreach-variant, $(MAKE) -f debian/rules install-$${v})
-	dh_install
+	env VIMCUR=$(VIMCUR) dh_install
 
 $(DOT_IN_DEPS) $(DOT_IN_DEPS_TINY): %: %.in
 	cat $< | sed 's/@VIMCUR@/$(VIMCUR)/' > $@

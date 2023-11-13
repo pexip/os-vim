@@ -2,7 +2,7 @@
 " Language: reStructuredText documentation format with R code
 " Maintainer: Jakson Alves de Aquino <jalvesaq@gmail.com>
 " Homepage: https://github.com/jalvesaq/R-Vim-runtime
-" Last Change:	Wed Nov 01, 2017  10:47PM
+" Last Change:	Sun Apr 24, 2022  09:13AM
 " Original work by Alex Zvoleff
 
 " Only do this when not yet done for this buffer
@@ -37,8 +37,8 @@ if !exists("g:rrst_dynamic_comments") || (exists("g:rrst_dynamic_comments") && g
   setlocal formatexpr=FormatRrst()
 endif
 
-if has("gui_win32") && !exists("b:browsefilter")
-  let b:browsefilter = "R Source Files (*.R *.Rnw *.Rd *.Rmd *.Rrst)\t*.R;*.Rnw;*.Rd;*.Rmd;*.Rrst\n" .
+if (has("gui_win32") || has("gui_gtk")) && !exists("b:browsefilter")
+  let b:browsefilter = "R Source Files (*.R *.Rnw *.Rd *.Rmd *.Rrst *.qmd)\t*.R;*.Rnw;*.Rd;*.Rmd;*.Rrst;*.qmd\n" .
         \ "All Files (*.*)\t*.*\n"
 endif
 
