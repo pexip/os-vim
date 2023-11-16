@@ -1,3 +1,9 @@
+vim (2:9.0.1378-2pexip1) pexip-bookworm; urgency=medium
+
+  * Initial bookworm build
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Thu, 16 Nov 2023 10:35:19 +0000
+
 vim (2:9.0.1378-2) unstable; urgency=medium
 
   * Backport 9.0.1499 to fix CVE-2023-2426 (Closes: #1035323)
