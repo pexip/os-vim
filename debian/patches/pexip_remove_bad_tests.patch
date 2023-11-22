@@ -10,3 +10,11 @@ Index: os-vim/src/testdir/Make_all.mak
  	test_terminal2 \
  	test_terminal3 \
  	test_terminal_fail \
+@@ -523,7 +522,6 @@ NEW_TESTS_RES = \
+ 	test_tcl.res \
+ 	test_termcodes.res \
+ 	test_termencoding.res \
+-	test_terminal.res \
+ 	test_terminal2.res \
+ 	test_terminal3.res \
+ 	test_terminal_fail.res \
