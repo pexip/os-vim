@@ -4,3 +4,4 @@ debian/Add-recognition-of-more-LaTeX-commands-for-tex-filetype-d.patch
 debian/Document-Debian-s-decision-to-disable-modelines-by-defaul.patch
 patch-9.0.1499-using-uninitialized-memory-with-fuzzy-matc.patch
 Fix-GH-267-where-indent-after-a-sub-would-not-work.patch
+pexip_remove_bad_tests.patch
