@@ -1,3 +1,9 @@
+vim (2:9.0.1378-2+pexip24u3) pexip-bookworm; urgency=medium
+
+  * New versioning scheme
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Thu, 01 Feb 2024 16:38:12 +0000
+
 vim (2:9.0.1378-2pexip2) pexip-bookworm; urgency=medium
 
   * Bookworm build for product distribution
