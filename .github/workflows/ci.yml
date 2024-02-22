@@ -175,7 +175,7 @@ jobs:
 
       # FIXME: Temporarily disabled because of build errors
       #- name: Cache snd-dummy
-      #  uses: actions/cache@v3
+      #  uses: actions/cache@v4
       #  with:
       #    path: ${{ env.SND_DUMMY_DIR }}
       #    key: linux-${{ env.LINUX_VERSION }}-snd-dummy
@@ -454,7 +454,7 @@ jobs:
           echo %WINPTY_URL%>> urls.txt
 
       - name: Cache downloaded files
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: downloads
           key: ${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('urls.txt') }}
