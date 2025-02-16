@@ -1,3 +1,30 @@
+vim (2:9.0.1378-2+deb12u2) bookworm; urgency=high
+
+  * Drop test case from CVE-2023-2610.patch.
+    This test was breaking the build on a number of architectures.
+    The test was removed upstream for similar reasons.
+    Thanks to James McCoy for reporting the problem.
+
+ -- Sean Whitton <spwhitton@spwhitton.name>  Sun, 16 Feb 2025 13:23:41 +0800
+
+vim (2:9.0.1378-2+deb12u1) bookworm; urgency=high
+
+  * Backport security fixes:
+    - 9.0.1532: Crash when expanding "~" in substitute
+      (Closes: #1035955, CVE-2023-2610)
+    - 9.0.1848: buffer-overflow in vim_regsub_both() (CVE-2023-4738)
+    - 9.0.1858: heap use after free in ins_compl_get_exp() (CVE-2023-4752)
+    - 9.0.1873: heap-buffer-overflow in vim_regsub_both (CVE-2023-4781)
+    - 9.0.1969: buffer-overflow in trunc_string()
+      (Closes: #1053694, CVE-2023-5344)
+    - 9.0.2142: stack-buffer-overflow in option callback functions
+      (CVE-2024-22667)
+    - 9.1.0697: heap-buffer-overflow in ins_typebuf (CVE-2024-43802)
+    - 9.1.0764: use-after-free when closing a buffer
+      (Closes: #1084806, CVE-2024-47814).
+
+ -- Sean Whitton <spwhitton@spwhitton.name>  Thu, 23 Jan 2025 13:00:20 +0000
+
 vim (2:9.0.1378-2) unstable; urgency=medium
 
   * Backport 9.0.1499 to fix CVE-2023-2426 (Closes: #1035323)
