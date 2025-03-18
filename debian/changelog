@@ -1,3 +1,9 @@
+vim (2:9.0.1378-2+pexip24u3+deb12u2) pexip; urgency=medium
+
+  * And fix the versioning! Gah.
+
+ -- Steve McIntyre <steve.mcintyre@pexip.com>  Tue, 18 Mar 2025 17:47:16 +0000
+
 vim (2:9.0.1378-2+deb12u2+pexip24u2) pexip; urgency=medium
 
   * Fix distribution
