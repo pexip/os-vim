@@ -2,14 +2,18 @@ Test-Command: ./debian/tests/variants --version
 Depends: @
 Restrictions: superficial
 
-Test-Command: ./debian/tests/upstreamtest /usr/bin/vim
-Depends: vim, cscope, procps, python3, xxd
-Restrictions: needs-root, allow-stderr, flaky
+Test-Command: ./debian/tests/upstreamtest test_python3.res
+Depends: vim-nox, python3
+Restrictions: needs-root, allow-stderr
 
-Test-Command: ./debian/tests/upstreamtest /usr/bin/vim
-Depends: vim-nox, cscope, procps, xxd
-Restrictions: needs-root, allow-stderr, flaky
+Test-Command: ./debian/tests/upstreamtest test_lua.res
+Depends: vim-nox, lua5.1
+Restrictions: needs-root, allow-stderr
 
-Test-Command: ./debian/tests/upstreamtest /usr/bin/vi
-Depends: vim-tiny, xxd
-Restrictions: needs-root, allow-stderr, flaky
+Test-Command: ./debian/tests/upstreamtest test_perl.res
+Depends: vim-nox, perl
+Restrictions: needs-root, allow-stderr
+
+Test-Command: ./debian/tests/upstreamtest test_ruby.res
+Depends: vim-nox, ruby
+Restrictions: needs-root, allow-stderr

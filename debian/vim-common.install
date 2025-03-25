@@ -2,6 +2,9 @@ debian/helpztags                                 usr/bin/
 debian/runtime/debian.vim                        usr/share/vim/${env:VIMCUR}/
 debian/runtime/vimrc                             etc/vim/
 usr/share/applications/vim.desktop
+usr/share/vim/${env:VIMCUR}/doc/sponsor.txt
+usr/share/vim/${env:VIMCUR}/doc/uganda.txt
+usr/share/vim/${env:VIMCUR}/doc/version${env:VIMMAJOR}.txt
 usr/share/icons/
 usr/share/man/da/man1/vim.1
 usr/share/man/da/man1/vimdiff.1

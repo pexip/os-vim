@@ -1,12 +1,12 @@
 debian/helpztags.1
 debian/policy/vim-policy.html/
 debian/policy/vim-policy.txt
+debian/tiny/doc/tags
 debian/tmplogo.*
 runtime/doc/*.html
 runtime/doc/*.log
 runtime/doc/doctags
 runtime/doc/tags
-runtime/doc/tags.ref
 src/auto/config.h
 src/auto/config.mk
 src/po/vim.pot

@@ -5,4 +5,3 @@ include:
 variables:
   SALSA_CI_DISABLE_REPROTEST: 1
   SALSA_CI_BLHC_ARGS: --ignore-flag -D_FORTIFY_SOURCE=2 --ignore-line .*doctags.*
-  SALSA_CI_DISABLE_CROSSBUILD_ARM64: 1

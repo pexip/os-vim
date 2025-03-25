@@ -1,0 +1,166 @@
+From: James McCoy <jamessan@debian.org>
+Date: Thu, 9 Jan 2025 20:38:13 -0500
+Subject: Revert "patch 9.1.0949: popups inconsistently shifted to the left"
+
+This reverts commit 13c1153eefe54ce933e60258358300868c22f68a.
+
+It causes a regression in vim-YouCompleteMe's autopkgtests.
+https://github.com/ycm-core/YouCompleteMe/issues/4284
+
+Closes: #1091729
+---
+ runtime/doc/popup.txt         |  1 +
+ src/popupwin.c                | 23 ++++++++++++-----------
+ src/testdir/test_popupwin.vim | 26 ++++++--------------------
+ src/version.c                 |  2 --
+ 4 files changed, 19 insertions(+), 33 deletions(-)
+
+diff --git a/runtime/doc/popup.txt b/runtime/doc/popup.txt
+index ba87b31..e7526ec 100644
+--- a/runtime/doc/popup.txt
++++ b/runtime/doc/popup.txt
+@@ -705,6 +705,7 @@ The second argument of |popup_create()| is a dictionary with options:
+ 			present. Use zero to reset.
+ 	fixed		When FALSE (the default), and:
+ 			 - "pos" is "botleft" or "topleft", and
++			 - "wrap" is off, and
+ 			 - the popup would be truncated at the right edge of
+ 			   the screen, then
+ 			the popup is moved to the left so as to fit the
+diff --git a/src/popupwin.c b/src/popupwin.c
+index 76ebf38..33bff26 100644
+--- a/src/popupwin.c
++++ b/src/popupwin.c
+@@ -1433,7 +1433,17 @@ popup_adjust_position(win_T *wp)
+ 	len = linetabsize(wp, lnum);
+ 	wp->w_width = w_width;
+ 
+-	if (len + margin_width > maxwidth
++	if (wp->w_p_wrap)
++	{
++	    while (len + margin_width > maxwidth)
++	    {
++		++wrapped;
++		len -= maxwidth - margin_width;
++		wp->w_width = maxwidth;
++		used_maxwidth = TRUE;
++	    }
++	}
++	else if (len + margin_width > maxwidth
+ 		&& allow_adjust_left
+ 		&& (wp->w_popup_pos == POPPOS_TOPLEFT
+ 		    || wp->w_popup_pos == POPPOS_BOTLEFT))
+@@ -1445,6 +1455,7 @@ popup_adjust_position(win_T *wp)
+ 	    {
+ 		int truncate_shift = shift_by - wp->w_wincol;
+ 
++		len -= truncate_shift;
+ 		shift_by -= truncate_shift;
+ 	    }
+ 
+@@ -1452,16 +1463,6 @@ popup_adjust_position(win_T *wp)
+ 	    maxwidth += shift_by;
+ 	    wp->w_width = maxwidth;
+ 	}
+-	if (wp->w_p_wrap)
+-	{
+-	    while (len + margin_width > maxwidth)
+-	    {
+-		++wrapped;
+-		len -= maxwidth - margin_width;
+-		wp->w_width = maxwidth;
+-		used_maxwidth = TRUE;
+-	    }
+-	}
+ 	if (wp->w_width < len + margin_width)
+ 	{
+ 	    wp->w_width = len + margin_width;
+diff --git a/src/testdir/test_popupwin.vim b/src/testdir/test_popupwin.vim
+index 5082676..e182505 100644
+--- a/src/testdir/test_popupwin.vim
++++ b/src/testdir/test_popupwin.vim
+@@ -31,7 +31,7 @@ func Test_simple_popup()
+ 	\ .. "#{text: 'a comment line', props: [#{"
+ 	\ .. "col: 3, length: 7, minwidth: 20, type: 'comment'"
+ 	\ .. "}]},"
+-	\ .. "], #{line: 4, col: 9, minwidth: 20, fixed: v:true})\<CR>")
++	\ .. "], #{line: 4, col: 9, minwidth: 20})\<CR>")
+   call VerifyScreenDump(buf, 'Test_popupwin_02', {})
+ 
+   " switch back to first tabpage
+@@ -87,7 +87,7 @@ func Test_popup_with_border_and_padding()
+ 	  call popup_create('hello both', #{line: 2, col: 43, border: [], padding: [], highlight: 'Normal'})
+ 	  call popup_create('border TL', #{line: 6, col: 3, border: [1, 0, 0, 4]})
+ 	  call popup_create('paddings', #{line: 6, col: 23, padding: range(1, 4)})
+-	  call popup_create('wrapped longer text', #{line: 8, col: 55, padding: [0, 3, 0, 3], border: [0, 1, 0, 1], fixed: v:true})
++	  call popup_create('wrapped longer text', #{line: 8, col: 55, padding: [0, 3, 0, 3], border: [0, 1, 0, 1]})
+ 	  call popup_create('right aligned text', #{line: 11, col: 56, wrap: 0, padding: [0, 3, 0, 3], border: [0, 1, 0, 1]})
+ 	  call popup_create('X', #{line: 2, col: 73})
+ 	  call popup_create('X', #{line: 3, col: 74})
+@@ -1970,7 +1970,7 @@ func Test_popup_position_adjust()
+   " Anything placed past the last cell on the right of the screen is moved to
+   " the left.
+   "
+-  " We also shift to the left to display on the
++  " When wrapping is disabled, we also shift to the left to display on the
+   " screen, unless fixed is set.
+ 
+   " Entries for cases which don't vary based on wrapping.
+@@ -1995,10 +1995,9 @@ func Test_popup_position_adjust()
+   "     - expected height
+   let tests = [
+ 	\ #{
+-	\   comment: 'left aligned with wrapping, fixed position',
++	\   comment: 'left-aligned with wrapping',
+ 	\   options: #{
+ 	\     wrap: 1,
+-	\     fixed: v:true,
+ 	\     pos: 'botleft',
+ 	\   },
+ 	\   tests: both_wrap_tests + [
+@@ -2023,22 +2022,9 @@ func Test_popup_position_adjust()
+ 	\   ],
+ 	\ },
+ 	\ #{
+-	\   comment: 'left aligned with wrapping, no fixed position',
+-	\   options: #{
+-	\     wrap: 1,
+-	\     fixed: v:false,
+-	\     pos: 'botleft',
+-	\   },
+-	\   tests: both_wrap_tests + [
+-	\       [ repeat('a', &columns*3), 5, &columns,   3,                 1, &columns, 3],
+-	\       [ repeat('a', 50),         5, &columns,   5, &columns - 50 + 1,       50, 1],
+-	\   ],
+-	\ },
+-	\ #{
+-	\   comment: 'left aligned without wrapping, no fixed position',
++	\   comment: 'left aligned without wrapping',
+ 	\   options: #{
+ 	\     wrap: 0,
+-	\     fixed: v:false,
+ 	\     pos: 'botleft',
+ 	\   },
+ 	\   tests: both_wrap_tests + [
+@@ -2062,7 +2048,7 @@ func Test_popup_position_adjust()
+ 	\   ],
+ 	\ },
+ 	\ #{
+-	\   comment: 'left aligned without wrapping, fixed position',
++	\   comment: 'left aligned with fixed position',
+ 	\   options: #{
+ 	\     wrap: 0,
+ 	\     fixed: 1,
+diff --git a/src/version.c b/src/version.c
+index f50c414..11ba12a 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -1266,8 +1266,6 @@ static int included_patches[] =
+     951,
+ /**/
+     950,
+-/**/
+-    949,
+ /**/
+     948,
+ /**/

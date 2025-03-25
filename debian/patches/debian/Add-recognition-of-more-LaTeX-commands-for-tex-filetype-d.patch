@@ -13,10 +13,10 @@ Signed-off-by: James McCoy <jamessan@debian.org>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/runtime/autoload/dist/ft.vim b/runtime/autoload/dist/ft.vim
-index bfc325d..7d1e15f 100644
+index a740305..3155be1 100644
 --- a/runtime/autoload/dist/ft.vim
 +++ b/runtime/autoload/dist/ft.vim
-@@ -935,7 +935,7 @@ export def FTtex()
+@@ -1140,7 +1140,7 @@ export def FTtex()
      var firstNC = search('^\s*[^[:space:]%]', 'c', 1000)
      if firstNC > 0
        # Check the next thousand lines for a LaTeX or ConTeXt keyword.

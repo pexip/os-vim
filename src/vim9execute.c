@@ -260,7 +260,10 @@ exe_newdict(int count, ectx_T *ectx)
     if (count > 0)
 	ectx->ec_stack.ga_len -= 2 * count - 1;
     else if (GA_GROW_FAILS(&ectx->ec_stack, 1))
+    {
+	dict_unref(dict);
 	return FAIL;
+    }
     else
 	++ectx->ec_stack.ga_len;
     tv = STACK_TV_BOT(-1);
@@ -398,6 +401,9 @@ check_ufunc_arg_types(ufunc_T *ufunc, int argcount, int off, ectx_T *ectx)
 	if (argv[i].v_type == VAR_SPECIAL
 		&& argv[i].vval.v_number == VVAL_NONE)
 	    continue;
+	// only pass values to user functions, never types
+	if (check_typval_is_value(&argv[i]) == FAIL)
+	    return FAIL;
 
 	if (i < ufunc->uf_args.ga_len && ufunc->uf_arg_types != NULL)
 	    type = ufunc->uf_arg_types[i];
@@ -535,9 +541,24 @@ call_dfunc(
     // If this is an object method, the object is just before the arguments.
     typval_T	*obj = STACK_TV_BOT(0) - argcount - vararg_count - 1;
 
+    if (IS_OBJECT_METHOD(ufunc) && !IS_CONSTRUCTOR_METHOD(ufunc)
+	    && obj->v_type == VAR_OBJECT && obj->vval.v_object == NULL)
+    {
+	// If this is not a constructor method, then a valid object is
+	// needed.
+	emsg(_(e_using_null_object));
+	return FAIL;
+    }
+
     // Check the argument types.
     if (check_ufunc_arg_types(ufunc, argcount, vararg_count, ectx) == FAIL)
 	return FAIL;
+
+    // While check_ufunc_arg_types call, def function compilation process may
+    // run.  If so many def functions are compiled, def_functions array may be
+    // reallocated and dfunc may no longer have valid pointer.  Get the object
+    // pointer from def_functions again here.
+    dfunc = ((dfunc_T *)def_functions.ga_data) + cdf_idx;
 
     // Reserve space for:
     // - missing arguments
@@ -549,6 +570,12 @@ call_dfunc(
     if (GA_GROW_FAILS(&ectx->ec_stack,
 				     arg_to_add + STACK_FRAME_SIZE + varcount))
 	return FAIL;
+
+    // The object pointer is in the execution typval stack.  The GA_GROW call
+    // above may have reallocated the execution typval stack.  So the object
+    // pointer may not be valid anymore.  Get the object pointer again from the
+    // execution stack.
+    obj = STACK_TV_BOT(0) - argcount - vararg_count - 1;
 
     // If depth of calling is getting too high, don't execute the function.
     if (funcdepth_increment() == FAIL)
@@ -599,8 +626,14 @@ call_dfunc(
 
     // For an object method move the object from just before the arguments to
     // the first local variable.
-    if (ufunc->uf_flags & FC_OBJECT)
+    if (IS_OBJECT_METHOD(ufunc))
     {
+	if (obj->v_type != VAR_OBJECT)
+	{
+	    semsg(_(e_internal_error_str), "type in stack is not an object");
+	    return FAIL;
+	}
+
 	*STACK_TV_VAR(0) = *obj;
 	obj->v_type = VAR_UNKNOWN;
     }
@@ -911,6 +944,41 @@ in_def_function(void)
 }
 
 /*
+ * If executing a class/object method, then fill in the lval_T.
+ * Set lr_tv to the executing item, and lr_exec_class to the executing class;
+ * use free_tv and class_unref when finished with the lval_root.
+ * For use by builtin functions.
+ *
+ * Return FAIL and do nothing if not executing in a class; otherwise OK.
+ */
+    int
+fill_exec_lval_root(lval_root_T *root)
+{
+    ectx_T *ectx = current_ectx;
+    if (ectx != NULL)
+    {
+	dfunc_T	    *dfunc = ((dfunc_T *)def_functions.ga_data)
+						  + current_ectx->ec_dfunc_idx;
+	ufunc_T    *ufunc = dfunc->df_ufunc;
+	if (ufunc->uf_class != NULL)	// executing a method?
+	{
+	    typval_T *tv = alloc_tv();
+	    if (tv != NULL)
+	    {
+		CLEAR_POINTER(root);
+		root->lr_tv = tv;
+		copy_tv(STACK_TV_VAR(0), root->lr_tv);
+		root->lr_cl_exec = ufunc->uf_class;
+		++root->lr_cl_exec->class_refcount;
+		return OK;
+	    }
+	}
+    }
+
+    return FAIL;
+}
+
+/*
  * Clear "current_ectx" and return the previous value.  To be used when calling
  * a user function.
  */
@@ -973,10 +1041,9 @@ add_defer_item(int var_idx, int argcount, ectx_T *ectx)
  * Returns OK or FAIL.
  */
     static int
-defer_command(int var_idx, int has_obj, int argcount, ectx_T *ectx)
+defer_command(int var_idx, int argcount, ectx_T *ectx)
 {
-    int		obj_off = has_obj ? 1 : 0;
-    list_T	*l = add_defer_item(var_idx, argcount + obj_off, ectx);
+    list_T	*l = add_defer_item(var_idx, argcount, ectx);
     int		i;
     typval_T	*func_tv;
 
@@ -984,20 +1051,18 @@ defer_command(int var_idx, int has_obj, int argcount, ectx_T *ectx)
 	return FAIL;
 
     func_tv = STACK_TV_BOT(-argcount - 1);
-    if (has_obj ? func_tv->v_type != VAR_PARTIAL : func_tv->v_type != VAR_FUNC)
+    if (func_tv->v_type != VAR_PARTIAL && func_tv->v_type != VAR_FUNC)
     {
 	semsg(_(e_expected_str_but_got_str),
-		has_obj ? "partial" : "function",
+		"function or partial",
 		vartype_name(func_tv->v_type));
 	return FAIL;
     }
     list_set_item(l, 0, func_tv);
-    if (has_obj)
-	list_set_item(l, 1, STACK_TV_BOT(-argcount - 2));
 
     for (i = 0; i < argcount; ++i)
-	list_set_item(l, i + 1 + obj_off, STACK_TV_BOT(-argcount + i));
-    ectx->ec_stack.ga_len -= argcount + 1 + obj_off;
+	list_set_item(l, i + 1, STACK_TV_BOT(-argcount + i));
+    ectx->ec_stack.ga_len -= argcount + 1;
     return OK;
 }
 
@@ -1052,7 +1117,7 @@ invoke_defer_funcs(ectx_T *ectx)
 
     if (defer_tv->v_type != VAR_LIST)
 	return;	 // no function added
-    for (li = defer_tv->vval.v_list->lv_first; li != NULL; li = li->li_next)
+    FOR_ALL_LIST_ITEMS(defer_tv->vval.v_list, li)
     {
 	list_T	    *l = li->li_tv.vval.v_list;
 	typval_T    rettv;
@@ -1060,11 +1125,12 @@ invoke_defer_funcs(ectx_T *ectx)
 	int	    i;
 	listitem_T  *arg_li = l->lv_first;
 	typval_T    *functv = &l->lv_first->li_tv;
-	int	    obj_off = functv->v_type == VAR_PARTIAL ? 1 : 0;
-	int	    argcount = l->lv_len - 1 - obj_off;
+	int	    argcount = l->lv_len - 1;
 
-	if (obj_off == 1)
-	    arg_li = arg_li->li_next;  // second list item is the object
+	if (functv->vval.v_string == NULL)
+	    // already being called, can happen if function does ":qa"
+	    continue;
+
 	for (i = 0; i < argcount; ++i)
 	{
 	    arg_li = arg_li->li_next;
@@ -1078,13 +1144,28 @@ invoke_defer_funcs(ectx_T *ectx)
 	if (functv->v_type == VAR_PARTIAL)
 	{
 	    funcexe.fe_partial = functv->vval.v_partial;
-	    funcexe.fe_object = l->lv_first->li_next->li_tv.vval.v_object;
+	    funcexe.fe_object = functv->vval.v_partial->pt_obj;
 	    if (funcexe.fe_object != NULL)
 		++funcexe.fe_object->obj_refcount;
 	}
-	(void)call_func(functv->vval.v_string, -1,
-					  &rettv, argcount, argvars, &funcexe);
+
+	char_u *name = functv->vval.v_string;
+	functv->vval.v_string = NULL;
+
+	// If the deferred function is called after an exception, then only the
+	// first statement in the function will be executed (because of the
+	// exception).  So save and restore the try/catch/throw exception
+	// state.
+	exception_state_T estate;
+	exception_state_save(&estate);
+	exception_state_clear();
+
+	(void)call_func(name, -1, &rettv, argcount, argvars, &funcexe);
+
+	exception_state_restore(&estate);
+
 	clear_tv(&rettv);
+	vim_free(name);
     }
 }
 
@@ -1139,7 +1220,7 @@ func_return(ectx_T *ectx)
     // Clear the arguments.  If this was an object method also clear the
     // object, it is just before the arguments.
     int top = ectx->ec_frame_idx - argcount;
-    if (dfunc->df_ufunc->uf_flags & FC_OBJECT)
+    if (IS_OBJECT_METHOD(dfunc->df_ufunc))
 	--top;
     for (idx = top; idx < ectx->ec_frame_idx; ++idx)
 	clear_tv(STACK_TV(idx));
@@ -1438,6 +1519,23 @@ call_partial(
 	partial_T   *pt = tv->vval.v_partial;
 	int	    i;
 
+	if (pt->pt_obj != NULL)
+	{
+	    // partial with an object method.  Push the object before the
+	    // function arguments.
+	    if (GA_GROW_FAILS(&ectx->ec_stack, 1))
+		return FAIL;
+	    for (i = 1; i <= argcount; ++i)
+		*STACK_TV_BOT(-i + 1) = *STACK_TV_BOT(-i);
+
+	    typval_T *obj_tv = STACK_TV_BOT(-argcount);
+	    obj_tv->v_type = VAR_OBJECT;
+	    obj_tv->v_lock = 0;
+	    obj_tv->vval.v_object = pt->pt_obj;
+	    ++pt->pt_obj->obj_refcount;
+	    ++ectx->ec_stack.ga_len;
+	}
+
 	if (pt->pt_argc > 0)
 	{
 	    // Make space for arguments from the partial, shift the "argcount"
@@ -1540,7 +1638,7 @@ store_var(char_u *name, typval_T *tv)
  * Return FAIL if not allowed.
  */
     static int
-do_2string(typval_T *tv, int is_2string_any, int tolerant)
+do_2string(typval_T *tv, int is_2string_any, int tostring_flags)
 {
     if (tv->v_type == VAR_STRING)
 	return OK;
@@ -1555,10 +1653,11 @@ do_2string(typval_T *tv, int is_2string_any, int tolerant)
 	    case VAR_BOOL:
 	    case VAR_NUMBER:
 	    case VAR_FLOAT:
+	    case VAR_DICT:
 	    case VAR_BLOB:	break;
 
 	    case VAR_LIST:
-				if (tolerant)
+				if (tostring_flags & TOSTRING_TOLERANT)
 				{
 				    char_u	*s, *e, *p;
 				    garray_T	ga;
@@ -1591,6 +1690,8 @@ do_2string(typval_T *tv, int is_2string_any, int tolerant)
 				    tv->vval.v_string = ga.ga_data;
 				    return OK;
 				}
+				if (tostring_flags & TOSTRING_INTERPOLATE)
+				    break;
 				// FALLTHROUGH
 	    default:	to_string_error(tv->v_type);
 			return FAIL;
@@ -1939,7 +2040,7 @@ fill_partial_and_closure(
  * Execute iptr->isn_arg.string as an Ex command.
  */
     static int
-exec_command(isn_T *iptr)
+exec_command(isn_T *iptr, char_u *cmd_string)
 {
     source_cookie_T cookie;
 
@@ -1947,8 +2048,7 @@ exec_command(isn_T *iptr)
     // Pass getsourceline to get an error for a missing ":end" command.
     CLEAR_FIELD(cookie);
     cookie.sourcing_lnum = iptr->isn_lnum - 1;
-    if (do_cmdline(iptr->isn_arg.string,
-		getsourceline, &cookie,
+    if (do_cmdline(cmd_string, getsourceline, &cookie,
 			     DOCMD_VERBOSE|DOCMD_NOWAIT|DOCMD_KEYTYPED) == FAIL
 		|| did_emsg)
 	return FAIL;
@@ -2116,6 +2216,25 @@ handle_debug(isn_T *iptr, ectx_T *ectx)
 }
 
 /*
+ * Do a runtime check of the RHS value against the LHS List member type.
+ * This is used by the STOREINDEX instruction to perform a type check
+ * at runtime if compile time type check cannot be performed (VAR_ANY).
+ * Returns FAIL if there is a type mismatch.
+ */
+    static int
+storeindex_check_list_member_type(
+    list_T	*lhs_list,
+    typval_T	*rhs_tv,
+    ectx_T	*ectx)
+{
+    if (lhs_list->lv_type == NULL || lhs_list->lv_type->tt_member == NULL)
+	return OK;
+
+    return check_typval_type(lhs_list->lv_type->tt_member, rhs_tv,
+			     ectx->ec_where);
+}
+
+/*
  * Store a value in a list, dict, blob or object variable.
  * Returns OK, FAIL or NOTDONE (uncatchable error).
  */
@@ -2128,6 +2247,7 @@ execute_storeindex(isn_T *iptr, ectx_T *ectx)
     long	lidx = 0;
     typval_T	*tv_dest = STACK_TV_BOT(-1);
     int		status = OK;
+    int		check_rhs_type = FALSE;
 
     if (tv_idx->v_type == VAR_NUMBER)
 	lidx = (long)tv_idx->vval.v_number;
@@ -2135,11 +2255,19 @@ execute_storeindex(isn_T *iptr, ectx_T *ectx)
     // Stack contains:
     // -3 value to be stored
     // -2 index
-    // -1 dict, list, blob or object
+    // -1 dict, list, blob, object or class
     tv = STACK_TV_BOT(-3);
     SOURCING_LNUM = iptr->isn_lnum;
-    if (dest_type == VAR_ANY)
+
+    // Make sure an object has been initialized
+    if (dest_type == VAR_OBJECT && tv_dest->vval.v_object == NULL)
     {
+	emsg(_(e_using_null_object));
+	status = FAIL;
+    }
+    else if (dest_type == VAR_ANY)
+    {
+	check_rhs_type = TRUE;
 	dest_type = tv_dest->v_type;
 	if (dest_type == VAR_DICT)
 	    status = do_2string(tv_idx, TRUE, FALSE);
@@ -2147,33 +2275,50 @@ execute_storeindex(isn_T *iptr, ectx_T *ectx)
 	{
 	    // Need to get the member index now that the class is known.
 	    object_T *obj = tv_dest->vval.v_object;
-	    class_T *cl = obj->obj_class;
-	    char_u  *member = tv_idx->vval.v_string;
-
-	    ocmember_T *m = NULL;
-	    for (int i = 0; i < cl->class_obj_member_count; ++i)
+	    if (obj == NULL)
 	    {
-		m = &cl->class_obj_members[i];
-		if (STRCMP(member, m->ocm_name) == 0)
+		emsg(_(e_using_null_object));
+		status = FAIL;
+	    }
+	    else
+	    {
+		class_T *cl = obj->obj_class;
+		char_u  *member = tv_idx->vval.v_string;
+
+		int		m_idx;
+		ocmember_T *m = object_member_lookup(cl, member, 0, &m_idx);
+		if (m != NULL)
 		{
-		    if (*member == '_')
+		    // Get the current function
+		    ufunc_T *ufunc = (((dfunc_T *)def_functions.ga_data)
+					+ ectx->ec_dfunc_idx)->df_ufunc;
+		    where_T where = WHERE_INIT;
+
+		    // Check whether the member variable is writeable
+		    if ((m->ocm_access != VIM_ACCESS_ALL) &&
+			    (ufunc->uf_class == NULL ||
+			     !class_instance_of(ufunc->uf_class, cl)))
 		    {
-			semsg(_(e_cannot_access_private_member_str),
-								  m->ocm_name);
+			char *msg = (m->ocm_access == VIM_ACCESS_PRIVATE)
+			    ? e_cannot_access_protected_variable_str
+			    : e_variable_is_not_writable_str;
+			emsg_var_cl_define(msg, m->ocm_name, 0, cl);
 			status = FAIL;
 		    }
-
-		    lidx = i;
-		    break;
+		    // Fail if the variable is a const or final or the type
+		    // is not compatible
+		    else if (oc_var_check_ro(cl, m) ||
+			     check_typval_type(m->ocm_type, tv, where)
+								== FAIL)
+			status = FAIL;
+		    else
+			lidx = m_idx;
 		}
-		m = NULL;
-	    }
-
-	    if (m == NULL)
-	    {
-		semsg(_(e_member_not_found_on_object_str_str),
-						       cl->class_name, member);
-		status = FAIL;
+		else
+		{
+		    member_not_found_msg(cl, VAR_OBJECT, member, 0);
+		    status = FAIL;
+		}
 	    }
 	}
 	else if ((dest_type == VAR_LIST || dest_type == VAR_OBJECT)
@@ -2203,6 +2348,12 @@ execute_storeindex(isn_T *iptr, ectx_T *ectx)
 		semsg(_(e_list_index_out_of_range_nr), lidx);
 		return FAIL;
 	    }
+
+	    // Do a runtime type check for VAR_ANY
+	    if (check_rhs_type &&
+		    storeindex_check_list_member_type(list, tv, ectx) == FAIL)
+		return FAIL;
+
 	    if (lidx < list->lv_len)
 	    {
 		listitem_T *li = list_find(list, lidx);
@@ -2290,14 +2441,25 @@ execute_storeindex(isn_T *iptr, ectx_T *ectx)
 	}
 	else if (dest_type == VAR_CLASS || dest_type == VAR_OBJECT)
 	{
-	    object_T	    *obj = tv_dest->vval.v_object;
-	    typval_T	    *otv = (typval_T *)(obj + 1);
+	    typval_T	    *otv;
 
-	    class_T	    *itf = iptr->isn_arg.storeindex.si_class;
-	    if (itf != NULL)
-		// convert interface member index to class member index
-		lidx = object_index_from_itf_index(itf, FALSE,
-							 lidx, obj->obj_class);
+	    if (dest_type == VAR_OBJECT)
+	    {
+		object_T	*obj = tv_dest->vval.v_object;
+
+		otv = (typval_T *)(obj + 1);
+		class_T	    *itf = iptr->isn_arg.storeindex.si_class;
+		if (itf != NULL)
+		    // convert interface member index to class member index
+		    lidx = object_index_from_itf_index(itf, FALSE, lidx,
+						       obj->obj_class);
+	    }
+	    else
+	    {
+		// VAR_CLASS
+		class_T	*class = tv_dest->vval.v_class;
+		otv = class->class_members_tv;
+	    }
 
 	    clear_tv(&otv[lidx]);
 	    otv[lidx] = *tv;
@@ -3000,6 +3162,149 @@ object_required_error(typval_T *tv)
 }
 
 /*
+ * Accessing the variable or method of an object or a class stored in a
+ * variable of type "any".
+ * Returns OK if the member variable is present.
+ * Returns FAIL if the variable is not found.
+ */
+    static int
+var_any_get_oc_member(class_T *current_class, isn_T *iptr, typval_T *tv)
+{
+    int		is_object = tv->v_type == VAR_OBJECT;
+    class_T	*tv_cl;
+    object_T	*obj = NULL;
+    typval_T	mtv;
+
+    if (is_object)
+    {
+	obj = tv->vval.v_object;
+	if (obj == NULL)
+	{
+	    SOURCING_LNUM = iptr->isn_lnum;
+	    emsg(_(e_using_null_object));
+	    return FAIL;
+	}
+	tv_cl = obj->obj_class;
+    }
+    else
+    {
+	tv_cl = tv->vval.v_class;
+	if (tv_cl == NULL)
+	{
+	    SOURCING_LNUM = iptr->isn_lnum;
+	    emsg(_(e_using_null_class));
+	    return FAIL;
+	}
+    }
+
+    // get_member_tv() needs the class/object information in the typval
+    // argument.  So set the object information.
+    copy_tv(tv, &mtv);
+
+    // 'name' can either be an instance or class variable or method
+    int		namelen = (int)STRLEN(iptr->isn_arg.string);
+    int		save_did_emsg = did_emsg;
+
+    if (get_member_tv(tv_cl, is_object, iptr->isn_arg.string, namelen,
+						current_class, &mtv) == OK)
+    {
+	// instance or class variable
+	copy_tv(&mtv, tv);
+	clear_tv(&mtv);
+	return OK;
+    }
+
+    if (did_emsg != save_did_emsg)
+	return FAIL;
+
+    // could be a class or instance method
+    ufunc_T	*oc_method;
+    int		oc_method_idx;
+
+    oc_method = method_lookup(tv_cl, tv->v_type, iptr->isn_arg.string,
+						namelen, &oc_method_idx);
+    if (oc_method == NULL)
+    {
+	char	*msg;
+
+	SOURCING_LNUM = iptr->isn_lnum;
+	if (is_object)
+	    msg = e_variable_not_found_on_object_str_str;
+	else
+	    msg = e_class_variable_str_not_found_in_class_str;
+	semsg(_(msg), iptr->isn_arg.string, tv_cl->class_name);
+	return FAIL;
+    }
+
+    // Protected methods are not accessible outside the class
+    if (*oc_method->uf_name == '_'
+			&& !class_instance_of(current_class, tv_cl))
+    {
+	semsg(_(e_cannot_access_protected_method_str), oc_method->uf_name);
+	return FAIL;
+    }
+
+    // Create a partial for the instance or class method
+    if (obj_method_to_partial_tv(is_object ? obj : NULL, oc_method, tv)
+								== FAIL)
+	return FAIL;
+
+    return OK;
+}
+
+/*
+ * do ISN_PUT or ISN_IPUT instruction depending on fixindent parameter
+ */
+    static void
+isn_put_do(ectx_T *ectx, isn_T *iptr, typval_T *tv, int fixindent)
+{
+    int		regname = iptr->isn_arg.put.put_regname;
+    linenr_T	lnum = iptr->isn_arg.put.put_lnum;
+    char_u	*expr = NULL;
+    int		dir = FORWARD;
+
+    if (lnum < -2)
+    {
+	// line number was put on the stack by ISN_RANGE
+	tv = STACK_TV_BOT(-1);
+	curwin->w_cursor.lnum = tv->vval.v_number;
+	if (lnum == LNUM_VARIABLE_RANGE_ABOVE)
+	    dir = BACKWARD;
+	--ectx->ec_stack.ga_len;
+    }
+    else if (lnum == -2)
+	// :put! above cursor
+	dir = BACKWARD;
+    else if (lnum >= 0)
+    {
+	curwin->w_cursor.lnum = lnum;
+	if (lnum == 0)
+	    // check_cursor() below will move to line 1
+	    dir = BACKWARD;
+    }
+
+    if (regname == '=')
+    {
+	tv = STACK_TV_BOT(-1);
+	if (tv->v_type == VAR_STRING)
+	    expr = tv->vval.v_string;
+	else
+	{
+	    expr = typval2string(tv, TRUE); // allocates value
+	    clear_tv(tv);
+	}
+	--ectx->ec_stack.ga_len;
+    }
+    check_cursor();
+
+    if (fixindent)
+	do_put(regname, expr, dir, 1L, PUT_LINE|PUT_CURSLINE|PUT_FIXINDENT);
+    else
+	do_put(regname, expr, dir, 1L, PUT_LINE|PUT_CURSLINE);
+    vim_free(expr);
+}
+
+/*
  * Execute instructions in execution context "ectx".
  * Return OK or FAIL;
  */
@@ -3044,6 +3349,24 @@ exec_instructions(ectx_T *ectx)
 		goto theend;
 	    did_throw = TRUE;
 	    *msg_list = NULL;
+
+	    // This exception was not caught (yet).
+	    garray_T	*trystack = &ectx->ec_trystack;
+	    if (trystack->ga_len > 0)
+	    {
+		trycmd_T *trycmd = ((trycmd_T *)trystack->ga_data)
+							+ trystack->ga_len - 1;
+		if (trycmd->tcd_frame_idx == ectx->ec_frame_idx)
+		{
+		    if (trycmd->tcd_caught)
+		    {
+			// Inside a "catch" we need to first discard the caught
+			// exception.
+			finish_exception(caught_stack);
+			trycmd->tcd_caught = FALSE;
+		    }
+		}
+	    }
 	}
 
 	if (unlikely(did_throw))
@@ -3057,7 +3380,11 @@ exec_instructions(ectx_T *ectx)
 	    while (index > 0)
 	    {
 		trycmd = ((trycmd_T *)trystack->ga_data) + index - 1;
-		if (!trycmd->tcd_in_catch || trycmd->tcd_finally_idx != 0)
+		// 1. after :try and before :catch - jump to first :catch
+		// 2. in :catch block - jump to :finally
+		// 3. in :catch block and no finally - jump to :endtry
+		if (!trycmd->tcd_in_catch || trycmd->tcd_finally_idx != 0
+				|| trycmd->tcd_frame_idx == ectx->ec_frame_idx)
 		    break;
 		// In the catch and finally block of this try we have to go up
 		// one level.
@@ -3068,20 +3395,31 @@ exec_instructions(ectx_T *ectx)
 	    {
 		if (trycmd->tcd_in_catch)
 		{
-		    // exception inside ":catch", jump to ":finally" once
-		    ectx->ec_iidx = trycmd->tcd_finally_idx;
-		    trycmd->tcd_finally_idx = 0;
+		    if (trycmd->tcd_finally_idx > 0)
+		    {
+			// exception inside ":catch", jump to ":finally" once
+			ectx->ec_iidx = trycmd->tcd_finally_idx;
+			trycmd->tcd_finally_idx = 0;
+		    }
+		    else
+		    {
+			// exception inside ":catch" or ":finally", jump to
+			// ":endtry"
+			ectx->ec_iidx = trycmd->tcd_endtry_idx;
+		    }
 		}
 		else
+		{
 		    // jump to first ":catch"
 		    ectx->ec_iidx = trycmd->tcd_catch_idx;
-		trycmd->tcd_in_catch = TRUE;
+		    trycmd->tcd_in_catch = TRUE;
+		}
 		did_throw = FALSE;  // don't come back here until :endtry
 		trycmd->tcd_did_throw = TRUE;
 	    }
 	    else
 	    {
-		// Not inside try or need to return from current functions.
+		// Not inside try or need to return from current function.
 		// Push a dummy return value.
 		if (GA_GROW_FAILS(&ectx->ec_stack, 1))
 		    goto theend;
@@ -3125,11 +3463,17 @@ exec_instructions(ectx_T *ectx)
 		++tv->vval.v_object->obj_class->class_refcount;
 		tv->vval.v_object->obj_refcount = 1;
 		object_created(tv->vval.v_object);
+
+		// When creating an enum value object, initialize the name and
+		// ordinal object variables.
+		class_T *en = tv->vval.v_object->obj_class;
+		if (IS_ENUM(en))
+		    enum_set_internal_obj_vars(en, tv->vval.v_object);
 		break;
 
 	    // execute Ex command line
 	    case ISN_EXEC:
-		if (exec_command(iptr) == FAIL)
+		if (exec_command(iptr, iptr->isn_arg.string) == FAIL)
 		    goto on_error;
 		break;
 
@@ -3425,7 +3769,10 @@ exec_instructions(ectx_T *ectx)
 				p = tv_get_string_buf(tv, buf);
 			}
 			else
+			{
+			    SOURCING_LNUM = iptr->isn_lnum;
 			    p = tv_stringify(tv, buf);
+			}
 
 			len = (int)STRLEN(p);
 			if (GA_GROW_FAILS(&ga, len + 2))
@@ -3496,7 +3843,15 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_LOAD:
 		if (GA_GROW_FAILS(&ectx->ec_stack, 1))
 		    goto theend;
-		copy_tv(STACK_TV_VAR(iptr->isn_arg.number), STACK_TV_BOT(0));
+		tv = STACK_TV_VAR(iptr->isn_arg.number);
+		if (tv->v_type == VAR_UNKNOWN)
+		{
+		    // missing argument or default value v:none
+		    STACK_TV_BOT(0)->v_type = VAR_SPECIAL;
+		    STACK_TV_BOT(0)->vval.v_number = VVAL_NONE;
+		}
+		else
+		    copy_tv(tv, STACK_TV_BOT(0));
 		++ectx->ec_stack.ga_len;
 		break;
 
@@ -3678,6 +4033,11 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_STORE:
 		--ectx->ec_stack.ga_len;
 		tv = STACK_TV_VAR(iptr->isn_arg.number);
+		if (check_typval_is_value(STACK_TV_BOT(0)) == FAIL)
+		{
+		    clear_tv(STACK_TV_BOT(0));
+		    goto on_error;
+		}
 		clear_tv(tv);
 		*tv = *STACK_TV_BOT(0);
 		break;
@@ -3687,11 +4047,19 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_STOREEXPORT:
 		{
 		    int		sid = iptr->isn_arg.loadstore.ls_sid;
-		    hashtab_T	*ht = &SCRIPT_VARS(sid);
 		    char_u	*name = iptr->isn_arg.loadstore.ls_name;
-		    dictitem_T	*di = find_var_in_ht(ht, 0,
-					    iptr->isn_type == ISN_STORES
+		    dictitem_T	*di = NULL;
+		    // First check for a variable from an exported autoload
+		    // with an autoload_prefix; it would be in globals.
+		    if (iptr->isn_type == ISN_STOREEXPORT)
+			di = find_var_autoload_prefix(name, sid, NULL, NULL);
+		    // Then look for a variable in the script's variables.
+		    if (di == NULL)
+		    {
+			hashtab_T	*ht = &SCRIPT_VARS(sid);
+			di = find_var_in_ht(ht, 0, STRNCMP("s:", name, 2) == 0
 						     ? name + 2 : name, TRUE);
+		    }
 
 		    --ectx->ec_stack.ga_len;
 		    SOURCING_LNUM = iptr->isn_lnum;
@@ -3776,6 +4144,7 @@ exec_instructions(ectx_T *ectx)
 		    char_u	*tofree = NULL;
 
 		    --ectx->ec_stack.ga_len;
+		    SOURCING_LNUM = iptr->isn_lnum;
 		    tv = STACK_TV_BOT(0);
 		    if (tv->v_type == VAR_STRING)
 		    {
@@ -3785,7 +4154,6 @@ exec_instructions(ectx_T *ectx)
 		    }
 		    else if (iptr->isn_type == ISN_STOREFUNCOPT)
 		    {
-			SOURCING_LNUM = iptr->isn_lnum;
 			// If the option can be set to a function reference or
 			// a lambda and the passed value is a function
 			// reference, then convert it to the name (string) of
@@ -3925,8 +4293,8 @@ exec_instructions(ectx_T *ectx)
 		    if (GA_GROW_FAILS(&ectx->ec_stack, 1))
 			goto theend;
 		    classmember_T *cm = &iptr->isn_arg.classmember;
-		    *STACK_TV_BOT(0) =
-				    cm->cm_class->class_members_tv[cm->cm_idx];
+		    copy_tv(cm->cm_class->class_members_tv + cm->cm_idx,
+							      STACK_TV_BOT(0));
 		    ++ectx->ec_stack.ga_len;
 		}
 		break;
@@ -3981,8 +4349,22 @@ exec_instructions(ectx_T *ectx)
 				      + iptr->isn_arg.outer.outer_idx;
 		    if (iptr->isn_type == ISN_LOADOUTER)
 		    {
+			typval_T *copy;
 			if (GA_GROW_FAILS(&ectx->ec_stack, 1))
 			    goto theend;
+			// careful: ga_grow_inner may re-alloc the stack
+			if (depth < 0)
+			    copy = ((typval_T *)outer->out_loop[-depth - 1]
+								   .stack->ga_data)
+					      + outer->out_loop[-depth - 1].var_idx
+					      + iptr->isn_arg.outer.outer_idx;
+			else
+			    copy = ((typval_T *)outer->out_stack->ga_data)
+					  + outer->out_frame_idx + STACK_FRAME_SIZE
+					  + iptr->isn_arg.outer.outer_idx;
+			// memory was freed, get tv again
+			if (copy != tv)
+			    tv = copy;
 			copy_tv(tv, STACK_TV_BOT(0));
 			++ectx->ec_stack.ga_len;
 		    }
@@ -4118,15 +4500,23 @@ exec_instructions(ectx_T *ectx)
 
 	    case ISN_LOCKUNLOCK:
 		{
-		    typval_T	*lval_root_save = lval_root;
-		    int		res;
+#ifdef LOG_LOCKVAR
+		    ch_log(NULL, "LKVAR: execute INS_LOCKUNLOCK isn_arg %s",
+							iptr->isn_arg.string);
+#endif
+		    lval_root_T	*lval_root_save = lval_root;
 
 		    // Stack has the local variable, argument the whole :lock
 		    // or :unlock command, like ISN_EXEC.
 		    --ectx->ec_stack.ga_len;
-		    lval_root = STACK_TV_BOT(0);
-		    res = exec_command(iptr);
-		    clear_tv(lval_root);
+		    lval_root_T root;
+		    root.lr_tv      = STACK_TV_BOT(0);
+		    root.lr_cl_exec = iptr->isn_arg.lockunlock.lu_cl_exec;
+		    root.lr_is_arg  = iptr->isn_arg.lockunlock.lu_is_arg;
+		    lval_root = &root;
+		    int res = exec_command(iptr,
+					iptr->isn_arg.lockunlock.lu_string);
+		    clear_tv(root.lr_tv);
 		    lval_root = lval_root_save;
 		    if (res == FAIL)
 			goto on_error;
@@ -4196,15 +4586,31 @@ exec_instructions(ectx_T *ectx)
 			object_required_error(tv);
 			goto on_error;
 		    }
+
 		    object_T *obj = tv->vval.v_object;
-		    class_T *cl = obj->obj_class;
+		    if (obj == NULL)
+		    {
+			emsg(_(e_using_null_object));
+			goto on_error;
+		    }
 
-		    // convert the interface index to the object index
-		    int idx = object_index_from_itf_index(mfunc->cmf_itf,
-						    TRUE, mfunc->cmf_idx, cl);
+		    ufunc_T *ufunc;
+		    if (mfunc->cmf_is_super)
+			// Doing "super.Func", use the specific ufunc.
+			ufunc = mfunc->cmf_itf->class_obj_methods[
+							    mfunc->cmf_idx];
+		    else
+		    {
+			class_T *cl = obj->obj_class;
 
-		    if (call_ufunc(cl->class_obj_methods[idx], NULL,
-				mfunc->cmf_argcount, ectx, NULL, NULL) == FAIL)
+			// convert the interface index to the object index
+			int idx = object_index_from_itf_index(mfunc->cmf_itf,
+						     TRUE, mfunc->cmf_idx, cl);
+			ufunc = cl->class_obj_methods[idx];
+		    }
+
+		    if (call_ufunc(ufunc, NULL, mfunc->cmf_argcount, ectx,
+							   NULL, NULL) == FAIL)
 			goto on_error;
 		}
 		break;
@@ -4269,9 +4675,7 @@ exec_instructions(ectx_T *ectx)
 
 	    // :defer func(arg)
 	    case ISN_DEFER:
-	    case ISN_DEFEROBJ:
 		if (defer_command(iptr->isn_arg.defer.defer_var_idx,
-			     iptr->isn_type == ISN_DEFEROBJ,
 			     iptr->isn_arg.defer.defer_argcount, ectx) == FAIL)
 		    goto on_error;
 		break;
@@ -4293,7 +4697,11 @@ exec_instructions(ectx_T *ectx)
 		else
 		{
 		    *tv = *STACK_TV_VAR(0);
-		    ++tv->vval.v_object->obj_refcount;
+		    object_T *obj = tv->vval.v_object;
+		    ++obj->obj_refcount;
+
+		    // Lock all the constant object variables
+		    obj_lock_const_vars(obj);
 		}
 		// FALLTHROUGH
 
@@ -4302,6 +4710,12 @@ exec_instructions(ectx_T *ectx)
 		{
 		    garray_T	*trystack = &ectx->ec_trystack;
 		    trycmd_T    *trycmd = NULL;
+
+		    ///////////////////////////////////////////////////
+		    // TODO: If FAIL, line number in output not correct
+		    ///////////////////////////////////////////////////
+		    if (check_typval_is_value(STACK_TV_BOT(-1)) == FAIL)
+			goto theend;
 
 		    if (trystack->ga_len > 0)
 			trycmd = ((trycmd_T *)trystack->ga_data)
@@ -4338,20 +4752,53 @@ exec_instructions(ectx_T *ectx)
 		    }
 		    if (extra != NULL && extra->fre_class != NULL)
 		    {
-			tv = STACK_TV_BOT(-1);
-			if (tv->v_type != VAR_OBJECT)
+			class_T	*cl;
+			if (extra->fre_object_method)
 			{
-			    object_required_error(tv);
-			    vim_free(pt);
-			    goto on_error;
-			}
-			object_T *obj = tv->vval.v_object;
-			class_T *cl = obj->obj_class;
+			    tv = STACK_TV_BOT(-1);
+			    if (tv->v_type != VAR_OBJECT)
+			    {
+				SOURCING_LNUM = iptr->isn_lnum;
+				object_required_error(tv);
+				vim_free(pt);
+				goto on_error;
+			    }
 
-			// convert the interface index to the object index
-			int idx = object_index_from_itf_index(extra->fre_class,
-					      TRUE, extra->fre_method_idx, cl);
-			ufunc = cl->class_obj_methods[idx];
+			    object_T *obj = tv->vval.v_object;
+			    if (obj == NULL)
+			    {
+				SOURCING_LNUM = iptr->isn_lnum;
+				emsg(_(e_using_null_object));
+				vim_free(pt);
+				goto on_error;
+			    }
+
+			    cl = obj->obj_class;
+			    // drop the value from the stack
+			    clear_tv(tv);
+			    --ectx->ec_stack.ga_len;
+
+			    pt->pt_obj = obj;
+			    ++obj->obj_refcount;
+			}
+			else
+			    cl = extra->fre_class;
+
+			if (extra->fre_object_method)
+			{
+			    // object method
+			    // convert the interface index to the object index
+			    int idx =
+				object_index_from_itf_index(extra->fre_class,
+					TRUE, extra->fre_method_idx, cl);
+			    ufunc = cl->class_obj_methods[idx];
+			}
+			else
+			{
+			    // class method
+			    ufunc =
+				cl->class_class_functions[extra->fre_method_idx];
+			}
 		    }
 		    else if (extra == NULL || extra->fre_func_name == NULL)
 		    {
@@ -4368,6 +4815,7 @@ exec_instructions(ectx_T *ectx)
 		    {
 			SOURCING_LNUM = iptr->isn_lnum;
 			iemsg("ufunc unexpectedly NULL for FUNCREF");
+			vim_free(pt);
 			goto theend;
 		    }
 		    if (fill_partial_and_closure(pt, ufunc,
@@ -4406,7 +4854,8 @@ exec_instructions(ectx_T *ectx)
 		    CLEAR_FIELD(ea);
 		    ea.cmd = ea.arg = iptr->isn_arg.string;
 		    ga_init2(&lines_to_free, sizeof(char_u *), 50);
-		    define_function(&ea, NULL, &lines_to_free, 0);
+		    SOURCING_LNUM = iptr->isn_lnum;
+		    define_function(&ea, NULL, &lines_to_free, 0, NULL, 0);
 		    ga_clear_strings(&lines_to_free);
 		}
 		break;
@@ -4479,6 +4928,21 @@ exec_instructions(ectx_T *ectx)
 		int arg_set = tv->v_type != VAR_UNKNOWN
 				&& !(tv->v_type == VAR_SPECIAL
 					    && tv->vval.v_number == VVAL_NONE);
+
+		if (iptr->isn_type == ISN_JUMP_IF_ARG_NOT_SET && !arg_set)
+		{
+		    dfunc_T *df = ((dfunc_T *)def_functions.ga_data)
+							+ ectx->ec_dfunc_idx;
+		    ufunc_T *ufunc = df->df_ufunc;
+		    // jump_arg_off is negative for arguments
+		    size_t argidx = ufunc->uf_def_args.ga_len
+					+ iptr->isn_arg.jumparg.jump_arg_off
+					+ STACK_FRAME_SIZE;
+		    type_T *t = ufunc->uf_arg_types[argidx];
+		    CLEAR_POINTER(tv);
+		    tv->v_type = t->tt_type;
+		}
+
 		if (iptr->isn_type == ISN_JUMP_IF_ARG_SET ? arg_set : !arg_set)
 		    ectx->ec_iidx = iptr->isn_arg.jumparg.jump_where;
 		break;
@@ -4592,6 +5056,12 @@ exec_instructions(ectx_T *ectx)
 		    // Reset the index to avoid a return statement jumps here
 		    // again.
 		    trycmd->tcd_finally_idx = 0;
+		    if (trycmd->tcd_caught)
+		    {
+			// discard the exception
+			finish_exception(caught_stack);
+			trycmd->tcd_caught = FALSE;
+		    }
 		    break;
 		}
 
@@ -4606,12 +5076,10 @@ exec_instructions(ectx_T *ectx)
 		    trycmd = ((trycmd_T *)trystack->ga_data) + trystack->ga_len;
 		    if (trycmd->tcd_did_throw)
 			did_throw = TRUE;
-		    if (trycmd->tcd_caught && current_exception != NULL)
+		    if (trycmd->tcd_caught)
 		    {
 			// discard the exception
-			if (caught_stack == current_exception)
-			    caught_stack = caught_stack->caught;
-			discard_current_exception();
+			finish_exception(caught_stack);
 		    }
 
 		    if (trycmd->tcd_return)
@@ -4635,7 +5103,7 @@ exec_instructions(ectx_T *ectx)
 
 		    if (trystack->ga_len == 0 && trylevel == 0 && emsg_silent)
 		    {
-			// throwing an exception while using "silent!" causes
+			// Throwing an exception while using "silent!" causes
 			// the function to abort but not display an error.
 			tv = STACK_TV_BOT(-1);
 			clear_tv(tv);
@@ -4660,12 +5128,10 @@ exec_instructions(ectx_T *ectx)
 		    {
 			trycmd_T    *trycmd = ((trycmd_T *)trystack->ga_data)
 							+ trystack->ga_len - 1;
-			if (trycmd->tcd_caught && current_exception != NULL)
+			if (trycmd->tcd_caught)
 			{
 			    // discard the exception
-			    if (caught_stack == current_exception)
-				caught_stack = caught_stack->caught;
-			    discard_current_exception();
+			    finish_exception(caught_stack);
 			    trycmd->tcd_caught = FALSE;
 			}
 		    }
@@ -4837,7 +5303,6 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_COMPAREFUNC:
 	    case ISN_COMPARESTRING:
 	    case ISN_COMPAREBLOB:
-	    case ISN_COMPARECLASS:
 	    case ISN_COMPAREOBJECT:
 		{
 		    typval_T	*tv1 = STACK_TV_BOT(-2);
@@ -4871,11 +5336,6 @@ exec_instructions(ectx_T *ectx)
 		    else if (iptr->isn_type == ISN_COMPAREBLOB)
 		    {
 			status = typval_compare_blob(tv1, tv2, exprtype, &res);
-		    }
-		    else if (iptr->isn_type == ISN_COMPARECLASS)
-		    {
-			status = typval_compare_class(tv1, tv2,
-							exprtype, FALSE, &res);
 		    }
 		    else // ISN_COMPAREOBJECT
 		    {
@@ -5229,10 +5689,11 @@ exec_instructions(ectx_T *ectx)
 		    // Useful when used in unpack assignment.  Reset at
 		    // ISN_DROP.
 		    ectx->ec_where.wt_index = gi->gi_index + 1;
-		    ectx->ec_where.wt_variable = TRUE;
+		    ectx->ec_where.wt_kind = WT_VARIABLE;
 		}
 		break;
 
+	    // dict member with string key (dict['member'])
 	    case ISN_MEMBER:
 		{
 		    dict_T	*dict;
@@ -5277,35 +5738,52 @@ exec_instructions(ectx_T *ectx)
 		}
 		break;
 
-	    // dict member with string key
+	    // dict member with string key (dict.member)
+	    // or can be an object
 	    case ISN_STRINGMEMBER:
 		{
 		    dict_T	*dict;
 		    dictitem_T	*di;
 
 		    tv = STACK_TV_BOT(-1);
-		    if (tv->v_type != VAR_DICT || tv->vval.v_dict == NULL)
-		    {
-			SOURCING_LNUM = iptr->isn_lnum;
-			emsg(_(e_dictionary_required));
-			goto on_error;
-		    }
-		    dict = tv->vval.v_dict;
 
-		    if ((di = dict_find(dict, iptr->isn_arg.string, -1))
-								       == NULL)
+		    if (tv->v_type == VAR_OBJECT
+			    || tv->v_type == VAR_CLASS)
 		    {
-			SOURCING_LNUM = iptr->isn_lnum;
-			semsg(_(e_key_not_present_in_dictionary_str),
-							 iptr->isn_arg.string);
-			goto on_error;
-		    }
-		    // Put the dict used on the dict stack, it might be used by
-		    // a dict function later.
-		    if (dict_stack_save(tv) == FAIL)
-			goto on_fatal_error;
+			if (dict_stack_save(tv) == FAIL)
+			    goto on_fatal_error;
 
-		    copy_tv(&di->di_tv, tv);
+			ufunc_T *ufunc = (((dfunc_T *)def_functions.ga_data)
+					+ ectx->ec_dfunc_idx)->df_ufunc;
+			// Class or an object (not a Dict)
+			if (var_any_get_oc_member(ufunc->uf_class, iptr, tv) == FAIL)
+			    goto on_error;
+		    }
+		    else
+		    {
+			if (tv->v_type != VAR_DICT || tv->vval.v_dict == NULL)
+			{
+			    SOURCING_LNUM = iptr->isn_lnum;
+			    emsg(_(e_dictionary_required));
+			    goto on_error;
+			}
+			dict = tv->vval.v_dict;
+
+			if ((di = dict_find(dict, iptr->isn_arg.string, -1))
+								   == NULL)
+			{
+			    SOURCING_LNUM = iptr->isn_lnum;
+			    semsg(_(e_key_not_present_in_dictionary_str),
+						     iptr->isn_arg.string);
+			    goto on_error;
+			}
+			// Put the dict used on the dict stack, it might be
+			// used by a dict function later.
+			if (dict_stack_save(tv) == FAIL)
+			    goto on_fatal_error;
+
+			copy_tv(&di->di_tv, tv);
+		    }
 		}
 		break;
 
@@ -5330,18 +5808,29 @@ exec_instructions(ectx_T *ectx)
 
 		    int idx;
 		    if (iptr->isn_type == ISN_GET_OBJ_MEMBER)
-			idx = iptr->isn_arg.number;
+			idx = iptr->isn_arg.classmember.cm_idx;
 		    else
 		    {
 			idx = iptr->isn_arg.classmember.cm_idx;
 			// convert the interface index to the object index
 			idx = object_index_from_itf_index(
-					    iptr->isn_arg.classmember.cm_class,
-					    FALSE, idx, obj->obj_class);
+					iptr->isn_arg.classmember.cm_class,
+					FALSE, idx, obj->obj_class);
 		    }
 
-		    // the members are located right after the object struct
+		    // The members are located right after the object struct.
 		    typval_T *mtv = ((typval_T *)(obj + 1)) + idx;
+		    if (mtv->v_type == VAR_UNKNOWN)
+		    {
+			// Referencing an object variable (without a type)
+			// which is not yet initialized.  So the type is not
+			// yet known.
+			ocmember_T *m = &obj->obj_class->class_obj_members[idx];
+			SOURCING_LNUM = iptr->isn_lnum;
+			semsg(_(e_uninitialized_object_var_reference),
+				m->ocm_name);
+			goto on_error;
+		    }
 		    copy_tv(mtv, tv);
 
 		    // Unreference the object after getting the member, it may
@@ -5399,20 +5888,20 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_CHECKTYPE:
 		{
 		    checktype_T *ct = &iptr->isn_arg.type;
-		    int		save_wt_variable = ectx->ec_where.wt_variable;
 		    int		r;
+		    where_T	where = WHERE_INIT;
 
 		    tv = STACK_TV_BOT((int)ct->ct_off);
 		    SOURCING_LNUM = iptr->isn_lnum;
-		    if (!ectx->ec_where.wt_variable)
-			ectx->ec_where.wt_index = ct->ct_arg_idx;
-		    ectx->ec_where.wt_variable = ct->ct_is_var;
-		    r = check_typval_type(ct->ct_type, tv, ectx->ec_where);
-		    ectx->ec_where.wt_variable = save_wt_variable;
+		    if (ct->ct_arg_idx > 0)
+		    {
+			where.wt_index = ct->ct_arg_idx;
+			where.wt_kind = ct->ct_is_var ? WT_VARIABLE : WT_ARGUMENT;
+		    }
+		    where.wt_func_name = ectx->ec_where.wt_func_name;
+		    r = check_typval_type(ct->ct_type, tv, where);
 		    if (r == FAIL)
 			goto on_error;
-		    if (!ectx->ec_where.wt_variable)
-			ectx->ec_where.wt_index = 0;
 
 		    // number 0 is FALSE, number 1 is TRUE
 		    if (tv->v_type == VAR_NUMBER
@@ -5483,7 +5972,7 @@ exec_instructions(ectx_T *ectx)
 		SOURCING_LNUM = iptr->isn_lnum;
 		if (do_2string(STACK_TV_BOT(iptr->isn_arg.tostring.offset),
 				iptr->isn_type == ISN_2STRING_ANY,
-				      iptr->isn_arg.tostring.tolerant) == FAIL)
+				      iptr->isn_arg.tostring.flags) == FAIL)
 			    goto on_error;
 		break;
 
@@ -5511,48 +6000,12 @@ exec_instructions(ectx_T *ectx)
 		break;
 
 	    case ISN_PUT:
-		{
-		    int		regname = iptr->isn_arg.put.put_regname;
-		    linenr_T	lnum = iptr->isn_arg.put.put_lnum;
-		    char_u	*expr = NULL;
-		    int		dir = FORWARD;
-
-		    if (lnum < -2)
-		    {
-			// line number was put on the stack by ISN_RANGE
-			tv = STACK_TV_BOT(-1);
-			curwin->w_cursor.lnum = tv->vval.v_number;
-			if (lnum == LNUM_VARIABLE_RANGE_ABOVE)
-			    dir = BACKWARD;
-			--ectx->ec_stack.ga_len;
-		    }
-		    else if (lnum == -2)
-			// :put! above cursor
-			dir = BACKWARD;
-		    else if (lnum >= 0)
-		    {
-			curwin->w_cursor.lnum = lnum;
-			if (lnum == 0)
-			    // check_cursor() below will move to line 1
-			    dir = BACKWARD;
-		    }
-
-		    if (regname == '=')
-		    {
-			tv = STACK_TV_BOT(-1);
-			if (tv->v_type == VAR_STRING)
-			    expr = tv->vval.v_string;
-			else
-			{
-			    expr = typval2string(tv, TRUE); // allocates value
-			    clear_tv(tv);
-			}
-			--ectx->ec_stack.ga_len;
-		    }
-		    check_cursor();
-		    do_put(regname, expr, dir, 1L, PUT_LINE|PUT_CURSLINE);
-		    vim_free(expr);
-		}
+		tv = NULL; // initialize it so we don't get a warning
+		isn_put_do(ectx, iptr, tv, FALSE);
+		break;
+	    case ISN_IPUT:
+		tv = NULL;
+		isn_put_do(ectx, iptr, tv, TRUE);
 		break;
 
 	    case ISN_CMDMOD:
@@ -5693,8 +6146,14 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_DROP:
 		--ectx->ec_stack.ga_len;
 		clear_tv(STACK_TV_BOT(0));
-		ectx->ec_where.wt_index = 0;
-		ectx->ec_where.wt_variable = FALSE;
+		ectx->ec_where = (where_T)WHERE_INIT;
+		break;
+
+	    case ISN_SCRIPTCTX_SET:
+		// change the script context.  Used to evaluate an object
+		// member variable initialization expression in the context of
+		// the script where the class is defined.
+		current_sctx = iptr->isn_arg.setsctx;
 		break;
 	}
 	continue;
@@ -5957,7 +6416,7 @@ call_def_function(
 		else if (check_typval_arg_type(expected, tv,
 						   NULL, argv_idx + 1) == FAIL)
 		    goto failed_early;
-	}
+	    }
 	    if (!done)
 		copy_tv(tv, STACK_TV_BOT(0));
 	}
@@ -6127,8 +6586,7 @@ call_def_function(
     emsg_silent_def = emsg_silent;
     did_emsg_def = 0;
 
-    ectx.ec_where.wt_index = 0;
-    ectx.ec_where.wt_variable = FALSE;
+    ectx.ec_where = (where_T)WHERE_INIT;
 
     /*
      * Execute the instructions until done.
@@ -6281,6 +6739,7 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
     int		prev_current = 0;
     int		current;
     int		def_arg_idx = 0;
+    sctx_T	script_ctx = current_sctx;
 
     for (current = 0; current < instr_count; ++current)
     {
@@ -6462,8 +6921,11 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		    scriptref_T	    *sref = iptr->isn_arg.script.scriptref;
 		    scriptitem_T    *si = SCRIPT_ITEM(sref->sref_sid);
 		    svar_T	    *sv;
+		    sctx_T	    save_sctx = current_sctx;
 
+		    current_sctx = script_ctx;
 		    sv = get_script_svar(sref, -1);
+		    current_sctx = save_sctx;
 		    if (sv == NULL)
 			smsg("%s%4d LOADSCRIPT [deleted] from %s",
 						    pfx, current, si->sn_name);
@@ -6580,8 +7042,11 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		    scriptref_T	    *sref = iptr->isn_arg.script.scriptref;
 		    scriptitem_T    *si = SCRIPT_ITEM(sref->sref_sid);
 		    svar_T	    *sv;
+		    sctx_T	    save_sctx = current_sctx;
 
+		    current_sctx = script_ctx;
 		    sv = get_script_svar(sref, -1);
+		    current_sctx = save_sctx;
 		    if (sv == NULL)
 			smsg("%s%4d STORESCRIPT [deleted] in %s",
 						    pfx, current, si->sn_name);
@@ -6778,9 +7243,7 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		smsg("%s%4d PCALL end", pfx, current);
 		break;
 	    case ISN_DEFER:
-	    case ISN_DEFEROBJ:
-		smsg("%s%4d %s %d args", pfx, current,
-			    iptr->isn_type == ISN_DEFER ? "DEFER" : "DEFEROBJ",
+		smsg("%s%4d DEFER %d args", pfx, current,
 				      (int)iptr->isn_arg.defer.defer_argcount);
 		break;
 	    case ISN_RETURN:
@@ -7013,7 +7476,6 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 	    case ISN_COMPARELIST:
 	    case ISN_COMPAREDICT:
 	    case ISN_COMPAREFUNC:
-	    case ISN_COMPARECLASS:
 	    case ISN_COMPAREOBJECT:
 	    case ISN_COMPAREANY:
 		   {
@@ -7052,7 +7514,6 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 			   case ISN_COMPARELIST: type = "COMPARELIST"; break;
 			   case ISN_COMPAREDICT: type = "COMPAREDICT"; break;
 			   case ISN_COMPAREFUNC: type = "COMPAREFUNC"; break;
-			   case ISN_COMPARECLASS: type = "COMPARECLASS"; break;
 			   case ISN_COMPAREOBJECT:
 						 type = "COMPAREOBJECT"; break;
 			   case ISN_COMPAREANY: type = "COMPAREANY"; break;
@@ -7091,7 +7552,8 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 	    case ISN_STRINGMEMBER: smsg("%s%4d MEMBER %s", pfx, current,
 						  iptr->isn_arg.string); break;
 	    case ISN_GET_OBJ_MEMBER: smsg("%s%4d OBJ_MEMBER %d", pfx, current,
-					     (int)iptr->isn_arg.number); break;
+			     (int)iptr->isn_arg.classmember.cm_idx);
+				     break;
 	    case ISN_GET_ITF_MEMBER: smsg("%s%4d ITF_MEMBER %d on %s",
 			     pfx, current,
 			     (int)iptr->isn_arg.classmember.cm_idx,
@@ -7173,7 +7635,18 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 						 iptr->isn_arg.put.put_regname,
 					     (long)iptr->isn_arg.put.put_lnum);
 		break;
-
+	    case ISN_IPUT:
+		if (iptr->isn_arg.put.put_lnum == LNUM_VARIABLE_RANGE_ABOVE)
+		    smsg("%s%4d IPUT %c above range",
+				  pfx, current, iptr->isn_arg.put.put_regname);
+		else if (iptr->isn_arg.put.put_lnum == LNUM_VARIABLE_RANGE)
+		    smsg("%s%4d IPUT %c range",
+				  pfx, current, iptr->isn_arg.put.put_regname);
+		else
+		    smsg("%s%4d IPUT %c %ld", pfx, current,
+						 iptr->isn_arg.put.put_regname,
+					     (long)iptr->isn_arg.put.put_lnum);
+		break;
 	    case ISN_CMDMOD:
 		{
 		    char_u  *buf;
@@ -7217,6 +7690,15 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 					 iptr->isn_arg.shuffle.shfl_up);
 			      break;
 	    case ISN_DROP: smsg("%s%4d DROP", pfx, current); break;
+
+	    case ISN_SCRIPTCTX_SET:
+		{
+		    int	sid = iptr->isn_arg.setsctx.sc_sid;
+		    scriptitem_T *si = SCRIPT_ITEM(sid);
+		    smsg("%s%4d SCRIPTCTX_SET %s", pfx, current, si->sn_name);
+		    script_ctx = iptr->isn_arg.setsctx;
+		}
+		break;
 
 	    case ISN_FINISH: // End of list of instructions for ISN_SUBSTITUTE.
 			   return;
@@ -7361,6 +7843,7 @@ tv2bool(typval_T *tv)
 	case VAR_INSTR:
 	case VAR_CLASS:
 	case VAR_OBJECT:
+	case VAR_TYPEALIAS:
 	    break;
     }
     return FALSE;
@@ -7389,6 +7872,5 @@ check_not_string(typval_T *tv)
     }
     return OK;
 }
-
 
 #endif // FEAT_EVAL

@@ -8,12 +8,12 @@ Closes: #382541
  1 file changed, 8 insertions(+)
 
 diff --git a/runtime/autoload/dist/script.vim b/runtime/autoload/dist/script.vim
-index f86c428..a1162b1 100644
+index 859126f..7534ef4 100644
 --- a/runtime/autoload/dist/script.vim
 +++ b/runtime/autoload/dist/script.vim
-@@ -380,6 +380,14 @@ def DetectFromText(line1: string)
+@@ -423,6 +423,14 @@ def DetectFromText(line1: string)
    elseif line1 =~ 'exec\s\+\S*scheme' || line2 =~ 'exec\s\+\S*scheme'
-     set ft=scheme
+     setl ft=scheme
  
 +    # rst files
 +  elseif line1 =~ '^\.\.\s\|^\s*restindex\s*$'
@@ -25,4 +25,4 @@ index f86c428..a1162b1 100644
 +
      # Git output
    elseif line1 =~ '^\(commit\|tree\|object\) \x\{40,\}\>\|^tag \S\+$'
-     set ft=git
+     setl ft=git

@@ -17,10 +17,10 @@ Signed-off-by: James Vega <jamessan@debian.org>
  3 files changed, 28 insertions(+), 1 deletion(-)
 
 diff --git a/src/main.c b/src/main.c
-index d1c42ed..c3e6bda 100644
+index f603a52..403e390 100644
 --- a/src/main.c
 +++ b/src/main.c
-@@ -1929,6 +1929,10 @@ parse_command_name(mparm_T *parmp)
+@@ -1973,6 +1973,10 @@ parse_command_name(mparm_T *parmp)
      }
      else if (STRNICMP(initstr, "vim", 3) == 0)
  	initstr += 3;
@@ -31,7 +31,7 @@ index d1c42ed..c3e6bda 100644
  
      // Catch "[r][g]vimdiff" and "[r][g]viewdiff".
      if (STRICMP(initstr, "diff") == 0)
-@@ -3224,7 +3228,12 @@ source_startup_scripts(mparm_T *parmp)
+@@ -3268,7 +3272,12 @@ source_startup_scripts(mparm_T *parmp)
  	 * Get system wide defaults, if the file name is defined.
  	 */
  #ifdef SYS_VIMRC_FILE
@@ -45,7 +45,7 @@ index d1c42ed..c3e6bda 100644
  #endif
  #ifdef MACOS_X
  	(void)do_source((char_u *)"$VIMRUNTIME/macmap.vim", FALSE,
-@@ -3263,13 +3272,25 @@ source_startup_scripts(mparm_T *parmp)
+@@ -3311,13 +3320,25 @@ source_startup_scripts(mparm_T *parmp)
  #ifdef USR_EXRC_FILE2
  		&& do_source((char_u *)USR_EXRC_FILE2, FALSE,
  						       DOSO_NONE, NULL) == FAIL
@@ -60,22 +60,22 @@ index d1c42ed..c3e6bda 100644
  								 NULL) == FAIL)
 +		{
 +		    /*
-+		     * If running as the vim.tiny executable, regardless how what argv[0] is, we
++		     * If running as the vim.tiny executable, regardless what argv[0] is, we
 +		     * don't want to error due to missing defaults.vim.  That's provided by
 +		     * vim-runtime, which isn't typically installed with vim-tiny.
 +		     */
 +#ifndef TINY_VIMRC
- 		    emsg(e_failed_to_source_defaults);
+ 		    emsg(_(e_failed_to_source_defaults));
 +#endif
 +		}
  	    }
  	}
  
 diff --git a/src/os_unix.h b/src/os_unix.h
-index d87ec90..3f5ce0f 100644
+index 39c9304..fbc5c64 100644
 --- a/src/os_unix.h
 +++ b/src/os_unix.h
-@@ -205,6 +205,9 @@ typedef struct dsc$descriptor   DESC;
+@@ -207,6 +207,9 @@ typedef struct dsc$descriptor   DESC;
  /*
   * Unix system-dependent file names
   */
@@ -86,10 +86,10 @@ index d87ec90..3f5ce0f 100644
  # define SYS_VIMRC_FILE "$VIM/vimrc"
  #endif
 diff --git a/src/structs.h b/src/structs.h
-index 46a71cb..ac661a6 100644
+index ce98bce..dc7e649 100644
 --- a/src/structs.h
 +++ b/src/structs.h
-@@ -4468,6 +4468,9 @@ typedef struct
+@@ -4627,6 +4627,9 @@ typedef struct
  #ifdef FEAT_DIFF
      int		diff_mode;		// start with 'diff' set
  #endif

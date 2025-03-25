@@ -8,4 +8,4 @@ fi
 
 cp -a "$(pwd)" "$AUTOPKGTEST_TMP"/vim
 chown -R "$AUTOPKGTEST_NORMAL_USER" "$AUTOPKGTEST_TMP"/vim
-runuser -u "$AUTOPKGTEST_NORMAL_USER" -- env TERM=xterm make -C "$AUTOPKGTEST_TMP"/vim/src/testdir VIMPROG="$1" XXDPROG=/usr/bin/xxd SCRIPTSOURCE="$(pwd)"/runtime
+runuser -u "$AUTOPKGTEST_NORMAL_USER" -- env TERM=xterm make -C "$AUTOPKGTEST_TMP"/vim/src/testdir VIMPROG="/usr/bin/vim" XXDPROG=/usr/bin/xxd SCRIPTSOURCE="$(pwd)"/runtime "$@"

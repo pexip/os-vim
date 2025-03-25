@@ -1,29 +1,298 @@
-vim (2:9.0.1378-2+deb12u2) bookworm; urgency=high
+vim (2:9.1.1230-1) unstable; urgency=medium
 
-  * Drop test case from CVE-2023-2610.patch.
-    This test was breaking the build on a number of architectures.
-    The test was removed upstream for similar reasons.
-    Thanks to James McCoy for reporting the problem.
+  * Merge upstream tag v9.1.1230
+    + Security fixes:
+      - 9.1.1115: use-after-free in str_to_reg(), CVE-2025-26603
+      - 9.1.1164: editing a specially crafted tar file allows code execution,
+        (Closes: #1099610, CVE-2025-27423)
+      - 9.1.1198: potential data loss with zip.vim and crafted zip files,
+        (Closes: #1101016, CVE-2025-29768)
 
- -- Sean Whitton <spwhitton@spwhitton.name>  Sun, 16 Feb 2025 13:23:41 +0800
+ -- James McCoy <jamessan@debian.org>  Mon, 24 Mar 2025 20:59:06 -0400
 
-vim (2:9.0.1378-2+deb12u1) bookworm; urgency=high
+vim (2:9.1.1113-1) unstable; urgency=medium
 
-  * Backport security fixes:
-    - 9.0.1532: Crash when expanding "~" in substitute
-      (Closes: #1035955, CVE-2023-2610)
-    - 9.0.1848: buffer-overflow in vim_regsub_both() (CVE-2023-4738)
-    - 9.0.1858: heap use after free in ins_compl_get_exp() (CVE-2023-4752)
-    - 9.0.1873: heap-buffer-overflow in vim_regsub_both (CVE-2023-4781)
-    - 9.0.1969: buffer-overflow in trunc_string()
-      (Closes: #1053694, CVE-2023-5344)
-    - 9.0.2142: stack-buffer-overflow in option callback functions
-      (CVE-2024-22667)
-    - 9.1.0697: heap-buffer-overflow in ins_typebuf (CVE-2024-43802)
-    - 9.1.0764: use-after-free when closing a buffer
-      (Closes: #1084806, CVE-2024-47814).
+  [ James McCoy ]
+  * Merge upstream tag v9.1.1113
+    + Security fixes:
+      - 9.1.1003: heap-buffer overflow with visual mode when using :all,
+        CVE-2025-22134
+      - 9.1.1043: segfault in win_line(), CVE-2025-24014
+      - 9.1.1097: crash when using --log with non-existent path, CVE-2025-1215
 
- -- Sean Whitton <spwhitton@spwhitton.name>  Thu, 23 Jan 2025 13:00:20 +0000
+  [ Andrea Pappacoda ]
+  * Drop backspace and history from debian.vim (Closes: #1095155)
+
+ -- James McCoy <jamessan@debian.org>  Sat, 15 Feb 2025 20:43:27 -0500
+
+vim (2:9.1.0967-2) unstable; urgency=medium
+
+  * Revert "patch 9.1.0949: popups inconsistently shifted to the left",
+    since it breaks vim-youcompleteme's autopkgtests. (Closes: #1091729)
+
+ -- James McCoy <jamessan@debian.org>  Fri, 10 Jan 2025 06:30:59 -0500
+
+vim (2:9.1.0967-1) unstable; urgency=medium
+
+  * Merge upstream tag v9.1.0967
+    + 9.1.0862: Change default for 'wildmenu' to true
+    + 9.1.0895: Change default for 'history' to 200
+    + 9.1.0899: Change default for 'backspace' to "indent,eol,start"
+    + 9.1.0915: Change default GTK font size from 10 to 12
+    + Update German manpage and fix formatting issues (Closes: #1087431)
+  * Revert "Skip Test_display_registers after 9.1.0852", fixed upstream
+  * Remove tags-* / tags.ref from debian/clean, since the upstream Makefile
+    now handles this cleanup.
+
+ -- James McCoy <jamessan@debian.org>  Sat, 28 Dec 2024 23:18:43 -0500
+
+vim (2:9.1.0861-1) unstable; urgency=medium
+
+  [ James McCoy ]
+  * Merge upstream tag v9.1.0861
+  * salsa: Re-enable the crossbuild job
+
+  [ Kirill Rekhov ]
+  * d/copyright: update links (http -> https)
+  * d/copyright: fix superfluous-file-pattern warning
+
+  [ James McCoy ]
+  * Skip GetLatestVimScripts tests since they require network access
+  * Skip Test_display_registers after 9.1.0852 since it now fails when run
+    without a GUI environment available
+
+ -- James McCoy <jamessan@debian.org>  Wed, 13 Nov 2024 06:33:02 -0500
+
+vim (2:9.1.0777-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.1.0777
+    + Security fixes:
+      - 9.1.0764: Fix use-after-free when closing a buffer in a BufWinLeave
+        autocmd, CVE-2024-47814
+  * Make autopkgtests validate the language bindings. The previous
+    autopkgtests ran the entire upstream test suite whose flakiness made it
+    useless as a marker for whether a package update broke Vim. Since the
+    language bindings are the most likely to be affected by package updates,
+    just test those in autopkgtests and remove the "flaky" restriction.
+  * Declare compliance with Policy 4.7.0, no changes required
+
+ -- James McCoy <jamessan@debian.org>  Sun, 13 Oct 2024 12:17:49 -0400
+
+vim (2:9.1.0709-2) unstable; urgency=medium
+
+  * Build with -O1 on s390x to workaround #1082125
+
+ -- James McCoy <jamessan@debian.org>  Sat, 21 Sep 2024 11:03:13 -0400
+
+vim (2:9.1.0709-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.1.0709
+    + Security fixes:
+      - 9.1.0707: Fix possibility of invalid cursor position, CVE-2024-45306
+    + 9.1.0706: Fix test_gettext tests when building in a shadow directory
+    + 9.1.0709: Fix lookup of GUIEnter autocmd name in Turkish locale (Closes:
+      #1074174)
+  * Build-Depend on locales-all package to test new gettext() vimscript function
+  * Delete runtime/doc/tags-* (language specific tags) during clean
+
+ -- James McCoy <jamessan@debian.org>  Tue, 03 Sep 2024 10:30:28 -0400
+
+vim (2:9.1.0698-1) unstable; urgency=medium
+
+  * Merge upstream tag v9.1.0698
+    + Security fixes:
+      - 9.1.0647: Fix use-after-free in tagstack_clear_entry(), CVE-2024-41957
+      - 9.1.0648: Fix double free in dialog_changed(), CVE-2024-41965
+      - 9.1.0678: Fix use-after-free in alist_add(), CVE-2024-43374
+      - 9.1.0689: Fix buffer-overflow in do_search() when 'rightleft' is set,
+        CVE-2024-43790
+      - 9.1.0697: Fix heap-buffer-overflow in ins_typebuf(), CVE-2024-43802
+    + 9.1.0568: Add support for completing paths from 'cdpath' in :cd (Closes:
+      #509940)
+  * Clarify defaults.vim instructions in system vimrc when wanting to source
+    defaults.vim to build on top of its settings.
+  * Adjust make parameter used to specify vim binary, since upstream changed
+    the expected variable name in multiple makefiles
+
+ -- James McCoy <jamessan@debian.org>  Wed, 28 Aug 2024 06:41:08 -0400
+
+vim (2:9.1.0496-1) unstable; urgency=medium
+
+  * Merge upstream tag v9.1.0496
+  * Refresh patches; drop backported test_codestyle patch
+
+ -- James McCoy <jamessan@debian.org>  Wed, 19 Jun 2024 21:07:11 -0400
+
+vim (2:9.1.0377-1) unstable; urgency=medium
+
+  * Merge upstream tag v9.1.0377
+  * Add ncurses-term Build-Depends for tests requiring vt420 TERM definition
+  * Backport fix for test_codestyle failure
+
+ -- James McCoy <jamessan@debian.org>  Sat, 27 Apr 2024 11:01:43 -0400
+
+vim (2:9.1.0374-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream tag v9.1.0374.
+  * runtime(debversions): Add oracular (24.10) as Ubuntu release name.
+
+ -- Simon Quigley <tsimonq2@debian.org>  Fri, 26 Apr 2024 16:34:19 -0500
+
+vim (2:9.1.0199-1) unstable; urgency=medium
+
+  * Merge upstream tag v9.1.0199
+    + 9.1.0064: Wayland support, which can be enabled by setting
+      $GVIM_ENABLE_WAYLAND
+    + 9.1.0162: Fix error handling when saving a file with xattrs (Closes:
+      #1065978)
+    + syntax/deb822sources.vim: Fix erroneous highlighting of keywords in
+      field values. (Closes: #1061630)
+
+ -- James McCoy <jamessan@debian.org>  Sun, 24 Mar 2024 09:16:49 -0400
+
+vim (2:9.1.0016-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release:
+    - Fix high-contrast diff highlighting introduced in 2:9.0.2189-1.
+
+ -- Simon Quigley <tsimonq2@debian.org>  Thu, 11 Jan 2024 14:38:16 -0600
+
+vim (2:9.1.0-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release, dedicated to the memory of Bram Moolenaar, Vim's
+    lead developer for more than 30 years, who passed away half a year ago.
+    The Vim project wouldn't exist without his work!
+
+ -- Simon Quigley <tsimonq2@debian.org>  Tue, 02 Jan 2024 19:25:17 -0600
+
+vim (2:9.0.2189-1) unstable; urgency=medium
+
+  [ Simon Quigley ]
+  * Merge upstream patch v9.0.2184:
+    - Security fixes:
+      + 9.0.2121: use-after-free in ex_substitute, CVE-2023-48706
+    - Update copyright years.
+
+  [ James McCoy ]
+  * Merge upstream patch v9.0.2189
+    - syntax/debcontrol.vim: Add support for loong64 keyword.  Thanks to
+      zhangjialing@loongson.cn for the patch.
+
+ -- James McCoy <jamessan@debian.org>  Mon, 01 Jan 2024 09:23:58 -0500
+
+vim (2:9.0.2116-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.2116
+    + Security fixes
+      - 9.0.2106: Use-after-free in win_close(), CVE-2023-48231
+      - 9.0.2107: FPE in adjust_plines_for_skipcol, CVE-2023-48232
+      - 9.0.2108: overflow with count for :s command. Abort command if count
+        is too large, CVE-2023-48233
+      - 9.0.2109: overflow in nv_z_get_count. Limit max value of count,
+        CVE-2023-48234
+      - 9.0.2110: overflow in ex address parsing. Verify lnum is positive
+        before subtracting from LONG_MAX, CVE-2023-48235
+      - 9.0.2111: overflow in get_number. Return 0 when the count gets too
+        large, CVE-2023-48236
+      - 9.0.2112: overflow in shift_line. Limit indent to INT_MAX,
+        CVE-2023-48237
+    + 9.0.2116: Crash when callback function aborts because of recursiveness.
+      - Fixes FTBFS on armel
+
+ -- James McCoy <jamessan@debian.org>  Mon, 20 Nov 2023 11:05:25 -0500
+
+vim (2:9.0.2103-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.2103
+    + 9.0.2103: Fix FTBFS on 32-bit architectures due to recursive callback
+      test.  Limit recursiveness to 20 levels, rather than 100.
+
+ -- James McCoy <jamessan@debian.org>  Mon, 13 Nov 2023 08:48:31 -0500
+
+vim (2:9.0.2087-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.2087 (Closes: #1055287)
+    + Security fixes
+      - 9.0.2068: overflow in :history, CVE-2023-46246
+
+ -- James McCoy <jamessan@debian.org>  Sat, 04 Nov 2023 13:55:54 -0400
+
+vim (2:9.0.2018-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.2018
+    + Security fixes
+      - 9.0.1969: buffer-overflow in trunc_string() (Closes: #1053694,
+        CVE-2023-5344)
+      - 9.0.1992: segfault in exmode when redrawing, CVE-2023-5441
+      - 9.0.2010: use-after-free from buf_contents_changed(), CVE-2023-5535
+  * xxd: Remove obsolete Breaks/Replaces on vim-common
+
+ -- James McCoy <jamessan@debian.org>  Fri, 13 Oct 2023 15:54:12 -0400
+
+vim (2:9.0.1894-1) unstable; urgency=medium
+
+  * The "Farewell, Bram" upload
+  * Merge upstream patch v9.0.1894
+    + Vulnerability fixes
+      - 9.0.1664: Divide by zero when scrolling with 'smoothscroll' set,
+        CVE-2023-3896
+      - 9.0.1840: Use after free in do_ecmd, CVE-2023-4733
+      - 9.0.1846: Crash when fullcommand() is called with an invalid argument,
+        CVE-2023-4734
+      - 9.0.1847: Out of bounds write in do_addsub(), CVE-2023-4735
+      - 9.0.1848: Buffer overflow in vim_regsub_both(), CVE-2023-4738
+      - 9.0.1857: Heap use after free in is_qf_win(), CVE-2023-4750
+      - 9.0.1858: Heap use after free in ins_compl_get_exp(), CVE-2023-4752
+      - 9.0.1873: Heap buffer overflow in vim_regsub_both(), CVE-2023-4781
+    + 9.0.1682: Use little-endian byte order for sodium encrypted files.  This
+      allows re-enabling the crypt tests on big-endian platforms.
+    + 9.0.1683: Use Lua 5.1 compatible numeric escapes to fix if_lua tests
+      with Lua 5.1.
+    + 9.0.1739: Ensure all libvterm files are cleaned during "make clean"
+    + Ship an "editorconfig" plugin as an optional package.
+  * Adjust copyright years and license text for Bram's passing
+  * Fix the check for when to run "make distclean" (Closes: #1045719)
+  * Build against Lua 5.1 instead of Lua 5.2 (Closes: #1050637)
+  * Re-enable Test_uncrypt_xchacha20 tests on big-endian systems
+  * Skip flaky test Test_crash1
+
+ -- James McCoy <jamessan@debian.org>  Mon, 11 Sep 2023 09:22:50 -0400
+
+vim (2:9.0.1672-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.1672
+  * Remove check for DEB_BUILD_OPTIONS=nocheck, since dh_auto_test handles it now
+  * Skip Test_uncrypt_xchacha20 tests on big endian systems
+
+ -- James McCoy <jamessan@debian.org>  Tue, 04 Jul 2023 09:02:26 -0400
+
+vim (2:9.0.1658-1) unstable; urgency=medium
+
+  * Merge upstream patch v9.0.1658
+    + Vulnerability fixes
+      - 9.0.1392: Using NULL pointer with nested :open command, CVE-2023-1264
+      - 9.0.1402: Crash when using null_class, CVE-2023-1355
+      - 9.0.1531: Crash when register contents ends up being invalid,
+        CVE-2023-2609
+      - 9.0.1532: Crash when expanding "~" in substitute causes very long
+        text, (Closes: #1035955, CVE-2023-2610)
+    + 9.0.1409: Racket files are recognized as their own filetype, rather than
+      as scheme
+    + 9.0.1619: Always recognize the codes for focus gained/lost, even if Vim
+      doesn't expect the terminal to support them.  (Closes: #1038401)
+    + Document behavior of C-x / C-a on numbers outside the range of a 64-bit
+      value.  (Closes: #1031256)
+  * Refresh patches, dropping backport of v9.0.1499
+  * Include uganda.txt, sponsor.txt, and versionX.txt in vim-common so the
+    intro screen has functional help links when only vim-tiny and vim-common
+    are installed
+  * Declare compliance with Policy 4.6.2, no changes needed
+  * Remove non-functional diversion handling in vim-runtime.postinst
+
+ -- James McCoy <jamessan@debian.org>  Sat, 24 Jun 2023 11:08:58 -0400
 
 vim (2:9.0.1378-2) unstable; urgency=medium
 
@@ -47,6 +316,8 @@ vim (2:9.0.1378-1) unstable; urgency=medium
         CVE-2023-0433
       - 9.0.1247: Divide by zero with 'smoothscroll' set and a narrow window,
         CVE-2023-0512
+      - 9.0.1331: Illegal memory access when using :ball in Visual mode,
+        CVE-2023-4751
       - 9.0.1367: Divide by zero in zero-width window, CVE-2023-1127
       - 9.0.1376: Accessing invalid memory with put in Visual block mode,
         CVE-2023-1170

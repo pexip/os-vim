@@ -67,13 +67,14 @@ static int term_is_builtin(char_u *name);
 static int term_7to8bit(char_u *p);
 static void accept_modifiers_for_function_keys(void);
 
-    // Change this to "if 1" to debug what happens with termresponse.
-#  if 0
+#  if 0  // Change to 1 to enable ch_log() calls for termresponse debugging.
 #   define DEBUG_TERMRESPONSE
-static void log_tr(const char *fmt, ...) ATTRIBUTE_FORMAT_PRINTF(1, 2);
-#   define LOG_TR(msg) log_tr msg
+#   define LOG_TR(fmt,...)  \
+		ch_log(NULL, "TermResp: %s " fmt,	    \
+		    must_redraw == UPD_NOT_VALID ? "NV"	    \
+		    : must_redraw == UPD_CLEAR ? "CL" : "  ", ##__VA_ARGS__)
 #  else
-#   define LOG_TR(msg) do { /**/ } while (0)
+#   define LOG_TR(fmt,...) do { /**/ } while (0)
 #  endif
 
 #ifdef HAVE_TGETENT
@@ -625,7 +626,7 @@ static tcap_entry_T builtin_kitty[] = {
 
 #ifdef FEAT_TERMGUICOLORS
 /*
- * Additions for using the RGB colors
+ * Additions for using the RGB colors and terminal font
  */
 static tcap_entry_T builtin_rgb[] = {
     // These are printf strings, not terminal codes.
@@ -633,6 +634,14 @@ static tcap_entry_T builtin_rgb[] = {
     {(int)KS_8B,	"\033[48;2;%lu;%lu;%lum"},
     {(int)KS_8U,	"\033[58;2;%lu;%lu;%lum"},
 
+    {(int)KS_NAME,	NULL}  // end marker
+};
+#endif
+
+#ifdef HAVE_TGETENT
+static tcap_entry_T special_term[] = {
+    // These are printf strings, not terminal codes.
+    {(int)KS_CF,	"\033[%dm"},
     {(int)KS_NAME,	NULL}  // end marker
 };
 #endif
@@ -1235,6 +1244,7 @@ static tcap_entry_T builtin_debug[] = {
     {(int)KS_U7,	"[U7]"},
     {(int)KS_RFG,	"[RFG]"},
     {(int)KS_RBG,	"[RBG]"},
+    {(int)KS_CF,	"[CF%d]"},
     {K_UP,		"[KU]"},
     {K_DOWN,		"[KD]"},
     {K_LEFT,		"[KL]"},
@@ -1608,6 +1618,23 @@ apply_builtin_tcap(char_u *term, tcap_entry_T *entries, int overwrite)
 }
 
 /*
+ * Apply builtin termcap entries for a given keyprotocol.
+ */
+    void
+apply_keyprotocol(char_u *term, keyprot_T prot)
+{
+    if (prot == KEYPROTOCOL_KITTY)
+	apply_builtin_tcap(term, builtin_kitty, TRUE);
+    if (prot == KEYPROTOCOL_MOK2)
+	apply_builtin_tcap(term, builtin_mok2, TRUE);
+
+    if (prot != KEYPROTOCOL_NONE)
+	// Some function keys may accept modifiers even though the
+	// terminfo/termcap entry does not indicate this.
+	accept_modifiers_for_function_keys();
+}
+
+/*
  * Parsing of the builtin termcap entries.
  * Caller should check if "term" is a valid builtin terminal name.
  * The terminal's name is not set, as this is already done in termcapinit().
@@ -1635,6 +1662,13 @@ set_color_count(int nr)
 	sprintf((char *)nr_colors, "%d", t_colors);
     else
 	*nr_colors = NUL;
+#if 0
+#ifdef FEAT_TERMGUICOLORS
+    // xterm-direct, enable termguicolors, when it wasn't set yet
+    if (t_colors == 0x1000000 && !p_tgc_set)
+	set_option_value((char_u *)"termguicolors", 1L, NULL, 0);
+#endif
+#endif
     set_string_option_direct((char_u *)"t_Co", -1, nr_colors, OPT_FREE, 0);
 }
 
@@ -1657,7 +1691,7 @@ may_adjust_color_count(int val)
     {
 	int r = redraw_asap(UPD_CLEAR);
 
-	log_tr("Received t_Co, redraw_asap(): %d", r);
+	LOG_TR("Received t_Co, redraw_asap(): %d", r);
     }
 #else
     redraw_asap(UPD_CLEAR);
@@ -1668,8 +1702,11 @@ may_adjust_color_count(int val)
 static char *(key_names[]) =
 {
 # ifdef FEAT_TERMRESPONSE
-    // Do this one first, it may cause a screen redraw.
+    // Do those ones first, both may cause a screen redraw.
     "Co",
+    // disabled, because it switches termguicolors, but that
+    // is noticable and confuses users
+    // "RGB",
 # endif
     "ku", "kd", "kr", "kl",
     "#2", "#4", "%i", "*7",
@@ -1737,6 +1774,7 @@ get_term_entries(int *height, int *width)
 			{KS_CBE, "BE"}, {KS_CBD, "BD"},
 			{KS_CST, "ST"}, {KS_CRT, "RT"},
 			{KS_SSI, "Si"}, {KS_SRI, "Ri"},
+			{KS_CF, "CF"},
 			{(enum SpecialKey)0, NULL}
 		    };
     int		    i;
@@ -1771,6 +1809,8 @@ get_term_entries(int *height, int *width)
 	T_DA = (char_u *)"y";
     if ((T_UT == NULL || T_UT == empty_option) && tgetflag("ut") > 0)
 	T_UT = (char_u *)"y";
+    if ((T_XON == NULL || T_XON == empty_option) && tgetflag("xo") > 0)
+	T_XON = (char_u *)"y";
 
     /*
      * get key codes
@@ -1896,6 +1936,7 @@ match_keyprotocol(char_u *term)
 	*colon = NUL;
 
 	keyprot_T prot;
+	// Note: Keep this in sync with p_kpc_protocol_values.
 	if (STRCMP(colon + 1, "none") == 0)
 	    prot = KEYPROTOCOL_NONE;
 	else if (STRCMP(colon + 1, "mok2") == 0)
@@ -2083,10 +2124,7 @@ set_termname(char_u *term)
 	// Use the 'keyprotocol' option to adjust the t_TE and t_TI
 	// termcap entries if there is an entry matching "term".
 	keyprot_T kpc = match_keyprotocol(term);
-	if (kpc == KEYPROTOCOL_KITTY)
-	    apply_builtin_tcap(term, builtin_kitty, TRUE);
-	else if (kpc == KEYPROTOCOL_MOK2)
-	    apply_builtin_tcap(term, builtin_mok2, TRUE);
+	apply_keyprotocol(term, kpc);
 
 #ifdef FEAT_TERMGUICOLORS
 	// There is no good way to detect that the terminal supports RGB
@@ -2098,11 +2136,10 @@ set_termname(char_u *term)
 		&& term_strings_not_set(KS_8U))
 	    apply_builtin_tcap(term, builtin_rgb, TRUE);
 #endif
-
-	if (kpc != KEYPROTOCOL_NONE)
-	    // Some function keys may accept modifiers even though the
-	    // terminfo/termcap entry does not indicate this.
-	    accept_modifiers_for_function_keys();
+#ifdef HAVE_TGETENT
+	if (term_strings_not_set(KS_CF))
+	    apply_builtin_tcap(term, special_term, TRUE);
+#endif
     }
 
 /*
@@ -2221,7 +2258,9 @@ set_termname(char_u *term)
     // We hard-code the received escape sequences here.  There are the terminfo
     // entries kxIN and kxOUT, but they are rarely used and do hot have a
     // two-letter termcap name.
-    if (use_xterm_like_mouse(term))
+    // This used to be done only for xterm-like terminals, but some others also
+    // may produce these codes.  Always recognize them, as the chance of them
+    // being used for something else is very small.
     {
 	char_u name[3];
 
@@ -2261,7 +2300,7 @@ set_termname(char_u *term)
     full_screen = TRUE;		// we can use termcap codes from now on
     set_term_defaults();	// use current values as defaults
 #ifdef FEAT_TERMRESPONSE
-    LOG_TR(("setting crv_status to STATUS_GET"));
+    LOG_TR("setting crv_status to STATUS_GET");
     crv_status.tr_progress = STATUS_GET;	// Get terminal version later
     write_t_8u_state = FALSE;
 #endif
@@ -2971,7 +3010,7 @@ term_delete_lines(int line_count)
     OUT_STR(tgoto((char *)T_CDL, 0, line_count));
 }
 
-#if defined(UNIX) || defined(PROTO)
+#if defined(UNIX) || defined(VMS) || defined(PROTO)
     void
 term_enable_mouse(int enable)
 {
@@ -3103,6 +3142,17 @@ term_set_winsize(int height, int width)
     OUT_STR(tgoto((char *)T_CWS, width, height));
 }
 #endif
+
+    void
+term_font(int n)
+{
+    if (*T_CFO)
+    {
+	char buf[20];
+	sprintf(buf, (char *)T_CFO, 9 + n);
+	OUT_STR(buf);
+    }
+}
 
     static void
 term_color(char_u *s, int n)
@@ -3422,7 +3472,7 @@ ttest(int pairs)
 #endif
     {
 	env_colors = mch_getenv((char_u *)"COLORS");
-	if (env_colors != NULL && isdigit(*env_colors))
+	if (env_colors != NULL && SAFE_isdigit(*env_colors))
 	{
 	    int colors = atoi((char *)env_colors);
 
@@ -3525,8 +3575,9 @@ get_bytes_from_buf(char_u *buf, char_u *bytes, int num_bytes)
     void
 check_shellsize(void)
 {
-    if (Rows < min_rows())	// need room for one window and command line
-	Rows = min_rows();
+    // need room for one window and command line
+    if (Rows < min_rows_for_all_tabpages())
+	Rows = min_rows_for_all_tabpages();
     limit_screen_size();
 
     // make sure these values are not invalid
@@ -4029,7 +4080,7 @@ may_req_termresponse(void)
 	    && *T_CRV != NUL)
     {
 	MAY_WANT_TO_LOG_THIS;
-	LOG_TR(("Sending CRV request"));
+	LOG_TR("Sending CRV request");
 	out_str(T_CRV);
 	termrequest_sent(&crv_status);
 	// check for the characters now, otherwise they might be eaten by
@@ -4068,7 +4119,7 @@ check_terminal_behavior(void)
 	// changes cursor position, so it must be called immediately after
 	// entering termcap mode.
 	MAY_WANT_TO_LOG_THIS;
-	LOG_TR(("Sending request for ambiwidth check"));
+	LOG_TR("Sending request for ambiwidth check");
 	// Do this in the second row.  In the first row the returned sequence
 	// may be CSI 1;2R, which is the same as <S-F3>.
 	term_windgoto(1, 0);
@@ -4097,7 +4148,7 @@ check_terminal_behavior(void)
 	// handles test sequence incorrectly, a garbage string is displayed and
 	// the cursor does move.
 	MAY_WANT_TO_LOG_THIS;
-	LOG_TR(("Sending xterm compatibility test sequence."));
+	LOG_TR("Sending xterm compatibility test sequence.");
 	// Do this in the third row.  Second row is used by ambiguous
 	// character width check.
 	term_windgoto(2, 0);
@@ -4148,7 +4199,7 @@ may_req_bg_color(void)
 	if (rfg_status.tr_progress == STATUS_GET && *T_RFG != NUL)
 	{
 	    MAY_WANT_TO_LOG_THIS;
-	    LOG_TR(("Sending FG request"));
+	    LOG_TR("Sending FG request");
 	    out_str(T_RFG);
 	    termrequest_sent(&rfg_status);
 	    didit = TRUE;
@@ -4159,7 +4210,7 @@ may_req_bg_color(void)
 	if (rbg_status.tr_progress == STATUS_GET && *T_RBG != NUL)
 	{
 	    MAY_WANT_TO_LOG_THIS;
-	    LOG_TR(("Sending BG request"));
+	    LOG_TR("Sending BG request");
 	    out_str(T_RBG);
 	    termrequest_sent(&rbg_status);
 	    didit = TRUE;
@@ -4175,32 +4226,6 @@ may_req_bg_color(void)
     }
 }
 
-# ifdef DEBUG_TERMRESPONSE
-    static void
-log_tr(const char *fmt, ...)
-{
-    static FILE *fd_tr = NULL;
-    static proftime_T start;
-    proftime_T now;
-    va_list ap;
-
-    if (fd_tr == NULL)
-    {
-	fd_tr = fopen("termresponse.log", "w");
-	profile_start(&start);
-    }
-    now = start;
-    profile_end(&now);
-    fprintf(fd_tr, "%s: %s ", profile_msg(&now),
-				must_redraw == UPD_NOT_VALID ? "NV"
-				     : must_redraw == UPD_CLEAR ? "CL" : "  ");
-    va_start(ap, fmt);
-    vfprintf(fd_tr, fmt, ap);
-    va_end(ap);
-    fputc('\n', fd_tr);
-    fflush(fd_tr);
-}
-# endif
 #endif
 
 /*
@@ -4796,7 +4821,7 @@ switch_to_8bit(void)
 	need_gather = TRUE;		// need to fill termleader[]
     }
     detected_8bit = TRUE;
-    LOG_TR(("Switching to 8 bit"));
+    LOG_TR("Switching to 8 bit");
 }
 
 #ifdef CHECK_DOUBLE_CLICK
@@ -4949,7 +4974,7 @@ handle_u7_response(int *arg, char_u *tp UNUSED, int csi_len UNUSED)
     {
 	char *aw = NULL;
 
-	LOG_TR(("Received U7 status: %s", tp));
+	LOG_TR("Received U7 status: %s", tp);
 	u7_status.tr_progress = STATUS_GOT;
 	did_cursorhold = TRUE;
 	if (arg[1] == 2)
@@ -4966,7 +4991,7 @@ handle_u7_response(int *arg, char_u *tp UNUSED, int csi_len UNUSED)
 	    {
 		int r = redraw_asap(UPD_CLEAR);
 
-		log_tr("set 'ambiwidth', redraw_asap(): %d", r);
+		LOG_TR("set 'ambiwidth', redraw_asap(): %d", r);
 	    }
 #else
 	    redraw_asap(UPD_CLEAR);
@@ -4974,13 +4999,15 @@ handle_u7_response(int *arg, char_u *tp UNUSED, int csi_len UNUSED)
 #ifdef FEAT_EVAL
 	    set_vim_var_string(VV_TERMU7RESP, tp, csi_len);
 #endif
+	    apply_autocmds(EVENT_TERMRESPONSEALL,
+					(char_u *)"ambiguouswidth", NULL, FALSE, curbuf);
 	}
     }
     else if (arg[0] == 3)
     {
 	int value;
 
-	LOG_TR(("Received compatibility test result: %s", tp));
+	LOG_TR("Received compatibility test result: %s", tp);
 	xcc_status.tr_progress = STATUS_GOT;
 
 	// Third row: xterm compatibility test.
@@ -5004,7 +5031,7 @@ handle_version_response(int first, int *arg, int argc, char_u *tp)
     // version.
     int version = arg[1];
 
-    LOG_TR(("Received CRV response: %s", tp));
+    LOG_TR("Received CRV response: %s", tp);
     crv_status.tr_progress = STATUS_GOT;
     did_cursorhold = TRUE;
 
@@ -5047,7 +5074,7 @@ handle_version_response(int first, int *arg, int argc, char_u *tp)
 	// terminals the request should be ignored.
 	if (version >= 141 && p_xtermcodes)
 	{
-	    LOG_TR(("Enable checking for XT codes"));
+	    LOG_TR("Enable checking for XT codes");
 	    check_for_codes = TRUE;
 	    need_gather = TRUE;
 	    req_codes_from_term();
@@ -5217,7 +5244,7 @@ handle_version_response(int first, int *arg, int argc, char_u *tp)
 		&& *T_CRS != NUL)
 	{
 	    MAY_WANT_TO_LOG_THIS;
-	    LOG_TR(("Sending cursor style request"));
+	    LOG_TR("Sending cursor style request");
 	    out_str(T_CRS);
 	    termrequest_sent(&rcs_status);
 	    need_flush = TRUE;
@@ -5232,7 +5259,7 @@ handle_version_response(int first, int *arg, int argc, char_u *tp)
 		&& *T_CRC != NUL)
 	{
 	    MAY_WANT_TO_LOG_THIS;
-	    LOG_TR(("Sending cursor blink mode request"));
+	    LOG_TR("Sending cursor blink mode request");
 	    out_str(T_CRC);
 	    termrequest_sent(&rbm_status);
 	    need_flush = TRUE;
@@ -5583,6 +5610,8 @@ handle_csi(
 #endif
 	apply_autocmds(EVENT_TERMRESPONSE,
 					NULL, NULL, FALSE, curbuf);
+	apply_autocmds(EVENT_TERMRESPONSEALL,
+					(char_u *)"version", NULL, FALSE, curbuf);
 	key_name[0] = (int)KS_EXTRA;
 	key_name[1] = (int)KE_IGNORE;
     }
@@ -5602,13 +5631,15 @@ handle_csi(
     {
 	initial_cursor_blink = (arg[1] == '1');
 	rbm_status.tr_progress = STATUS_GOT;
-	LOG_TR(("Received cursor blinking mode response: %s", tp));
+	LOG_TR("Received cursor blinking mode response: %s", tp);
 	key_name[0] = (int)KS_EXTRA;
 	key_name[1] = (int)KE_IGNORE;
 	*slen = csi_len;
 # ifdef FEAT_EVAL
 	set_vim_var_string(VV_TERMBLINKRESP, tp, *slen);
 # endif
+	apply_autocmds(EVENT_TERMRESPONSEALL,
+					(char_u *)"cursorblink", NULL, FALSE, curbuf);
     }
 #endif
 
@@ -5725,15 +5756,15 @@ handle_osc(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 		    int rval, gval, bval;
 
 		    rval = hexhex2nr(tp_r);
-		    gval = hexhex2nr(tp_b);
-		    bval = hexhex2nr(tp_g);
+		    gval = hexhex2nr(tp_g);
+		    bval = hexhex2nr(tp_b);
 #endif
 		    if (is_bg)
 		    {
 			char *new_bg_val = (3 * '6' < *tp_r + *tp_g +
 					     *tp_b) ? "light" : "dark";
 
-			LOG_TR(("Received RBG response: %s", tp));
+			LOG_TR("Received RBG response: %s", tp);
 #ifdef FEAT_TERMRESPONSE
 			rbg_status.tr_progress = STATUS_GOT;
 # ifdef FEAT_TERMINAL
@@ -5755,7 +5786,7 @@ handle_osc(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 #if defined(FEAT_TERMRESPONSE) && defined(FEAT_TERMINAL)
 		    else
 		    {
-			LOG_TR(("Received RFG response: %s", tp));
+			LOG_TR("Received RFG response: %s", tp);
 			rfg_status.tr_progress = STATUS_GOT;
 			fg_r = rval;
 			fg_g = gval;
@@ -5772,11 +5803,13 @@ handle_osc(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 		set_vim_var_string(is_bg ? VV_TERMRBGRESP
 						  : VV_TERMRFGRESP, tp, *slen);
 #endif
+		apply_autocmds(EVENT_TERMRESPONSEALL,
+			    is_bg ? (char_u *)"background" : (char_u *)"foreground", NULL, FALSE, curbuf);
 		break;
 	    }
     if (i == len)
     {
-	LOG_TR(("not enough characters for RB"));
+	LOG_TR("not enough characters for RB");
 	return FAIL;
     }
     return OK;
@@ -5806,6 +5839,7 @@ handle_dcs(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 {
     int i, j;
 
+    LOG_TR("Received DCS response: %s", (char*)tp);
     j = 1 + (tp[0] == ESC);
     if (len < j + 3)
 	i = len; // need more chars
@@ -5837,7 +5871,7 @@ handle_dcs(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 	// characters.
 	for (i = j + 3; i < len; ++i)
 	{
-	    if (i - j == 3 && !isdigit(tp[i]))
+	    if (i - j == 3 && !SAFE_isdigit(tp[i]))
 		break;
 	    if (i - j == 4 && tp[i] != ' ')
 		break;
@@ -5862,7 +5896,7 @@ handle_dcs(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 				       (number & 1) ? FALSE : TRUE;
 		rcs_status.tr_progress = STATUS_GOT;
 #endif
-		LOG_TR(("Received cursor shape response: %s", tp));
+		LOG_TR("Received cursor shape response: %s", tp);
 
 		key_name[0] = (int)KS_EXTRA;
 		key_name[1] = (int)KE_IGNORE;
@@ -5870,6 +5904,8 @@ handle_dcs(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 #ifdef FEAT_EVAL
 		set_vim_var_string(VV_TERMSTYLERESP, tp, *slen);
 #endif
+		apply_autocmds(EVENT_TERMRESPONSEALL,
+					(char_u *)"cursorshape", NULL, FALSE, curbuf);
 		break;
 	    }
 	}
@@ -5879,7 +5915,7 @@ handle_dcs(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
     {
 	// These codes arrive many together, each code can be
 	// truncated at any point.
-	LOG_TR(("not enough characters for XT"));
+	LOG_TR("not enough characters for XT");
 	return FAIL;
     }
     return OK;
@@ -6071,7 +6107,7 @@ check_termcode(
 			// The mouse termcode "ESC [" is also the prefix of
 			// "ESC [ I" (focus gained) and other keys.  Check some
 			// more bytes to find out.
-			if (!isdigit(tp[2]))
+			if (!SAFE_isdigit(tp[2]))
 			{
 			    // ESC [ without number following: Only use it when
 			    // there is no other match.
@@ -6154,7 +6190,7 @@ check_termcode(
 			    // Skip over the digits, the final char must
 			    // follow. URXVT can use a negative value, thus
 			    // also accept '-'.
-			    for (j = slen - 2; j < len && (isdigit(tp[j])
+			    for (j = slen - 2; j < len && (SAFE_isdigit(tp[j])
 				       || tp[j] == '-' || tp[j] == ';'); ++j)
 				;
 			    ++j;
@@ -6231,7 +6267,7 @@ check_termcode(
 		{
 #ifdef DEBUG_TERMRESPONSE
 		    if (resp == -1)
-			LOG_TR(("Not enough characters for CSI sequence"));
+			LOG_TR("Not enough characters for CSI sequence");
 #endif
 		    return resp;
 		}
@@ -6447,7 +6483,7 @@ check_termcode(
 # endif // !USE_ON_FLY_SCROLL
 #endif // FEAT_GUI
 
-#if (defined(UNIX) || defined(VMS))
+#if defined(UNIX) || defined(VMS)
 	/*
 	 * Handle FocusIn/FocusOut event sequences reported by XTerm.
 	 * (CSI I/CSI O)
@@ -6522,7 +6558,7 @@ check_termcode(
     }
 
 #ifdef FEAT_TERMRESPONSE
-    LOG_TR(("normal character"));
+    LOG_TR("normal character");
 #endif
 
     return 0;			    // no match found
@@ -6589,6 +6625,8 @@ term_get_bg_color(char_u *r, char_u *g, char_u *b)
 replace_termcodes(
     char_u	*from,
     char_u	**bufp,
+    scid_T	sid_arg UNUSED,	// script ID to use for <SID>,
+				// or 0 to use current_sctx
     int		flags,
     int		*did_simplify)
 {
@@ -6651,19 +6689,19 @@ replace_termcodes(
 #ifdef FEAT_EVAL
 	    /*
 	     * Change <SID>Func to K_SNR <script-nr> _Func.  This name is used
-	     * for script-locla user functions.
+	     * for script-local user functions.
 	     * (room: 5 * 6 = 30 bytes; needed: 3 + <nr> + 1 <= 14)
 	     * Also change <SID>name.Func to K_SNR <import-script-nr> _Func.
 	     * Only if "name" is recognized as an import.
 	     */
 	    if (STRNICMP(src, "<SID>", 5) == 0)
 	    {
-		if (current_sctx.sc_sid <= 0)
+		if (sid_arg < 0 || (sid_arg == 0 && current_sctx.sc_sid <= 0))
 		    emsg(_(e_using_sid_not_in_script_context));
 		else
 		{
 		    char_u  *dot;
-		    long    sid = current_sctx.sc_sid;
+		    long    sid = sid_arg != 0 ? sid_arg : current_sctx.sc_sid;
 
 		    src += 5;
 		    if (in_vim9script()
@@ -7048,7 +7086,7 @@ req_codes_from_term(void)
     static void
 req_more_codes_from_term(void)
 {
-    char	buf[23];  // extra size to shut up LGTM
+    char	buf[32];  // extra size to shut up LGTM
     int		old_idx = xt_index_out;
 
     // Don't do anything when going to exit.
@@ -7062,8 +7100,11 @@ req_more_codes_from_term(void)
 	char *key_name = key_names[xt_index_out];
 
 	MAY_WANT_TO_LOG_THIS;
-	LOG_TR(("Requesting XT %d: %s", xt_index_out, key_name));
-	sprintf(buf, "\033P+q%02x%02x\033\\", key_name[0], key_name[1]);
+	LOG_TR("Requesting XT %d: %s", xt_index_out, key_name);
+	if (key_name[2] != NUL)
+	    sprintf(buf, "\033P+q%02x%02x%02x\033\\", key_name[0], key_name[1], key_name[2]);
+	else
+	    sprintf(buf, "\033P+q%02x%02x\033\\", key_name[0], key_name[1]);
 	out_str_nf((char_u *)buf);
 	++xt_index_out;
     }
@@ -7074,7 +7115,9 @@ req_more_codes_from_term(void)
 }
 
 /*
- * Decode key code response from xterm: '<Esc>P1+r<name>=<string><Esc>\'.
+ * Decode key code response from xterm:
+ * '<Esc>P1+r<name>=<string><Esc>\' if it is enabled/supported
+ * '<Esc>P0+r<Esc>\'                if it not enabled
  * A "0" instead of the "1" indicates a code that isn't supported.
  * Both <name> and <string> are encoded in hex.
  * "code" points to the "0" or "1".
@@ -7083,21 +7126,25 @@ req_more_codes_from_term(void)
 got_code_from_term(char_u *code, int len)
 {
 #define XT_LEN 100
-    char_u	name[3];
+    char_u	name[4];
     char_u	str[XT_LEN];
     int		i;
     int		j = 0;
     int		c;
 
     // A '1' means the code is supported, a '0' means it isn't.
+    // If it is supported, there must be a '=' following
     // When half the length is > XT_LEN we can't use it.
-    // Our names are currently all 2 characters.
-    if (code[0] == '1' && code[7] == '=' && len / 2 < XT_LEN)
+    if (code[0] == '1' && (code[7] == '=' || code[9] == '=') && len / 2 < XT_LEN)
     {
 	// Get the name from the response and find it in the table.
 	name[0] = hexhex2nr(code + 3);
 	name[1] = hexhex2nr(code + 5);
-	name[2] = NUL;
+	if (code[9] == '=')
+	    name[2] = hexhex2nr(code + 7);
+	else
+	    name[2] = NUL;
+	name[3] = NUL;
 	for (i = 0; key_names[i] != NULL; ++i)
 	{
 	    if (STRCMP(key_names[i], name) == 0)
@@ -7107,11 +7154,12 @@ got_code_from_term(char_u *code, int len)
 	    }
 	}
 
-	LOG_TR(("Received XT %d: %s", xt_index_in, (char *)name));
+	LOG_TR("Received XT %d: %s", xt_index_in, (char *)name);
 
 	if (key_names[i] != NULL)
 	{
-	    for (i = 8; (c = hexhex2nr(code + i)) >= 0; i += 2)
+	    i = (code[7] == '=') ? 8 : 10;
+	    for (; (c = hexhex2nr(code + i)) >= 0; i += 2)
 		str[j++] = c;
 	    str[j] = NUL;
 	    if (name[0] == 'C' && name[1] == 'o')
@@ -7128,6 +7176,25 @@ got_code_from_term(char_u *code, int len)
 #endif
 		may_adjust_color_count(val);
 	    }
+#if 0
+#ifdef FEAT_TERMGUICOLORS
+	    // when RGB result comes back, it is supported when the result contains an '='
+	    else if (name[0] == 'R' && name[1] == 'G' && name[2] == 'B' && code[9] == '=')
+	    {
+		int val = atoi((char *)str);
+		// only enable it, if termguicolors hasn't been set yet and
+		// there are 8 bits per color channel
+		if (val == 8 && !p_tgc_set)
+		{
+#ifdef FEAT_EVAL
+		    ch_log(NULL, "got_code_from_term(RGB): xterm-direct colors detected");
+#endif
+		    // RGB capability set, enable termguicolors
+		    set_option_value((char_u *)"termguicolors", 1L, NULL, 0);
+		}
+	    }
+#endif
+#endif
 	    else
 	    {
 		i = find_term_bykeys(str);
@@ -7411,7 +7478,7 @@ ansi_color2rgb(int nr, char_u *r, char_u *g, char_u *b, char_u *ansi_idx)
 	*r = ansi_table[nr][0];
 	*g = ansi_table[nr][1];
 	*b = ansi_table[nr][2];
-	*ansi_idx = nr;
+	*ansi_idx = nr + 1;
     }
     else
     {

@@ -3,7 +3,8 @@ Upstream-Name: vim
 Source: https://github.com/vim/vim
 
 Files: *
-Copyright: 2001-2022 Bram Moolenaar <Bram@vim.org>
+Copyright: 2001-2023 Bram Moolenaar <Bram@vim.org>
+           2023-2024 The Vim Project
            2006 Benji Fisher <benji@member.ams.org>
            1999-2021 Charles E. Campbell, Jr. <drchip@campbellfamily.biz>
            2003 Fred Barnes
@@ -14,7 +15,7 @@ Copyright: 2001-2022 Bram Moolenaar <Bram@vim.org>
            2014 David Necas (Yeti)
            2009-2013 Steven Oliver
            2012 Hong Xu
-           2001-2022 MURAOKA Taro <koron.kaoriya@gmail.com>
+           2001-2023 MURAOKA Taro <koron.kaoriya@gmail.com>
            2001 Bohdan Vlasyuk <bohdan@vstu.edu.ua>
            2003-2022 Ernest Adrogué <eadrogue@gmx.net>
            2005,2006,2008,2010 Kevin Patrick Scannell <kscanne@gmail.com>
@@ -27,7 +28,9 @@ Copyright: 2001-2022 Bram Moolenaar <Bram@vim.org>
 License: Vim
 
 Files: runtime/doc/*
-Copyright: 1988-2003 Bram Moolenaar <Bram@vim.org>
+Copyright:
+ 1988-2023 Bram Moolenaar <Bram@vim.org>
+ 2023-2024 The Vim Project
 License: OPL-1+
 Comment: No license options are exercised.  See https://bugs.debian.org/384019
  for discussions confirming DFSG-ness of this license when no options are
@@ -51,17 +54,37 @@ Copyright: Andy Cedilnik <andy.cedilnik@kitware.com>
 License: BSD-3-clause
 
 Files:
+ runtime/autoload/typst.vim
+ runtime/compiler/pip_compile.vim
+ runtime/compiler/typst.vim
+ runtime/ftplugin/jq.vim
  runtime/ftplugin/jsonc.vim
  runtime/ftplugin/julia.vim
- runtime/ftplugin/wast.vim
+ runtime/ftplugin/just.vim
+ runtime/ftplugin/requirements.vim
+ runtime/ftplugin/typst.vim
+ runtime/ftplugin/wat.vim
+ runtime/indent/astro.vim
+ runtime/indent/glsl.vim
+ runtime/indent/graphql.vim
  runtime/indent/julia.vim
- runtime/indent/wast.vim
+ runtime/indent/just.vim
+ runtime/indent/typst.vim
+ runtime/indent/wat.vim
+ runtime/syntax/astro.vim
  runtime/syntax/bitbake.vim
+ runtime/syntax/glsl.vim
+ runtime/syntax/graphql.vim
+ runtime/syntax/jq.vim
  runtime/syntax/json.vim
  runtime/syntax/jsonc.vim
  runtime/syntax/julia.vim
+ runtime/syntax/just.vim
  runtime/syntax/nix.vim
- runtime/syntax/wast.vim
+ runtime/syntax/pandoc.vim
+ runtime/syntax/requirements.vim
+ runtime/syntax/typst.vim
+ runtime/syntax/wat.vim
 Copyright:
  2013 Jeroen Ruigrok van der Werven, Eli Parra
  2016 rhysd
@@ -71,6 +94,14 @@ Copyright:
  2008 Ricardo Salveti
  2022 Daiderd Jordan
  2022 James Fleming
+ 2015 raimon
+ 2017 Philip Jones
+ 2022 Wuelner Martínez
+ 2013-2019 vim-pandoc-syntax contributors
+ 2023 Kaj Munhoz Arfvidsson
+ 2013-2022 Sergii Tykhomyrov
+ Jon Parise <jon@indelible.org>
+ 2021 Noah Bogart
 License: Expat
 
 Files: runtime/syntax/tmux.vim
@@ -125,7 +156,7 @@ Copyright: 1993 Juergen Weigert (jnweiger@immd4.informatik.uni-erlangen.de)
 License: GPL-2+
 
 Files: src/iscygpty.*
-Copyright: 2015-2017 K.Takata
+Copyright: 2015-2023 K.Takata
 License: Expat or Vim
 
 Files: src/xpm/*
@@ -143,11 +174,14 @@ License: EDL-1
 Files:
  runtime/compiler/powershell.vim
  runtime/doc/ft_ps1.txt
+ runtime/ftplugin/kotlin.vim
  runtime/ftplugin/ps1.vim
  runtime/ftplugin/ps1xml.vim
  runtime/ftplugin/swift.vim
  runtime/ftplugin/swiftgyb.vim
+ runtime/indent/kotlin.vim
  runtime/indent/ps1.vim
+ runtime/syntax/kotlin.vim
  runtime/syntax/ps1.vim
  runtime/syntax/ps1xml.vim
  runtime/syntax/sil.vim
@@ -156,11 +190,30 @@ Files:
 Copyright:
  2014-2020 Apple Inc. and the Swift project authors
  2005-2021 Peter Provost
+ Alexander Udalov
 License: Apache
 
-Files: runtime/syntax/poke.vim
-Copyright: 2021 Matthew T. Ihlenfield
+Files:
+ runtime/ftplugin/uci.vim
+ runtime/ftplugin/zathurarc.vim
+ runtime/syntax/poke.vim
+ runtime/syntax/uci.vim
+ runtime/syntax/zathurarc.vim
+Copyright:
+ 2021 Matthew T. Ihlenfield
+ 2015-2024 Colin Caine <complaints@cmcaine.co.uk>
+ 2024 Wu, Zhenyu <wuzhenyu@ustc.edu>
 License: GPL-3+
+
+Files:
+ runtime/ftplugin/chicken.vim
+ runtime/ftplugin/scheme.vim
+ runtime/indent/scheme.vim
+ runtime/syntax/chicken.vim
+ runtime/syntax/scheme.vim
+Copyright:
+ Evan Hanson <evhan@foldling.org>
+License: Unlicense
 
 License: Vim
  I)  There are no restrictions on distributing unmodified copies of Vim except
@@ -184,8 +237,8 @@ License: Vim
            maintainer will do with your changes and under what license they
            will be distributed is negotiable.  If there has been no negotiation
            then this license, or a later version, also applies to your changes.
-           The current maintainer is Bram Moolenaar <Bram@vim.org>.  If this
-           changes it will be announced in appropriate places (most likely
+           The current maintainers are listed here: https://github.com/orgs/vim/people.
+           If this changes it will be announced in appropriate places (most likely
            vim.sf.net, www.vim.org and/or comp.editors).  When it is completely
            impossible to contact the maintainer, the obligation to send him
            your changes ceases.  Once the maintainer has confirmed that he has
@@ -254,7 +307,7 @@ License: OPL-1+
      Copyright (c) <year> by <author's name or designee>. This material may be
      distributed only subject to the terms and conditions set forth in the Open
      Publication License, vX.Y or later (the latest version is presently
-     available at http://www.opencontent.org/openpub/).
+     available at https://www.opencontent.org/openpub/).
  .
  The reference must be immediately followed with any options elected by the
  author(s) and/or publisher of the document (see section VI).
@@ -574,7 +627,7 @@ License: EDL-1
  This program and the accompanying materials are made available
  under the terms of the Eclipse Distribution License v1.0 which
  accompanies this distribution, is reproduced below, and is
- available at http://www.eclipse.org/org/documents/edl-v10.php
+ available at https://www.eclipse.org/org/documents/edl-v10.php
  .
  All rights reserved.
  .
@@ -608,3 +661,29 @@ License: EDL-1
  STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+License: Unlicense
+ This is free and unencumbered software released into the public domain.
+ .
+ Anyone is free to copy, modify, publish, use, compile, sell, or
+ distribute this software, either in source code form or as a compiled
+ binary, for any purpose, commercial or non-commercial, and by any
+ means.
+ .
+ In jurisdictions that recognize copyright laws, the author or authors
+ of this software dedicate any and all copyright interest in the
+ software to the public domain. We make this dedication for the benefit
+ of the public at large and to the detriment of our heirs and
+ successors. We intend this dedication to be an overt act of
+ relinquishment in perpetuity of all present and future rights to this
+ software under copyright law.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ OTHER DEALINGS IN THE SOFTWARE.
+ .
+ For more information, please refer to <https://unlicense.org/>
