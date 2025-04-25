@@ -42,7 +42,7 @@ Build-Depends-Indep:
 Vcs-Git: https://salsa.debian.org/vim-team/vim.git
 Vcs-Browser: https://salsa.debian.org/vim-team/vim
 Homepage: https://www.vim.org/
-XS-Pexip-Upstream: http://deb.debian.org/debian/ bookworm
+XS-Pexip-Upstream: http://deb.debian.org/debian/ trixie
 
 Package: vim-common
 Priority: important
