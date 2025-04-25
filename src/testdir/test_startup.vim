@@ -518,18 +518,24 @@ func Test_geometry()
       call writefile([&columns, &lines, getwinposx(), getwinposy(), string(getwinpos())], "Xtest_geometry")
       qall
     [CODE]
+    " Hide menu because gtk insists to make the window wide enough to show it completely
     " Some window managers have a bar at the top that pushes windows down,
     " need to use at least 130, let's do 150
-    if RunVim([], after, '-f -g -geometry 31x13+41+150')
+    if RunVim(['set guioptions-=m'], after, '-f -g -geometry 31x13+41+150')
       let lines = readfile('Xtest_geometry')
       " Depending on the GUI library and the windowing system the final size
       " might be a bit different, allow for some tolerance.  Tuned based on
       " actual failures.
       call assert_inrange(31, 35, str2nr(lines[0]))
-      call assert_equal('13', lines[1])
-      call assert_equal('41', lines[2])
-      call assert_equal('150', lines[3])
-      call assert_equal('[41, 150]', lines[4])
+      " for some reason, the window may contain fewer lines than requested
+      " for GTK, so allow some tolerance
+      call assert_inrange(8, 13,  str2nr(lines[1]))
+      " on Wayland there is no way to set or retrieve window positions
+      if empty($WAYLAND_DISPLAY)
+        call assert_equal('41', lines[2])
+        call assert_equal('150', lines[3])
+        call assert_equal('[41, 150]', lines[4])
+      endif
     endif
   endif
 
@@ -732,6 +738,19 @@ func Test_log()
     endif
   endif
   call delete('Xlogfile')
+endfunc
+
+func Test_log_nonexistent()
+  " this used to crash Vim
+  CheckRunVimInTerminal
+  CheckUnix
+  let args = ' -u NONE -i NONE -U NONE --log /X/Xlogfile -X -c qa!'
+  let options = {'term_finish': 'open', 'cmd':
+        \  'sh -c "' .. GetVimCommand() .. args .. '"'}
+  let buf = RunVimInTerminal('', options)
+  call WaitForAssert({-> assert_match('E484: Can''t open file.*Xlogfile', term_getline(buf, 1))})
+  " terminal job has already finished, so just close the buffer
+  exe buf .. "bw!"
 endfunc
 
 func Test_read_stdin()
@@ -1031,6 +1050,8 @@ func Test_EXINIT()
   [CODE]
   call writefile(after, 'Xafter', 'D')
   let cmd = GetVimProg() . ' --not-a-term -S Xafter --cmd "set enc=utf8"'
+  call setenv('HOME', '/non-existing')
+  call setenv('XDG_CONFIG_HOME', '/non-existing')
   call setenv('EXINIT', 'let exinit_found="yes"')
   exe "silent !" . cmd
   call assert_equal([], readfile('Xtestout'))
@@ -1351,5 +1372,27 @@ func Test_rename_buffer_on_startup()
   call delete('Xresult')
 endfunc
 
+" Test that -cq works as expected
+func Test_cq_zero_exmode()
+  CheckFeature channel
+
+  let logfile = 'Xcq_log.txt'
+  let out = system(GetVimCommand() .. ' --clean --log ' .. logfile .. ' -es -X -c "argdelete foobar" -c"7cq"')
+  call assert_equal(8, v:shell_error)
+  let log = filter(readfile(logfile), {idx, val -> val =~ "E480"})
+  call assert_match('E480: No match: foobar', log[0])
+  call delete(logfile)
+
+  " wrap-around on Unix
+  let out = system(GetVimCommand() .. ' --clean --log ' .. logfile .. ' -es -X -c "argdelete foobar" -c"255cq"')
+  if !has('win32')
+    call assert_equal(0, v:shell_error)
+  else
+    call assert_equal(256, v:shell_error)
+  endif
+  let log = filter(readfile(logfile), {idx, val -> val =~ "E480"})
+  call assert_match('E480: No match: foobar', log[0])
+  call delete('Xcq_log.txt')
+endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

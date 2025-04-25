@@ -10,6 +10,8 @@ source screendump.vim
 source mouse.vim
 source term_util.vim
 
+import './vim9.vim' as v9
+
 let $PROMPT_COMMAND=''
 
 func Test_terminal_altscreen()
@@ -73,22 +75,30 @@ func Terminal_color(group_name, highlight_cmds, highlight_opt, open_cmds)
 
   let lines = [
 	\ 'call setline(1, range(20))',
+    \ 'func NotifyParent()',
+    \ '  call echoraw("' .. TermNotifyParentCmd(v:true) .. '")',
+    \ 'endfunc',
 	\ 'func OpenTerm()',
 	\ '  set noruler',
-	\ "  call term_start('cat', #{vertical: 1, " .. a:highlight_opt .. "})",
+	\ "  call term_start('cat', #{vertical: 1, "
+    \      .. 'exit_cb: {->NotifyParent()}, '
+    \      .. a:highlight_opt .. "})",
+    \ '  call NotifyParent()',
 	\ ] + a:open_cmds + [
 	\ 'endfunc',
-	\ ] + a:highlight_cmds
+	\ ] + a:highlight_cmds + [
+    \ 'call NotifyParent()',
+    \ ]
   call writefile(lines, 'XtermStart', 'D')
   let buf = RunVimInTerminal('-S XtermStart', #{rows: 15})
-  call TermWait(buf, 100)
+  call WaitForChildNotification()
   call term_sendkeys(buf, ":call OpenTerm()\<CR>")
-  call TermWait(buf, 50)
+  call WaitForChildNotification()
   call term_sendkeys(buf, "hello\<CR>")
   call VerifyScreenDump(buf, 'Test_terminal_color_' .. a:group_name, {})
 
   call term_sendkeys(buf, "\<C-D>")
-  call TermWait(buf, 50)
+  call WaitForChildNotification()
   call StopVimInTerminal(buf)
 endfunc
 
@@ -268,11 +278,11 @@ func Test_terminal_in_popup()
 	\ ]
   call writefile(lines, 'XtermPopup', 'D')
   let buf = RunVimInTerminal('-S XtermPopup', #{rows: 15})
-  call TermWait(buf, 200)
+  call TermWait(buf,0)
   call term_sendkeys(buf, ":call OpenTerm(0)\<CR>")
-  call TermWait(buf, 800)
+  call TermWait(buf,0)
   call term_sendkeys(buf, ":\<CR>")
-  call TermWait(buf, 500)
+  call TermWait(buf,0)
   call term_sendkeys(buf, "\<C-W>:echo getwinvar(g:winid, \"&buftype\") win_gettype(g:winid)\<CR>")
   call VerifyScreenDump(buf, 'Test_terminal_popup_1', {})
 
@@ -280,16 +290,16 @@ func Test_terminal_in_popup()
   call VerifyScreenDump(buf, 'Test_terminal_popup_2', {})
  
   call term_sendkeys(buf, ":call OpenTerm(1)\<CR>")
-  call TermWait(buf, 800)
+  call TermWait(buf,0)
   call term_sendkeys(buf, ":set hlsearch\<CR>")
-  call TermWait(buf, 500)
+  call TermWait(buf,0)
   call term_sendkeys(buf, "/edit\<CR>")
   call VerifyScreenDump(buf, 'Test_terminal_popup_3', {})
  
   call term_sendkeys(buf, "\<C-W>:call HidePopup()\<CR>")
   call VerifyScreenDump(buf, 'Test_terminal_popup_4', {})
   call term_sendkeys(buf, "\<CR>")
-  call TermWait(buf, 50)
+  call TermWait(buf,0)
 
   call term_sendkeys(buf, "\<C-W>:call ClosePopup()\<CR>")
   call VerifyScreenDump(buf, 'Test_terminal_popup_5', {})
@@ -305,9 +315,9 @@ func Test_terminal_in_popup()
   call term_sendkeys(buf, "A")
   call VerifyScreenDump(buf, 'Test_terminal_popup_8', {})
 
-  call TermWait(buf, 50)
+  call TermWait(buf,0)
   call term_sendkeys(buf, ":q\<CR>")
-  call TermWait(buf, 250)  " wait for terminal to vanish
+  call WaitForAssert({-> assert_equal(0, match(term_getline(buf, 6), '^5\s*$'))}, 250) " wait for terminal to vanish
 
   call StopVimInTerminal(buf)
 endfunc
@@ -351,27 +361,32 @@ func Terminal_in_popup_color(group_name, highlight_cmds, highlight_opt, popup_cm
 
   let lines = [
 	\ 'call setline(1, range(20))',
+    \ 'func NotifyParent(...)',
+    \ '  call echoraw("' .. TermNotifyParentCmd(v:true) .. '")',
+    \ 'endfunc',
 	\ 'func OpenTerm()',
-	\ "  let s:buf = term_start('cat', #{hidden: 1, "
+	\ "  let s:buf = term_start('cat', #{hidden: 1, term_finish: 'close', "
 	\ .. a:highlight_opt .. "})",
-	\ '  let g:winid = popup_create(s:buf, #{border: [], '
-  \ .. a:popup_opt .. '})',
-  \ ] + a:popup_cmds + [
+    \ '  let g:winid = popup_create(s:buf, #{border: [], '
+    \      .. 'callback: {->NotifyParent()}, '
+    \      .. a:popup_opt .. '})',
+    \ ] + a:popup_cmds + [
+    \ '  call NotifyParent()',
 	\ 'endfunc',
-	\ ] + a:highlight_cmds
+	\ ] + a:highlight_cmds + [
+    \ 'call NotifyParent()',
+    \ ]
   call writefile(lines, 'XtermPopup', 'D')
   let buf = RunVimInTerminal('-S XtermPopup', #{rows: 15})
-  call TermWait(buf, 100)
+  call WaitForChildNotification()
   call term_sendkeys(buf, ":set noruler\<CR>")
   call term_sendkeys(buf, ":call OpenTerm()\<CR>")
-  call TermWait(buf, 50)
+  call WaitForChildNotification()
   call term_sendkeys(buf, "hello\<CR>")
   call VerifyScreenDump(buf, 'Test_terminal_popup_' .. a:group_name, {})
 
   call term_sendkeys(buf, "\<C-D>")
-  call TermWait(buf, 50)
-  call term_sendkeys(buf, ":q\<CR>")
-  call TermWait(buf, 50)  " wait for terminal to vanish
+  call WaitForChildNotification()
   call StopVimInTerminal(buf)
 endfunc
 
@@ -931,5 +946,71 @@ func Test_terminal_term_start_error()
   delfunc s:term_start_error
 endfunc
 
+func Test_terminal_vt420()
+  CheckRunVimInTerminal
+  " For Termcap
+  CheckUnix
+  CheckExecutable infocmp
+  let a = system('infocmp vt420')
+  if v:shell_error
+     " reset v:shell_error
+     let a = system('true')
+     throw 'Skipped: vt420 terminfo not available'
+  endif
+  let rows = 15
+  call writefile([':set term=vt420'], 'Xterm420', 'D')
+
+  let buf = RunVimInTerminal('-S Xterm420', #{rows: rows})
+  call TermWait(buf, 100)
+  call term_sendkeys(buf, ":set t_xo?\<CR>")
+  call WaitForAssert({-> assert_match('t_xo=y', term_getline(buf, rows))})
+  call StopVimInTerminal(buf)
+
+  call writefile([''], 'Xterm420')
+  let buf = RunVimInTerminal('-S Xterm420', #{rows: rows})
+  call TermWait(buf, 100)
+  call term_sendkeys(buf, ":set t_xo?\<CR>")
+  call WaitForAssert({-> assert_match('t_xo=\s\+', term_getline(buf, rows))})
+  call StopVimInTerminal(buf)
+endfunc
+
+" Test for using 'vertical' with term_start(). If a following term_start(),
+" doesn't have the 'vertical' attribute, then it should be split horizontally.
+func Test_terminal_vertical()
+  let lines =<< trim END
+    call term_start("NONE", {'vertical': 1})
+    call term_start("NONE")
+    VAR layout = winlayout()
+    call assert_equal('row', layout[0], string(layout))
+    call assert_equal('col', layout[1][0][0], string(layout))
+    :%bw!
+  END
+  call v9.CheckLegacyAndVim9Success(lines)
+endfunc
+
+" Needs to come before Test_hidden_terminal(), why?
+func Test_autocmd_buffilepost_with_hidden_term()
+  CheckExecutable true
+  new XTestFile
+  defer delete('XTestFile')
+  call setline(1, ['one', 'two', 'three'])
+  call cursor(3, 10)
+  augroup TestCursor
+    au!
+    autocmd BufFilePost * call setbufvar(3, '&tabstop', 4)
+  augroup END
+
+  let buf = term_start(['true'], #{hidden: 1, term_finish: 'close'})
+  call term_wait(buf)
+  redraw!
+  call assert_equal('XTestFile', bufname('%'))
+  call assert_equal([0, 3, 5, 0], getpos('.'))
+
+  augroup TestCursor
+    au!
+  augroup END
+  augroup! TestCursor
+  bw! XTestFile
+endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

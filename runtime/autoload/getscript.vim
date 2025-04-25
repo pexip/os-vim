@@ -1,10 +1,19 @@
 " ---------------------------------------------------------------------
 " getscript.vim
-"  Author:	Charles E. Campbell
+"  Maintainer: This runtime file is looking for a new maintainer.
+"  Original Author: Charles E. Campbell
 "  Date:	Jan 21, 2014
-"  Version:	36
+"  Version:	37
 "  Installing:	:help glvs-install
 "  Usage:	:help glvs
+"  Last Change:	{{{1
+"   2024 Sep 08 by Vim Project: several small fixes (#15640)
+"   2024 Sep 23 by Vim Project: runtime dir selection fix (#15722)
+"                               autoloading search path fix
+"                               substitution of hardcoded commands with global variables
+"   2024 Nov 12 by Vim Project: fix problems on Windows (#16036)
+"   2025 Feb 28 by Vim Project: add support for bzip3 (#16755)
+"  }}}
 "
 " GetLatestVimScripts: 642 1 :AutoInstall: getscript.vim
 "redraw!|call inputsave()|call input("Press <cr> to continue")|call inputrestore()
@@ -15,14 +24,14 @@
 if exists("g:loaded_getscript")
  finish
 endif
-let g:loaded_getscript= "v36"
+let g:loaded_getscript= "v37"
 if &cp
  echoerr "GetLatestVimScripts is not vi-compatible; not loaded (you need to set nocp)"
  finish
 endif
-if v:version < 702
+if v:version < 901
  echohl WarningMsg
- echo "***warning*** this version of GetLatestVimScripts needs vim 7.2"
+ echo "***warning*** this version of GetLatestVimScripts needs vim 9.1"
  echohl Normal
  finish
 endif
@@ -50,6 +59,9 @@ endif
 if !exists("g:GetLatestVimScripts_wget")
  if executable("wget")
   let g:GetLatestVimScripts_wget= "wget"
+ elseif executable("curl.exe")
+  " enforce extension: windows powershell desktop version has a curl alias that hides curl.exe
+  let g:GetLatestVimScripts_wget= "curl.exe"
  elseif executable("curl")
   let g:GetLatestVimScripts_wget= "curl"
  else
@@ -62,8 +74,8 @@ endif
 if !exists("g:GetLatestVimScripts_options")
  if g:GetLatestVimScripts_wget == "wget"
   let g:GetLatestVimScripts_options= "-q -O"
- elseif g:GetLatestVimScripts_wget == "curl"
-  let g:GetLatestVimScripts_options= "-s -O"
+ elseif g:GetLatestVimScripts_wget =~ "curl"
+  let g:GetLatestVimScripts_options= "-s -o"
  else
   let g:GetLatestVimScripts_options= ""
  endif
@@ -76,7 +88,33 @@ endif
 
 " set up default scriptaddr address
 if !exists("g:GetLatestVimScripts_scriptaddr")
- let g:GetLatestVimScripts_scriptaddr = 'http://vim.sourceforge.net/script.php?script_id='
+ let g:GetLatestVimScripts_scriptaddr = 'https://www.vim.org/scripts/script.php?script_id='
+endif
+
+if !exists("g:GetLatestVimScripts_downloadaddr")
+  let g:GetLatestVimScripts_downloadaddr = 'https://www.vim.org/scripts/download_script.php?src_id='
+endif
+
+" define decompression tools (on windows this allows redirection to wsl or git tools).
+" Note tar is available as builtin since Windows 11.
+if !exists("g:GetLatestVimScripts_bunzip2")
+ let g:GetLatestVimScripts_bunzip2= "bunzip2"
+endif
+
+if !exists("g:GetLatestVimScripts_bunzip3")
+ let g:GetLatestVimScripts_bunzip3= "bunzip3"
+endif
+
+if !exists("g:GetLatestVimScripts_gunzip")
+ let g:GetLatestVimScripts_gunzip= "gunzip"
+endif
+
+if !exists("g:GetLatestVimScripts_unxz")
+ let g:GetLatestVimScripts_unxz= "unxz"
+endif
+
+if !exists("g:GetLatestVimScripts_unzip")
+ let g:GetLatestVimScripts_unzip= "unzip"
 endif
 
 "" For debugging:
@@ -88,18 +126,19 @@ endif
 let s:autoinstall= ""
 if g:GetLatestVimScripts_allowautoinstall
 
- if (has("win32") || has("gui_win32") || has("gui_win32s") || has("win16") || has("win64") || has("win32unix") || has("win95")) && &shell != "bash"
-  " windows (but not cygwin/bash)
-  let s:dotvim= "vimfiles"
-  if !exists("g:GetLatestVimScripts_mv")
-   let g:GetLatestVimScripts_mv= "ren"
-  endif
+ let s:is_windows = has("win32") || has("gui_win32") || has("gui_win32s") || has("win16") || has("win64") || has("win32unix") || has("win95")
+ let s:dotvim= s:is_windows ? "vimfiles" : ".vim"
 
- else
-  " unix
-  let s:dotvim= ".vim"
-  if !exists("g:GetLatestVimScripts_mv")
-   let g:GetLatestVimScripts_mv= "mv"
+ if !exists("g:GetLatestVimScripts_mv")
+  if &shell =~? '\<pwsh\>\|\<powershell\>'
+   let g:GetLatestVimScripts_mv= "move -Force"
+  elseif s:is_windows && &shell =~? '\<cmd\>'
+   " windows (but not cygwin/bash)
+   let g:GetLatestVimScripts_mv= "move /Y"
+  else
+   " unix or cygwin bash/zsh
+   " 'mv' overrides existing files without asking
+    let g:GetLatestVimScripts_mv= "mv"
   endif
  endif
 
@@ -130,12 +169,6 @@ fun! getscript#GetLatestVimScripts()
   if executable(g:GetLatestVimScripts_wget) != 1
    echoerr "GetLatestVimScripts needs ".g:GetLatestVimScripts_wget." which apparently is not available on your system"
 "   call Dret("GetLatestVimScripts : wget not executable/available")
-   return
-  endif
-
-  " insure that fnameescape() is available
-  if !exists("*fnameescape")
-   echoerr "GetLatestVimScripts needs fnameescape() (provided by 7.1.299 or later)"
    return
   endif
 
@@ -209,7 +242,13 @@ fun! getscript#GetLatestVimScripts()
 "  call Decho("lastline#".lastline)
   let firstdir    = substitute(&rtp,',.*$','','')
   let plugins     = split(globpath(firstdir,"plugin/**/*.vim"),'\n')
-  let plugins     = plugins + split(globpath(firstdir,"AsNeeded/**/*.vim"),'\n')
+  let plugins     += split(globpath(firstdir,"ftplugin/**/*.vim"),'\n')
+  let plugins     += split(globpath(firstdir,"AsNeeded/**/*.vim"),'\n')
+" extend the search to the packages too (this script predates the feature)
+  let plugins     += split(globpath(firstdir,"pack/*/start/*/plugin/**/*.vim"),'\n')
+  let plugins     += split(globpath(firstdir,"pack/*/opt/*/plugin/**/*.vim"),'\n')
+  let plugins     += split(globpath(firstdir,"pack/*/start/*/ftplugin/**/*.vim"),'\n')
+  let plugins     += split(globpath(firstdir,"pack/*/opt/*/ftplugin/**/*.vim"),'\n')
   let foundscript = 0
 
   " this loop updates the GetLatestVimScripts.dat file
@@ -332,7 +371,7 @@ fun! getscript#GetLatestVimScripts()
 endfun
 
 " ---------------------------------------------------------------------
-"  GetOneScript: (Get Latest Vim Script) this function operates {{{1
+"  GetOneScript: (Get Latest Vim script) this function operates {{{1
 "    on the current line, interpreting two numbers and text as
 "    ScriptID, SourceID, and Filename.
 "    It downloads any scripts that have newer versions from vim.sourceforge.net.
@@ -344,7 +383,16 @@ fun! s:GetOneScript(...)
   let t_ti= &t_ti
   let t_te= &t_te
   let rs  = &rs
+  let ssl = &ssl
+
   set t_ti= t_te= nors
+  " avoid issues with shellescape() on Windows
+  if s:is_windows && &shell =~? '\<cmd\>'
+    set noshellslash
+  endif
+
+  " restore valures afterwards
+  defer execute("let @a = rega | let &t_ti = t_ti | let &t_te = t_te | let &rs = rs | let &ssl = ssl")
 
  " put current line on top-of-screen and interpret it into
  " a      script identifier  : used to obtain webpage
@@ -361,7 +409,6 @@ fun! s:GetOneScript(...)
   else
    let curline  = getline(".")
    if curline =~ '^\s*#'
-    let @a= rega
 "    call Dret("GetOneScript : skipping a pure comment line")
     return
    endif
@@ -396,7 +443,6 @@ fun! s:GetOneScript(...)
   " plugin author protection from downloading his/her own scripts atop their latest work
   if scriptid == 0 || srcid == 0
    " When looking for :AutoInstall: lines, skip scripts that have   0 0 scriptname
-   let @a= rega
 "   call Dret("GetOneScript : skipping a scriptid==srcid==0 line")
    return
   endif
@@ -464,7 +510,6 @@ fun! s:GetOneScript(...)
 "   call Decho("***warning*** couldn'".'t find "Click on the package..." in description page for <'.aicmmnt.">")
    echomsg "***warning*** couldn'".'t find "Click on the package..." in description page for <'.aicmmnt.">"
 "   call Dret("GetOneScript : srch for /Click on the package/ failed")
-   let @a= rega
    return
   endif
 "  call Decho('found "Click on the package to download"')
@@ -480,7 +525,6 @@ fun! s:GetOneScript(...)
    let s:downerrors = s:downerrors + 1
 "   call Decho("***warning*** couldn'".'t find "src_id=" in description page for <'.aicmmnt.">")
    echomsg "***warning*** couldn'".'t find "src_id=" in description page for <'.aicmmnt.">"
-   let @a= rega
 "  call Dret("GetOneScript : srch for /src_id/ failed")
    return
   endif
@@ -514,11 +558,11 @@ fun! s:GetOneScript(...)
 "   call Decho(".downloading new <".sname.">")
    echomsg ".downloading new <".sname.">"
    if has("win32") || has("win16") || has("win95")
-"    call Decho(".new|exe silent r!".g:GetLatestVimScripts_wget." ".g:GetLatestVimScripts_options." ".shellescape(sname)." ".shellescape('http://vim.sourceforge.net/scripts/download_script.php?src_id='.latestsrcid)."|q")
-    new|exe "silent r!".g:GetLatestVimScripts_wget." ".g:GetLatestVimScripts_options." ".shellescape(sname)." ".shellescape('http://vim.sourceforge.net/scripts/download_script.php?src_id='.latestsrcid)|q
+"    call Decho(".new|exe silent r!".g:GetLatestVimScripts_wget." ".g:GetLatestVimScripts_options." ".shellescape(sname)." ".shellescape(g:GetLatestVimScripts_downloadaddr.latestsrcid)."|bw!")
+    new|exe "silent r!".g:GetLatestVimScripts_wget." ".g:GetLatestVimScripts_options." ".shellescape(sname)." ".shellescape(g:GetLatestVimScripts_downloadaddr.latestsrcid)|bw!
    else
-"    call Decho(".exe silent !".g:GetLatestVimScripts_wget." ".g:GetLatestVimScripts_options." ".shellescape(sname)." ".shellescape('http://vim.sourceforge.net/scripts/download_script.php?src_id='))
-    exe "silent !".g:GetLatestVimScripts_wget." ".g:GetLatestVimScripts_options." ".shellescape(sname)." ".shellescape('http://vim.sourceforge.net/scripts/download_script.php?src_id=').latestsrcid
+"    call Decho(".exe silent !".g:GetLatestVimScripts_wget." ".g:GetLatestVimScripts_options." ".shellescape(sname)." ".shellescape(g:GetLatestVimScripts_downloadaddr.latestsrcid)
+    exe "silent !".g:GetLatestVimScripts_wget." ".g:GetLatestVimScripts_options." ".shellescape(sname)." ".shellescape(g:GetLatestVimScripts_downloadaddr.latestsrcid)
    endif
 
    " --------------------------------------------------------------------------
@@ -526,73 +570,55 @@ fun! s:GetOneScript(...)
    " --------------------------------------------------------------------------
 "   call Decho("checking if plugin requested autoinstall: doautoinstall=".doautoinstall)
    if doautoinstall
-"    call Decho(" ")
-"    call Decho("Autoinstall: getcwd<".getcwd()."> filereadable(".sname.")=".filereadable(sname))
     if filereadable(sname)
-"     call Decho("<".sname."> is readable")
-"     call Decho("exe silent !".g:GetLatestVimScripts_mv." ".shellescape(sname)." ".shellescape(s:autoinstall))
      exe "silent !".g:GetLatestVimScripts_mv." ".shellescape(sname)." ".shellescape(s:autoinstall)
      let curdir    = fnameescape(substitute(getcwd(),'\','/','ge'))
      let installdir= curdir."/Installed"
      if !isdirectory(installdir)
       call mkdir(installdir)
      endif
-"     call Decho("curdir<".curdir."> installdir<".installdir.">")
-"     call Decho("exe cd ".fnameescape(s:autoinstall))
      exe "cd ".fnameescape(s:autoinstall)
 
      " determine target directory for moves
      let firstdir= substitute(&rtp,',.*$','','')
      let pname   = substitute(sname,'\..*','.vim','')
-"     call Decho("determine tgtdir: is <".firstdir.'/AsNeeded/'.pname." readable?")
      if filereadable(firstdir.'/AsNeeded/'.pname)
       let tgtdir= "AsNeeded"
      else
       let tgtdir= "plugin"
      endif
-"     call Decho("tgtdir<".tgtdir.">  pname<".pname.">")
-     
+
      " decompress
      if sname =~ '\.bz2$'
-"      call Decho("decompress: attempt to bunzip2 ".sname)
-      exe "sil !bunzip2 ".shellescape(sname)
+      exe "sil !".g:GetLatestVimScripts_bunzip2." ".shellescape(sname)
       let sname= substitute(sname,'\.bz2$','','')
-"      call Decho("decompress: new sname<".sname."> after bunzip2")
+     elseif sname =~ '\.bz3$'
+      exe "sil !".g:GetLatestVimScripts_bunzip3." ".shellescape(sname)
+      let sname= substitute(sname,'\.bz3$','','')
      elseif sname =~ '\.gz$'
-"      call Decho("decompress: attempt to gunzip ".sname)
-      exe "sil !gunzip ".shellescape(sname)
+      exe "sil !".g:GetLatestVimScripts_gunzip." ".shellescape(sname)
       let sname= substitute(sname,'\.gz$','','')
-"      call Decho("decompress: new sname<".sname."> after gunzip")
      elseif sname =~ '\.xz$'
-"      call Decho("decompress: attempt to unxz ".sname)
-      exe "sil !unxz ".shellescape(sname)
+      exe "sil !".g:GetLatestVimScripts_unxz." ".shellescape(sname)
       let sname= substitute(sname,'\.xz$','','')
-"      call Decho("decompress: new sname<".sname."> after unxz")
      else
 "      call Decho("no decompression needed")
      endif
-     
-     " distribute archive(.zip, .tar, .vba, ...) contents
+
+     " distribute archive(.zip, .tar, .vba, .vmb, ...) contents
      if sname =~ '\.zip$'
-"      call Decho("dearchive: attempt to unzip ".sname)
-      exe "silent !unzip -o ".shellescape(sname)
+      exe "silent !".g:GetLatestVimScripts_unzip." -o ".shellescape(sname)
      elseif sname =~ '\.tar$'
-"      call Decho("dearchive: attempt to untar ".sname)
       exe "silent !tar -xvf ".shellescape(sname)
      elseif sname =~ '\.tgz$'
-"      call Decho("dearchive: attempt to untar+gunzip ".sname)
       exe "silent !tar -zxvf ".shellescape(sname)
      elseif sname =~ '\.taz$'
-"      call Decho("dearchive: attempt to untar+uncompress ".sname)
       exe "silent !tar -Zxvf ".shellescape(sname)
      elseif sname =~ '\.tbz$'
-"      call Decho("dearchive: attempt to untar+bunzip2 ".sname)
       exe "silent !tar -jxvf ".shellescape(sname)
      elseif sname =~ '\.txz$'
-"      call Decho("dearchive: attempt to untar+xz ".sname)
       exe "silent !tar -Jxvf ".shellescape(sname)
-     elseif sname =~ '\.vba$'
-"      call Decho("dearchive: attempt to handle a vimball: ".sname)
+     elseif sname =~ '\.vba$\|\.vmb$'
       silent 1split
       if exists("g:vimball_home")
        let oldvimballhome= g:vimball_home
@@ -609,25 +635,21 @@ fun! s:GetOneScript(...)
      else
 "      call Decho("no dearchiving needed")
      endif
-     
+
      " ---------------------------------------------
      " move plugin to plugin/ or AsNeeded/ directory
      " ---------------------------------------------
      if sname =~ '.vim$'
-"      call Decho("dearchive: attempt to simply move ".sname." to ".tgtdir)
       exe "silent !".g:GetLatestVimScripts_mv." ".shellescape(sname)." ".tgtdir
      else
-"      call Decho("dearchive: move <".sname."> to installdir<".installdir.">")
       exe "silent !".g:GetLatestVimScripts_mv." ".shellescape(sname)." ".installdir
      endif
      if tgtdir != "plugin"
-"      call Decho("exe silent !".g:GetLatestVimScripts_mv." plugin/".shellescape(pname)." ".tgtdir)
-      exe "silent !".g:GetLatestVimScripts_mv." plugin/".shellescape(pname)." ".tgtdir
+      exe "silent !".g:GetLatestVimScripts_mv." ".shellescape("plugin/".pname)." ".tgtdir
      endif
-     
+
      " helptags step
      let docdir= substitute(&rtp,',.*','','e')."/doc"
-"     call Decho("helptags: docdir<".docdir.">")
      exe "helptags ".fnameescape(docdir)
      exe "cd ".fnameescape(curdir)
     endif
@@ -642,19 +664,8 @@ fun! s:GetOneScript(...)
 
    " update the data in the <GetLatestVimScripts.dat> file
    call setline(line("."),modline)
-"   call Decho("update data in ".expand("%")."#".line(".").": modline<".modline.">")
-"  else " Decho
-"   call Decho("[latestsrcid=".latestsrcid."] <= [srcid=".srcid."], no need to update")
   endif
 
- " restore options
-  let &t_ti = t_ti
-  let &t_te = t_te
-  let &rs   = rs
-  let @a    = rega
-"  call Dredir("BUFFER TEST (GetOneScript)","ls!")
-
-"  call Dret("GetOneScript")
 endfun
 
 " ---------------------------------------------------------------------

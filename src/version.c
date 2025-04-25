@@ -13,7 +13,7 @@
  * Vim originated from Stevie version 3.6 (Fish disk 217) by GRWalter (Fred)
  * It has been changed beyond recognition since then.
  *
- * Differences between version 8.2 and 9.0 can be found with ":help version9".
+ * Differences between version 8.2 and 9.1 can be found with ":help version9".
  * Differences between version 7.4 and 8.x can be found with ":help version8".
  * Differences between version 6.4 and 7.x can be found with ":help version7".
  * Differences between version 5.8 and 6.x can be found with ":help version6".
@@ -474,7 +474,11 @@ static char *(features[]) =
 #endif
 #ifdef FEAT_PYTHON3
 # ifdef DYNAMIC_PYTHON3
+#  ifdef DYNAMIC_PYTHON3_STABLE_ABI
+	"+python3/dyn-stable",
+#  else
 	"+python3/dyn",
+#  endif
 # else
 	"+python3",
 # endif
@@ -650,6 +654,11 @@ static char *(features[]) =
 	"-X11",
 # endif
 #endif
+# ifdef FEAT_XATTR
+	"+xattr",
+# else
+	"-xattr",
+# endif
 #ifdef FEAT_XFONTSET
 	"+xfontset",
 #else
@@ -695,302 +704,6 @@ static char *(features[]) =
 
 static int included_patches[] =
 {   /* Add new patch number below this line */
-/**/
-    1378,
-/**/
-    1377,
-/**/
-    1376,
-/**/
-    1375,
-/**/
-    1374,
-/**/
-    1373,
-/**/
-    1372,
-/**/
-    1371,
-/**/
-    1370,
-/**/
-    1369,
-/**/
-    1368,
-/**/
-    1367,
-/**/
-    1366,
-/**/
-    1365,
-/**/
-    1364,
-/**/
-    1363,
-/**/
-    1362,
-/**/
-    1361,
-/**/
-    1360,
-/**/
-    1359,
-/**/
-    1358,
-/**/
-    1357,
-/**/
-    1356,
-/**/
-    1355,
-/**/
-    1354,
-/**/
-    1353,
-/**/
-    1352,
-/**/
-    1351,
-/**/
-    1350,
-/**/
-    1349,
-/**/
-    1348,
-/**/
-    1347,
-/**/
-    1346,
-/**/
-    1345,
-/**/
-    1344,
-/**/
-    1343,
-/**/
-    1342,
-/**/
-    1341,
-/**/
-    1340,
-/**/
-    1339,
-/**/
-    1338,
-/**/
-    1337,
-/**/
-    1336,
-/**/
-    1335,
-/**/
-    1334,
-/**/
-    1333,
-/**/
-    1332,
-/**/
-    1331,
-/**/
-    1330,
-/**/
-    1329,
-/**/
-    1328,
-/**/
-    1327,
-/**/
-    1326,
-/**/
-    1325,
-/**/
-    1324,
-/**/
-    1323,
-/**/
-    1322,
-/**/
-    1321,
-/**/
-    1320,
-/**/
-    1319,
-/**/
-    1318,
-/**/
-    1317,
-/**/
-    1316,
-/**/
-    1315,
-/**/
-    1314,
-/**/
-    1313,
-/**/
-    1312,
-/**/
-    1311,
-/**/
-    1310,
-/**/
-    1309,
-/**/
-    1308,
-/**/
-    1307,
-/**/
-    1306,
-/**/
-    1305,
-/**/
-    1304,
-/**/
-    1303,
-/**/
-    1302,
-/**/
-    1301,
-/**/
-    1300,
-/**/
-    1299,
-/**/
-    1298,
-/**/
-    1297,
-/**/
-    1296,
-/**/
-    1295,
-/**/
-    1294,
-/**/
-    1293,
-/**/
-    1292,
-/**/
-    1291,
-/**/
-    1290,
-/**/
-    1289,
-/**/
-    1288,
-/**/
-    1287,
-/**/
-    1286,
-/**/
-    1285,
-/**/
-    1284,
-/**/
-    1283,
-/**/
-    1282,
-/**/
-    1281,
-/**/
-    1280,
-/**/
-    1279,
-/**/
-    1278,
-/**/
-    1277,
-/**/
-    1276,
-/**/
-    1275,
-/**/
-    1274,
-/**/
-    1273,
-/**/
-    1272,
-/**/
-    1271,
-/**/
-    1270,
-/**/
-    1269,
-/**/
-    1268,
-/**/
-    1267,
-/**/
-    1266,
-/**/
-    1265,
-/**/
-    1264,
-/**/
-    1263,
-/**/
-    1262,
-/**/
-    1261,
-/**/
-    1260,
-/**/
-    1259,
-/**/
-    1258,
-/**/
-    1257,
-/**/
-    1256,
-/**/
-    1255,
-/**/
-    1254,
-/**/
-    1253,
-/**/
-    1252,
-/**/
-    1251,
-/**/
-    1250,
-/**/
-    1249,
-/**/
-    1248,
-/**/
-    1247,
-/**/
-    1246,
-/**/
-    1245,
-/**/
-    1244,
-/**/
-    1243,
-/**/
-    1242,
-/**/
-    1241,
-/**/
-    1240,
-/**/
-    1239,
-/**/
-    1238,
-/**/
-    1237,
-/**/
-    1236,
-/**/
-    1235,
-/**/
-    1234,
-/**/
-    1233,
-/**/
-    1232,
-/**/
-    1231,
 /**/
     1230,
 /**/
@@ -3818,9 +3531,20 @@ list_version(void)
     version_msg(USR_VIMRC_FILE2);
     version_msg("\"\n");
 #endif
-#ifdef USR_VIMRC_FILE3
+#if defined(USR_VIMRC_FILE3) && defined(XDG_VIMRC_FILE)
     version_msg(_(" 3rd user vimrc file: \""));
     version_msg(USR_VIMRC_FILE3);
+    version_msg("\"\n");
+    version_msg(_(" 4th user vimrc file: \""));
+    version_msg((char *)(XDG_VIMRC_FILE));
+    version_msg("\"\n");
+#elif defined(USR_VIMRC_FILE3)
+    version_msg(_(" 3rd user vimrc file: \""));
+    version_msg(USR_VIMRC_FILE3);
+    version_msg("\"\n");
+#elif defined(XDG_VIMRC_FILE)
+    version_msg(_(" 3rd user vimrc file: \""));
+    version_msg((char *)(XDG_VIMRC_FILE));
     version_msg("\"\n");
 #endif
 #ifdef USR_EXRC_FILE
@@ -4065,9 +3789,9 @@ do_intro_line(
 	if (highest_patch())
 	{
 	    // Check for 9.9x or 9.9xx, alpha/beta version
-	    if (isalpha((int)vers[3]))
+	    if (SAFE_isalpha((int)vers[3]))
 	    {
-		int len = (isalpha((int)vers[4])) ? 5 : 4;
+		int len = (SAFE_isalpha((int)vers[4])) ? 5 : 4;
 		sprintf((char *)vers + len, ".%d%s", highest_patch(),
 							 mediumVersion + len);
 	    }
