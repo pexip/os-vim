@@ -9,16 +9,19 @@ include /usr/share/dpkg/default.mk
 
 BUILDER = team+vim@tracker.debian.org
 
+# Work around #1082125
+ifeq (s390x,$(DEB_HOST_ARCH))
+  CFLAGS += -O1
+endif
+
 MAKETEST = no
 ifeq ($(DEB_HOST_GNU_TYPE),$(DEB_BUILD_GNU_TYPE))
-  ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
-    MAKETEST = yes
-  endif
+  MAKETEST = yes
 endif
 
 ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
-    NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
-    MAKEFLAGS += -j$(NUMJOBS)
+  NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+  MAKEFLAGS += -j$(NUMJOBS)
 endif
 
 ifneq (,$(filter pkg.vim.noruby,$(DEB_BUILD_PROFILES)))
@@ -32,6 +35,9 @@ else
   RUBY_SUBSTVARS = -Vvim:Ruby-Provides='vim-ruby (= $${binary:Version})' -Vvim:Ruby-Desc=' Ruby,'
   RUBY_CFGFLAGS = --enable-rubyinterp
 endif
+
+# Set to TEST_SKIP_PAT=<vim pattern> to exclude running tests matching the pattern
+EXCLUDE_PAT = TEST_SKIP_PAT='Test_crash1\|glvs'
 
 CFGFLAGS = --prefix=/usr --mandir='$${prefix}'/share/man --without-local-dir
 CFGFLAGS += --with-modified-by="$(BUILDER)"
@@ -145,6 +151,7 @@ CFGFLAGS_vim-nox = $(CFGFLAGS) $(OPTFLAGS) $(NOXFLAGS) $(ALLINTERPFLAGS) $(RUBY_
 NAME = vim
 # Convert x.y.z to x.y
 VERSION = $(basename $(DEB_VERSION_UPSTREAM))
+VIMMAJOR = $(basename $(VERSION))
 VIMCUR = $(NAME)$(subst .,,$(VERSION))
 LANGS = da de fr it ja pl ru tr
 
@@ -165,7 +172,11 @@ update-changelog:
 	wget -O debian/changelog.upstream http://ftp.vim.org/pub/vim/patches/$(VERSION)/README
 
 override_dh_auto_clean:
-	[ ! -f src/auto/config.cache ] || make distclean
+# The vim-basic variant is always enabled, so we can rely on it when checking
+# whether we can call "make distclean".  The config.cache check is to avoid
+# calling make when configure has not run, otherwise make will run configure to
+# generate an include file
+	[ ! -f src/vim-basic/auto/config.cache ] || make distclean
 	[ ! -f debian/configure.dist ] || mv debian/configure.dist src/auto/configure
 	find src/testdir -name '*.pyc' -delete
 	for v in $(VARIANTS); do \
@@ -188,7 +199,7 @@ override_dh_auto_build-indep:
 	$(MAKE) -f debian/rules build-vim-basic
 	$(MAKE) -C runtime/doc html
 	$(MAKE) -C debian/policy text html
-	$(MAKE) -C src/po vim.pot VIM=$(CURDIR)/src/vim-basic/vim
+	$(MAKE) -C src/po vim.pot VIMPROG=$(CURDIR)/src/vim-basic/vim
 
 override_dh_auto_build-arch: autoconf-stamp
 	$(call foreach-variant, $(MAKE) -f debian/rules build-"$${v}")
@@ -226,7 +237,7 @@ build-vim-%: VARIANT=vim-$*
 build-vim-%: configure-$(VARIANT)
 build-vim-%:
 	$(MAKE) -C src/$(VARIANT)
-	$(MAKE) -C runtime/doc tags VIMEXE=$(CURDIR)/src/$(VARIANT)/vim
+	$(MAKE) -C runtime/doc tags VIMPROG=$(CURDIR)/src/$(VARIANT)/vim
 
 test-vim-%: VARIANT=vim-$*
 test-vim-%:
@@ -237,7 +248,7 @@ ifeq (yes,$(MAKETEST))
 	for e in ADDRESS COLLATE CTYPE IDENTIFICATION MEASUREMENT MESSAGES MONETARY NAME NUMERIC PAPER TELEPHONE TIME; do \
 	  unset LC_$${e}; \
 	done; \
-	env TERM=xterm LC_ALL=C.UTF-8 LANG=C.UTF-8 $(MAKE) -j1 -C src/$(VARIANT) test
+	env $(EXCLUDE_PAT) TERM=xterm LC_ALL=C.UTF-8 LANG=C.UTF-8 $(MAKE) -j1 -C src/$(VARIANT) test
 endif
 
 override_dh_auto_install-arch:
@@ -268,6 +279,10 @@ override_dh_auto_install-indep:
 	    install-icons
 	rm -f "$(DESTDIR)/usr/bin/vim"
 
+COMMON_HELP_PATHS = runtime/doc/uganda.txt runtime/doc/sponsor.txt runtime/doc/version$(VIMMAJOR).txt
+debian/tiny/doc/tags: $(COMMON_HELP_PATHS)
+	./debian/generate-tiny-tags debian/tiny/doc/help.txt $(COMMON_HELP_PATHS) > debian/tiny/doc/tags
+
 override_dh_install-indep: DESTDIR=$(CURDIR)/debian/tmp
 override_dh_install-indep:
 	$(MAKE) -f debian/rules $(DOT_IN_DEPS)
@@ -287,7 +302,8 @@ override_dh_install-indep:
 	ps2pdf debian/tmplogo.ps debian/tmplogo.pdf
 	pdf2svg debian/tmplogo.pdf debian/vim-common/usr/share/icons/hicolor/scalable/apps/gvim.svg
 
-	env VIMCUR=$(VIMCUR) dh_install -X vim2html.pl -X 'README*.txt' -X README.el.txt -X README.el.cp737.txt
+	env VIMCUR=$(VIMCUR) VIMMAJOR=$(VIMMAJOR) dh_install -p vim-runtime $(subst runtime/doc/,-X ,$(COMMON_HELP_PATHS)) -X vim2html.pl -X 'README*.txt' -X README.el.txt -X README.el.cp737.txt
+	env VIMCUR=$(VIMCUR) VIMMAJOR=$(VIMMAJOR) dh_install -i -N vim-runtime
 	# adjust things for vim-gui-common
 	cp debian/vim-common/usr/share/man/man1/vim.1 \
 	   debian/vim-gui-common/usr/share/man/man1/gvim.1
@@ -332,11 +348,11 @@ install-vim-%: VARIANT=$*
 install-vim-%: BIN=$(subst -,.,vim-$(VARIANT))
 install-vim-%:
 	cp src/$(SHADOWDIR)/vim src/$(SHADOWDIR)/$(BIN)
-	[ $(VARIANT) != tiny ] || $(MAKE) -f debian/rules $(DOT_IN_DEPS_TINY)
+	[ $(VARIANT) != tiny ] || $(MAKE) -f debian/rules $(DOT_IN_DEPS_TINY) debian/tiny/doc/tags
 
 override_dh_install-arch:
 	$(call foreach-variant, $(MAKE) -f debian/rules install-$${v})
-	env VIMCUR=$(VIMCUR) dh_install
+	env VIMCUR=$(VIMCUR) VIMMAJOR=$(VIMMAJOR) dh_install -a
 
 $(DOT_IN_DEPS) $(DOT_IN_DEPS_TINY): %: %.in
 	cat $< | sed 's/@VIMCUR@/$(VIMCUR)/' > $@

@@ -40,6 +40,8 @@ static int  message_win_time = 3000;
 // hit-enter prompt.
 static int    start_message_win_timer = FALSE;
 
+static int popup_on_cmdline = FALSE;
+
 static void may_start_message_win_timer(win_T *wp);
 #endif
 
@@ -92,19 +94,19 @@ popup_options_one(dict_T *dict, char_u *key)
     return n;
 }
 
-    static void
+    static int
 set_padding_border(dict_T *dict, int *array, char *name, int max_val)
 {
     dictitem_T	*di;
 
     di = dict_find(dict, (char_u *)name, -1);
     if (di == NULL)
-	return;
+	return OK;
 
     if (di->di_tv.v_type != VAR_LIST)
     {
 	emsg(_(e_list_required));
-	return;
+	return FAIL;
     }
 
     list_T	*list = di->di_tv.vval.v_list;
@@ -115,7 +117,7 @@ set_padding_border(dict_T *dict, int *array, char *name, int max_val)
     for (i = 0; i < 4; ++i)
 	array[i] = 1;
     if (list == NULL)
-	return;
+	return OK;
 
     CHECK_LIST_MATERIALIZE(list);
     for (i = 0, li = list->lv_first; i < 4 && i < list->lv_len;
@@ -125,6 +127,8 @@ set_padding_border(dict_T *dict, int *array, char *name, int max_val)
 	if (nr >= 0)
 	    array[i] = nr > max_val ? max_val : nr;
     }
+
+    return OK;
 }
 
 /*
@@ -652,8 +656,8 @@ popup_show_curline(win_T *wp)
 	    wp->w_topline = wp->w_buffer->b_ml.ml_line_count;
 	while (wp->w_topline < wp->w_cursor.lnum
 		&& wp->w_topline < wp->w_buffer->b_ml.ml_line_count
-		&& plines_m_win(wp, wp->w_topline, wp->w_cursor.lnum)
-								> wp->w_height)
+		&& plines_m_win(wp, wp->w_topline, wp->w_cursor.lnum,
+					    wp->w_height + 1) > wp->w_height)
 	    ++wp->w_topline;
     }
 
@@ -694,11 +698,8 @@ popup_highlight_curline(win_T *wp)
 	if (!sign_exists_by_name(sign_name))
 	{
 	    char *linehl = "PopupSelected";
-
-	    if (syn_name2id((char_u *)linehl) == 0)
-		linehl = "PmenuSel";
-	    sign_define_by_name(sign_name, NULL, (char_u *)linehl,
-						       NULL, NULL, NULL, NULL);
+	    sign_define_by_name(sign_name, NULL, (char_u *)linehl, NULL, NULL, NULL,
+		    NULL, SIGN_DEF_PRIO);
 	}
 
 	sign_place(&sign_id, (char_u *)"PopUpMenu", sign_name,
@@ -713,7 +714,7 @@ popup_highlight_curline(win_T *wp)
 /*
  * Shared between popup_create() and f_popup_setoptions().
  */
-    static void
+    static int
 apply_general_options(win_T *wp, dict_T *dict)
 {
     dictitem_T	*di;
@@ -814,14 +815,18 @@ apply_general_options(win_T *wp, dict_T *dict)
 #endif
     }
 
-    set_padding_border(dict, wp->w_popup_padding, "padding", 999);
-    set_padding_border(dict, wp->w_popup_border, "border", 1);
+    if (set_padding_border(dict, wp->w_popup_padding, "padding", 999) == FAIL ||
+	set_padding_border(dict, wp->w_popup_border, "border", 1) == FAIL)
+	return FAIL;
 
     di = dict_find(dict, (char_u *)"borderhighlight", -1);
     if (di != NULL)
     {
 	if (di->di_tv.v_type != VAR_LIST || di->di_tv.vval.v_list == NULL)
+	{
 	    emsg(_(e_list_required));
+	    return FAIL;
+	}
 	else
 	{
 	    list_T	*list = di->di_tv.vval.v_list;
@@ -853,7 +858,10 @@ apply_general_options(win_T *wp, dict_T *dict)
     if (di != NULL)
     {
 	if (di->di_tv.v_type != VAR_LIST)
+	{
 	    emsg(_(e_list_required));
+	    return FAIL;
+	}
 	else
 	{
 	    list_T	*list = di->di_tv.vval.v_list;
@@ -927,7 +935,10 @@ apply_general_options(win_T *wp, dict_T *dict)
 	    VIM_CLEAR(wp->w_popup_mask_cells);
 	}
 	else
+	{
 	    semsg(_(e_invalid_value_for_argument_str), "mask");
+	    return FAIL;
+	}
     }
 
 #if defined(FEAT_TIMERS)
@@ -993,23 +1004,25 @@ apply_general_options(win_T *wp, dict_T *dict)
 
     di = dict_find(dict, (char_u *)"callback", -1);
     if (di == NULL)
-	return;
+	return OK;
 
     callback_T	callback = get_callback(&di->di_tv);
     if (callback.cb_name == NULL)
-	return;
+	return OK;
 
     free_callback(&wp->w_close_cb);
     set_callback(&wp->w_close_cb, &callback);
     if (callback.cb_free_name)
 	vim_free(callback.cb_name);
+
+    return OK;
 }
 
 /*
  * Go through the options in "dict" and apply them to popup window "wp".
  * "create" is TRUE when creating a new popup window.
  */
-    static void
+    static int
 apply_options(win_T *wp, dict_T *dict, int create)
 {
     int		nr;
@@ -1020,7 +1033,8 @@ apply_options(win_T *wp, dict_T *dict, int create)
 	set_string_option_direct_in_win(wp, (char_u *)"signcolumn", -1,
 					(char_u *)"no", OPT_FREE|OPT_LOCAL, 0);
 
-    apply_general_options(wp, dict);
+    if (apply_general_options(wp, dict) == FAIL)
+	return FAIL;
 
     nr = dict_get_bool(dict, "hidden", FALSE);
     if (nr > 0)
@@ -1041,6 +1055,8 @@ apply_options(win_T *wp, dict_T *dict, int create)
 
     popup_mask_refresh = TRUE;
     popup_highlight_curline(wp);
+
+    return OK;
 }
 
 /*
@@ -1417,17 +1433,7 @@ popup_adjust_position(win_T *wp)
 	len = linetabsize(wp, lnum);
 	wp->w_width = w_width;
 
-	if (wp->w_p_wrap)
-	{
-	    while (len + margin_width > maxwidth)
-	    {
-		++wrapped;
-		len -= maxwidth - margin_width;
-		wp->w_width = maxwidth;
-		used_maxwidth = TRUE;
-	    }
-	}
-	else if (len + margin_width > maxwidth
+	if (len + margin_width > maxwidth
 		&& allow_adjust_left
 		&& (wp->w_popup_pos == POPPOS_TOPLEFT
 		    || wp->w_popup_pos == POPPOS_BOTLEFT))
@@ -1439,13 +1445,22 @@ popup_adjust_position(win_T *wp)
 	    {
 		int truncate_shift = shift_by - wp->w_wincol;
 
-		len -= truncate_shift;
 		shift_by -= truncate_shift;
 	    }
 
 	    wp->w_wincol -= shift_by;
 	    maxwidth += shift_by;
 	    wp->w_width = maxwidth;
+	}
+	if (wp->w_p_wrap)
+	{
+	    while (len + margin_width > maxwidth)
+	    {
+		++wrapped;
+		len -= maxwidth - margin_width;
+		wp->w_width = maxwidth;
+		used_maxwidth = TRUE;
+	    }
 	}
 	if (wp->w_width < len + margin_width)
 	{
@@ -1786,6 +1801,7 @@ parse_popup_option(win_T *wp, int is_preview)
 	dig = e + 1;
 	x = getdigits(&dig);
 
+	// Note: Keep this in sync with p_popup_option_values.
 	if (STRNCMP(s, "height:", 7) == 0)
 	{
 	    if (dig != p)
@@ -1823,6 +1839,7 @@ parse_popup_option(win_T *wp, int is_preview)
 	}
 	else if (STRNCMP(s, "border:", 7) == 0)
 	{
+	    // Note: Keep this in sync with p_popup_option_border_values.
 	    char_u	*arg = s + 7;
 	    int		on = STRNCMP(arg, "on", 2) == 0 && arg + 2 == p;
 	    int		off = STRNCMP(arg, "off", 3) == 0 && arg + 3 == p;
@@ -1841,6 +1858,7 @@ parse_popup_option(win_T *wp, int is_preview)
 	}
 	else if (STRNCMP(s, "align:", 6) == 0)
 	{
+	    // Note: Keep this in sync with p_popup_option_align_values.
 	    char_u	*arg = s + 6;
 	    int		item = STRNCMP(arg, "item", 4) == 0 && arg + 4 == p;
 	    int		menu = STRNCMP(arg, "menu", 4) == 0 && arg + 4 == p;
@@ -1987,10 +2005,8 @@ popup_update_color(win_T *wp, create_type_T type)
 {
     char    *hiname = type == TYPE_MESSAGE_WIN
 				       ? "MessageWindow" : "PopupNotification";
-    int		nr = syn_name2id((char_u *)hiname);
-
     set_string_option_direct_in_win(wp, (char_u *)"wincolor", -1,
-		(char_u *)(nr == 0 ? "WarningMsg" : hiname),
+		(char_u *)hiname,
 		OPT_FREE|OPT_LOCAL, 0);
 }
 
@@ -2279,8 +2295,14 @@ popup_create(typval_T *argvars, typval_T *rettv, create_type_T type)
     wp->w_filter_mode = MODE_ALL;
 
     if (d != NULL)
+    {
 	// Deal with options.
-	apply_options(wp, d, TRUE);
+	if (apply_options(wp, d, TRUE) == FAIL)
+	{
+	    (void)popup_close(wp->w_id, FALSE);
+	    return NULL;
+	}
+    }
 
 #ifdef FEAT_TIMERS
     if (popup_is_notification(type) && wp->w_popup_timer == NULL)
@@ -2356,6 +2378,8 @@ invoke_popup_callback(win_T *wp, typval_T *result)
     typval_T	rettv;
     typval_T	argv[3];
 
+    rettv.v_type = VAR_UNKNOWN;
+
     argv[0].v_type = VAR_NUMBER;
     argv[0].vval.v_number = (varnumber_T)wp->w_id;
 
@@ -2413,8 +2437,7 @@ popup_close_and_callback(win_T *wp, typval_T *arg)
 	    win_enter(owp, FALSE);
 	else
 	{
-	    for (owp = curtab->tp_first_popupwin; owp != NULL;
-							     owp = owp->w_next)
+	    FOR_ALL_POPUPWINS_IN_TAB(curtab, owp)
 		if (owp != curwin && owp->w_buffer->b_term != NULL)
 		    break;
 	    if (owp != NULL)
@@ -2561,12 +2584,20 @@ f_popup_filter_menu(typval_T *argvars, typval_T *rettv)
     res.v_type = VAR_NUMBER;
 
     old_lnum = wp->w_cursor.lnum;
-    if ((c == 'k' || c == 'K' || c == K_UP || c == Ctrl_P)
-						      && wp->w_cursor.lnum > 1)
-	--wp->w_cursor.lnum;
-    if ((c == 'j' || c == 'J' || c == K_DOWN || c == Ctrl_N)
-		       && wp->w_cursor.lnum < wp->w_buffer->b_ml.ml_line_count)
-	++wp->w_cursor.lnum;
+    if (c == 'k' || c == 'K' || c == K_UP || c == Ctrl_P)
+    {
+	if (wp->w_cursor.lnum > 1)
+	    --wp->w_cursor.lnum;
+	else
+	    wp->w_cursor.lnum = wp->w_buffer->b_ml.ml_line_count;
+    }
+    if (c == 'j' || c == 'J' || c == K_DOWN || c == Ctrl_N)
+    {
+	if (wp->w_cursor.lnum < wp->w_buffer->b_ml.ml_line_count)
+	    ++wp->w_cursor.lnum;
+	else
+	    wp->w_cursor.lnum = 1;
+    }
     if (old_lnum != wp->w_cursor.lnum)
     {
 	// caller will call popup_highlight_curline()
@@ -2616,6 +2647,8 @@ f_popup_filter_yesno(typval_T *argvars, typval_T *rettv)
 	return;
 
     c = *key;
+    if (c == CAR && need_wait_return)
+	return;
     if (c == K_SPECIAL && key[1] != NUL)
 	c = TO_SPECIAL(key[1], key[2]);
 
@@ -2721,6 +2754,8 @@ popup_hide(win_T *wp)
 
     wp->w_popup_flags |= POPF_HIDDEN;
     // Do not decrement b_nwindows, we still reference the buffer.
+    if (wp->w_winrow + popup_height(wp) >= cmdline_row)
+	clear_cmdline = TRUE;
     redraw_all_later(UPD_NOT_VALID);
     popup_mask_refresh = TRUE;
 }
@@ -2807,6 +2842,54 @@ f_popup_settext(typval_T *argvars, typval_T *rettv UNUSED)
     popup_set_buffer_text(wp->w_buffer, argvars[1]);
     redraw_win_later(wp, UPD_NOT_VALID);
     popup_adjust_position(wp);
+}
+
+/*
+ * popup_setbuf({id}, {bufnr})
+ */
+    void
+f_popup_setbuf(typval_T *argvars, typval_T *rettv UNUSED)
+{
+    int		id;
+    win_T	*wp;
+    buf_T	*buf;
+
+    rettv->v_type = VAR_BOOL;
+    rettv->vval.v_number = VVAL_FALSE;
+
+    if (check_for_number_arg(argvars, 0) == FAIL
+		|| check_for_buffer_arg(argvars, 1) == FAIL)
+	return;
+
+    id = (int)tv_get_number(&argvars[0]);
+    wp = find_popup_win(id);
+    if (wp == NULL)
+	return;
+
+    buf = tv_get_buf_from_arg(&argvars[1]);
+
+    if (buf == NULL)
+	return;
+#ifdef FEAT_TERMINAL
+    if (buf->b_term != NULL && popup_terminal_exists())
+    {
+	emsg(_(e_cannot_open_second_popup_with_terminal));
+	return;
+    }
+#endif
+
+    if (wp->w_buffer != buf)
+    {
+	wp->w_buffer->b_nwindows--;
+	win_init_popup_win(wp, buf);
+	set_local_options_default(wp, FALSE);
+	swap_exists_action = SEA_READONLY;
+	buffer_ensure_loaded(buf);
+	swap_exists_action = SEA_NONE;
+	redraw_win_later(wp, UPD_NOT_VALID);
+	popup_adjust_position(wp);
+    }
+    rettv->vval.v_number = VVAL_TRUE;
 }
 
     static void
@@ -2993,7 +3076,7 @@ f_popup_setoptions(typval_T *argvars, typval_T *rettv UNUSED)
     dict = argvars[1].vval.v_dict;
     old_firstline = wp->w_firstline;
 
-    apply_options(wp, dict, FALSE);
+    (void)apply_options(wp, dict, FALSE);
 
     if (old_firstline != wp->w_firstline)
 	redraw_win_later(wp, UPD_NOT_VALID);
@@ -3503,6 +3586,20 @@ popup_do_filter(int c)
 		&& (wp->w_filter_mode & state) != 0)
 	    res = invoke_popup_filter(wp, c);
 
+    // when Ctrl-C and no popup has been processed (res is still FALSE)
+    // Try to find and close a popup that has no filter callback
+    if (c == Ctrl_C && res == FALSE)
+    {
+	popup_reset_handled(POPUP_HANDLED_2);
+	wp = find_next_popup(FALSE, POPUP_HANDLED_2);
+        if (wp != NULL)
+        {
+	    popup_close_with_retval(wp, -1);
+	    res = TRUE;
+	}
+    }
+
+
     if (must_redraw > was_must_redraw)
     {
 	int save_got_int = got_int;
@@ -3569,8 +3666,7 @@ popup_update_mask(win_T *wp, int width, int height)
 
     if (wp->w_popup_mask == NULL || width == 0 || height == 0)
     {
-	vim_free(wp->w_popup_mask_cells);
-	wp->w_popup_mask_cells = NULL;
+	VIM_CLEAR(wp->w_popup_mask_cells);
 	return;
     }
     if (wp->w_popup_mask_cells != NULL
@@ -3865,8 +3961,8 @@ may_update_popup_mask(int type)
 
 			// The screen position "line" / "col" needs to be
 			// redrawn.  Figure out what window that is and update
-			// w_redraw_top and w_redr_bot.  Only needs to be done
-			// once for each window line.
+			// w_redraw_top and w_redraw_bot.  Only needs to be
+			// done once for each window line.
 			wp = mouse_find_win(&line_cp, &col_cp, IGNORE_POPUP);
 			if (wp != NULL)
 			{
@@ -4484,7 +4580,19 @@ popup_hide_info(void)
     win_T *wp = popup_find_info_window();
 
     if (wp != NULL)
+    {
+	popup_on_cmdline = wp->w_popup_flags & POPF_ON_CMDLINE;
 	popup_hide(wp);
+    }
+}
+
+/*
+ * Returns TRUE if a popup extends into the cmdline area.
+ */
+    int
+popup_overlaps_cmdline(void)
+{
+    return popup_on_cmdline;
 }
 
 /*

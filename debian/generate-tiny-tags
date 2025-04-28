@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+if ! [ -x runtime/doc/doctags ]; then
+  printf 'Must build doctags first\n' >&2
+  exit 1
+fi
+
+ORIG_DIR=$(pwd)
+DOC_DIR=$(mktemp -d)
+trap 'rm -r $DOC_DIR' EXIT
+
+cp "$@" "$DOC_DIR"/
+cd "$DOC_DIR"
+"$ORIG_DIR"/runtime/doc/doctags *.txt | LANG=C LC_ALL=C sort

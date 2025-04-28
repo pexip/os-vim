@@ -1310,7 +1310,7 @@ Individual patches for Vim 9.0:
   2237  9.0.1284  compiler warnings for uninitialized variables
   4511  9.0.1285  various small problems
   2757  9.0.1286  Coverity warns for using a NULL pointer
-  1583  9.0.1287  with the Kitty key protocl Esc with NumLock cannot be mapped
+  1583  9.0.1287  with the Kitty key protocol Esc with NumLock cannot be mapped
   1973  9.0.1288  FunC files are not recognized
   3126  9.0.1289  a newer version of clang can be used for CI
   3352  9.0.1290  CTRL-N and -P on cmdline don't trigger CmdlineChanged
@@ -1363,3 +1363,336 @@ Individual patches for Vim 9.0:
   1980  9.0.1337  yuck files are not recognized
  15614  9.0.1338  :defcompile and :disassemble can't find class method
   2243  9.0.1339  no test for :disassemble with class function
+  1762  9.0.1340  Coverity warns for using NULL pointer
+  2633  9.0.1341  build error with mzscheme but without GUI
+  3364  9.0.1342  MS-Windows: linking may fail with space in directory name
+  1708  9.0.1343  check for OSC escape sequence doesn't work
+  1719  9.0.1344  check for OSC escape sequence doesn't work
+ 29100  9.0.1345  too many "else if" statements for handling options
+  2371  9.0.1346  Starlark files are not recognized
+  4368  9.0.1347  "gr CTRL-O" stays in Insert mode
+  2096  9.0.1348  Un-grammar files are not recognized
+  1723  9.0.1349  "gr" with a count fails
+  2262  9.0.1350  CPON files are not recognized
+  2098  9.0.1351  Dhall files are not recognized
+  3431  9.0.1352  "ignore" files are outdated
+ 32810  9.0.1353  too many "else if" statements to handle option values
+  2721  9.0.1354  "gr CTRL-G" stays in virtual replace mode
+  3729  9.0.1355  no error when declaring a class twice
+  7758  9.0.1356  cannot cancel "gr" with Esc
+  7449  9.0.1357  using null_object results in an internal error
+  4335  9.0.1358  compilation error with some compilers
+ 27252  9.0.1359  too many "else if" statements in handling options
+  3035  9.0.1360  Cue files are not recognized
+  2134  9.0.1361  extendnew() not sufficiently tested
+  3781  9.0.1362  ml_get error when going to another tab
+  3024  9.0.1363  crash when :def function has :break in skipped block
+  1700  9.0.1364  build error with older Mac OS
+  2266  9.0.1365  dead test code
+ 93919  9.0.1366  functions for setting options are in random order
+  4727  9.0.1367  divide by zero in zero-width window
+  2271  9.0.1368  Bass files are not recognized
+ 35571  9.0.1369  still some "else if" constructs for setting options
+  2330  9.0.1370  crash when using a NULL object
+  5603  9.0.1371  ballooneval interferes with Insert completion
+  1552  9.0.1372  test for 'toolbariconsize' may fail
+  2878  9.0.1373  wrong text displayed when using both 'linebreak' and 'list'
+ 35878  9.0.1374  function for setting options not used consistently
+  2801  9.0.1375  crash when getting member of obj of unknown class
+  2624  9.0.1376  accessing invalid memory with put in Visual block mode
+  2083  9.0.1377  job_status() may return "dead" if the process parent changed
+  1883  9.0.1378  illegal memory access when using virtual editing
+ 86479  9.0.1379  functions for handling options are not ordered
+ 14186  9.0.1380  CTRL-X on 2**64 subtracts two
+  4444  9.0.1381  ACCESS_ names have a conflict with on some systems
+  2290  9.0.1382  failing test for strptime() doesn't show returned value
+  3322  9.0.1383  xxd: combination of little endian and cols fails
+  1533  9.0.1384  setting HOMEBREW_NO_AUTO_UPDATE is not needed with version 4
+  4721  9.0.1385  g'Esc is considered an error
+  2458  9.0.1386  options test fails with some window width
+  1637  9.0.1387  scrollbar test sporadically fails
+  1583  9.0.1388  Amiga: not all builds use gethostname()
+  2175  9.0.1389  Amiga: a couple of include files are included twice
+ 35427  9.0.1390  FOR_ALL_ macros are defined in an unexpected file
+ 19230  9.0.1391  "clear" macros are not always used
+  6145  9.0.1392  using NULL pointer with nested :open command
+  2253  9.0.1393  Cairo files are not recognized
+  2069  9.0.1394  Unx Tal files are not recognized
+  2137  9.0.1395  Odin files are not recognized
+  6768  9.0.1396  sort(list, 'N') does not work in Vim9 script context
+ 17681  9.0.1397  highlight for popupmenu kind and extra cannot be set
+ 23658  9.0.1398  profile test repeats the headers many times
+  9320  9.0.1399  highlight test script has a few problems
+ 20504  9.0.1400  find_file_in_path() is not reentrant
+  2384  9.0.1401  condition is always true
+  2022  9.0.1402  crash when using null_class
+ 16119  9.0.1403  unused variables and functions
+  1944  9.0.1404  compilation error with some compilers
+  3140  9.0.1405  missing check for out-of-memory
+  1878  9.0.1406  ILE RPG files are not recognized
+  2330  9.0.1407  TableGen files are not recognized
+  2359  9.0.1408  QMLdir files are not recognized
+  3511  9.0.1409  racket files are recognized as scheme
+ 32822  9.0.1410  MacOS: sed fails on .po files
+ 18704  9.0.1411  accuracy of profiling is not optimal
+  2310  9.0.1412  Pony files are not recognized
+  2629  9.0.1413  compiler warning for unused variable
+  2619  9.0.1414  <M-S-x> in Kitty does not use the Shift modifier
+  2047  9.0.1415  Crystal files are not recognized
+  8420  9.0.1416  crash when collection is modified when using filter()
+  2177  9.0.1417  ESDL files are not recognized
+ 30354  9.0.1418  the included xdiff code is a bit outdated
+  1948  9.0.1419  Lean files are not recognized
+  1609  9.0.1420  build failure because SIZE_MAX is not defined
+  2665  9.0.1421  Nu files are not recognized
+  1924  9.0.1422  Sage files are not recognized
+  2041  9.0.1423  WebAssembly Interface Type files are not recognized
+  1746  9.0.1424  unused macros are defined
+  2367  9.0.1425  "wat" and "wast" files are one filetype
+  3011  9.0.1426  indent wrong after "export namespace" in C++
+  1814  9.0.1427  warning for uninitialized variable
+  3988  9.0.1428  cursor in wrong position when leaving insert mode
+  2155  9.0.1429  invalid memory access when ending insert mode
+  2480  9.0.1430  Livebook files are not recognized
+  4920  9.0.1431  getscriptinfo() loops even when specific SID is given
+  4346  9.0.1432  completion popup in wrong position with virtual text "above"
+  3439  9.0.1433  on some systems the Lua library is not found
+  2731  9.0.1434  crash when adding package already in 'runtimepath'
+  2256  9.0.1435  scrolling too many lines when 'wrap' and 'diff' are set
+  4449  9.0.1436  cannot compare a typed variable with v:none
+  2376  9.0.1437  test fails with different error number
+  3134  9.0.1438  .fs files are falsely recognized as forth files
+  3987  9.0.1439  start Insert mode when accessing a hidden prompt buffer
+  2651  9.0.1440  "rvim" can execute a shell through :diffpatch
+  3147  9.0.1441  MacOS: Python 3 using framework do not set dll name properly
+  4125  9.0.1442  mapset() does not restore non-script context
+  3584  9.0.1443  ending Insert mode when accessing a hidden prompt buffer
+  2519  9.0.1444  crash when passing NULL to setcmdline()
+  5465  9.0.1445  openSUSE: configure doesn't find the Motif library
+  4254  9.0.1446  unnecessary checks for the "skip" flag when skipping
+  5489  9.0.1447  condition is always true
+  1614  9.0.1448  diff test fails on MacOS 13
+  2485  9.0.1449  test for prompt buffer is flaky
+  7678  9.0.1450  MacOS: building fails if clock_gettime() is not available
+  2233  9.0.1451  unnecessary redrawing when 'showcmdloc' is not "last"
+  5395  9.0.1452  code using EVAL_CONSTANT is dead, it is never set
+ 11114  9.0.1453  typos in source code and tests
+ 16731  9.0.1454  code indenting is confused by macros
+  2904  9.0.1455  C++ 20 modules are not recognized
+  1533  9.0.1456  shortmess test depends on order of test execution
+  2022  9.0.1457  no regression test for what patch 9.0.1333 fixes
+  2855  9.0.1458  buffer overflow when expanding long file name
+  5419  9.0.1459  typo in name of type
+  3340  9.0.1460  insufficient testing for getcmdcompltype()
+  3739  9.0.1461  ruler not drawn correctly when using 'rulerformat'
+  3424  9.0.1462  recursively calling :defer function if it does :qa
+  7105  9.0.1463  virtual text truncation only works with Unicode 'encoding'
+  2492  9.0.1464  strace filetype detection is expensive
+  1315  9.0.1465  Haiku build fails
+  4688  9.0.1466  cannot use an object member name as a method argument
+  3375  9.0.1467  Jenkinsfiles are not recognized as groovy
+  5659  9.0.1468  recursively calling :defer function if it does :qa
+  3757  9.0.1469  deferred functions not called from autocommands
+  4567  9.0.1470  deferred functions invoked in unexpected order
+  8745  9.0.1471  warnings for function declarations
+  2785  9.0.1472  ":drop fname" may change the last used tab page
+  6088  9.0.1473  CI does not run sound tests
+  6544  9.0.1474  CI runs with old version of Ubuntu and tools
+  2735  9.0.1475  busted configuration files are not recognized
+146210  9.0.1476  lines put in non-current window are not displayed
+  6336  9.0.1477  crash when recovering from corrupted swap file
+  4502  9.0.1478  filetypes for *.v files not detected properly
+ 13467  9.0.1479  small source file problems; outdated list of distrib. files
+  3561  9.0.1480  using popup menu may leave text in the command line
+ 46058  9.0.1481  decrypting with libsodium may fail if the library changes
+  3107  9.0.1482  crash when textprop has a very large "padding" value
+  4433  9.0.1483  += operator does not work on class member
+  3761  9.0.1484  Coverity warns for using invalid array index
+ 44419  9.0.1485  no functions for converting from/to UTF-16 index
+  7210  9.0.1486  parallel make might not work
+  6187  9.0.1487  Content-type header for LSP channel not according to spec
+ 13432  9.0.1488  xchacha20v2 crypt header is platform dependent
+  7615  9.0.1489  crypt with libsodium is not tested on CI
+  4831  9.0.1490  the ModeChanged event may be triggered too often
+  3986  9.0.1491  wrong scrolling with ls=0 and :botright split
+  3735  9.0.1492  using uninitialized memory when argument is missing
+  4832  9.0.1493  popup menu position wrong in window with toolbar
+  5368  9.0.1494  crash when recovering from corrupted swap file
+  1801  9.0.1495  GTK3: hiding the mouse pointer does not work
+  1849  9.0.1496  test restoring register with wrong value
+  2939  9.0.1497  the ruler percentage can't be localized
+  3227  9.0.1498  in a terminal window the cursor may jump around
+  5808  9.0.1499  using uninitialized memory with fuzzy matching
+  2087  9.0.1500  The falsy operator is not tested properly
+  5401  9.0.1501  crash with nested :try and :throw in catch block
+  3221  9.0.1502  no test for deleting the end of a long wrapped line
+  2089  9.0.1503  Luau files are not recognized
+  4440  9.0.1504  no error when calling remote_startserver("")
+ 10660  9.0.1505  error when heredoc content looks like heredoc
+  8212  9.0.1506  line number not displayed when using 'smoothscroll'
+  7346  9.0.1507  assert message is confusing with boolean result
+  3136  9.0.1508  catch does not work when lines are joined with a newline
+  2263  9.0.1509  error message lacks mentioning the erroneous argument
+  3486  9.0.1510  misleading variable name for error message
+  4929  9.0.1511  crash when using wrong arg types to assert_match()
+  5477  9.0.1512  inserting lines when scrolling with 'smoothscroll' set
+  4203  9.0.1513  text scrolls unnecessarily when splitting
+  1629  9.0.1514  test waits unnecessarily long before checking screendump
+  8641  9.0.1515  reverse() does not work for a String
+  7109  9.0.1516  cannot use special keys in <Cmd> mapping
+  5117  9.0.1517  MacOS: configure removes -O2 from $CFLAGS
+  7424  9.0.1518  search stats not always visible when searching backwards
+ 17356  9.0.1519  global 'filetype' is set when detected from file content
+  6413  9.0.1520  completion for option name includes all bool options
+  4499  9.0.1521  failing redo of command with control characters
+  5122  9.0.1522  some functions give two error messages
+  2526  9.0.1523  some error messages are not marked for translation
+  5969  9.0.1524  passing -1 for bool is not always rejected
+  8938  9.0.1525  'smoothscroll' does not always work properly
+  3380  9.0.1526  condition is always true
+  3118  9.0.1527  crash when using negative value for term_cols
+  1576  9.0.1528  libsodium encryption is only used with "huge" features
+  7225  9.0.1529  code style test doesn't check for space after "if"
+  7689  9.0.1530  cursor moves to wrong line when 'foldmethod' is "diff"
+  3027  9.0.1531  crash when register contents ends up being invalid
+  4668  9.0.1532  crash when expanding "~" in substitute causes very long text
+  4623  9.0.1533  test for 'smoothscroll' is ineffective
+  2282  9.0.1534  test for expanding "~" in substitute takes too long
+  2318  9.0.1535  test commented out in a wrong way
+  2993  9.0.1536  CI: sound dummy stopped working
+  3049  9.0.1537  message for opening the cmdline window is not translated
+  4314  9.0.1538  :wqall does not trigger ExitPre
+  5461  9.0.1539  typst filetype is not recognized
+  9207  9.0.1540  reverse() on string doesn't work in compiled function
+  3264  9.0.1541  CI: sound dummy is disabled
+  4354  9.0.1542  line not fully displayed if it doesn't fit in the screen
+ 10337  9.0.1543  display errors when making topline shorter
+ 26213  9.0.1544  recent glibc marks sigset() as a deprecated
+  2426  9.0.1545  text not scrolled when cursor moved with "g0" and "h"
+  7589  9.0.1546  some commands for opening a file don't use 'switchbuf'
+  3078  9.0.1547  Coveralls workflow on CI is commented out
+  2578  9.0.1548  CI: check in sound-dummy module may throw an error
+  2698  9.0.1549  USD filetype is not recognized
+  2717  9.0.1550  in cmdline window S-Tab does not select previous completion
+  8446  9.0.1551  position of marker for 'smoothscroll' not computed correctly
+  3006  9.0.1552  CI: sound-dummy module is not installed
+  2308  9.0.1553  CI: using slightly outdated gcc version
+  6368  9.0.1554  code for handling 'switchbuf' is repeated
+  3551  9.0.1555  setcharsearch() does not clear last searched char properly
+  2303  9.0.1556  Vim9: error for missing "return" after "throw"
+  6423  9.0.1557  test failures for unreachable code
+  5718  9.0.1558  wrong error for unreachable code after :throw
+  6620  9.0.1559  function argument types not always checked
+  5061  9.0.1560  Win32: When 'encoding' is set $PATH has duplicate entries
+  7462  9.0.1561  display wrong when moving cursor to above the top line
+  2470  9.0.1562  mixing package managers is not a good idea
+  2093  9.0.1563  GTK3: window manager resize hints are incomplete
+  4589  9.0.1564  display moves up and down with 'incsearch' and 'smoothscroll'
+  2166  9.0.1565  json lines files are not recognized
+  2124  9.0.1566  Motif: GUI scrollbar test fails in 24 lines terminal
+  2086  9.0.1567  profiler calculation may be wrong on 32 bit builds
+  9580  9.0.1568  with 'smoothscroll' cursor may move below botline
+  5488  9.0.1569  cannot use "this.member" in lambda in class method
+ 83083  9.0.1570  some tests are slow
+ 22802  9.0.1571  RedrawingDisabled not used consistently
+ 21449  9.0.1572  error messages are not translated
+  2053  9.0.1573  error for function name has wrong line number
+  6459  9.0.1574  MS-Windows: list of translation input files incomplete
+  2381  9.0.1575  "file N of M" message is not translated
+ 22118  9.0.1576  users may not know what to do with an internal error
+ 19768  9.0.1577  MS-Windows: context menu translations may be wrong
+ 14033  9.0.1578  SpellCap highlight not always updated when needed
+  7083  9.0.1579  some error messages are not translated
+  2250  9.0.1580  CI: indent test hangs on FreeBSD
+ 11347  9.0.1581  translation does not work for plural argument
+  3082  9.0.1582  :stopinsert may not work in a popup close handler
+ 22942  9.0.1583  get E304 when using 'cryptmethod' "xchacha20v2"
+  3543  9.0.1584  not all meson files are recognized
+ 15757  9.0.1585  weird use of static variables for spell checking
+  2923  9.0.1586  error for using two messages with ngettext() differing in "%"
+  2231  9.0.1587  Corn config files are not recognized
+  2538  9.0.1588  Incsearch not triggered when pasting clipboard register
+ 93794  9.0.1589  filetype test contains too many special characters
+  1767  9.0.1590  filetype test has trailing white space
+  2506  9.0.1591  some "gomod" files are not recognized
+  2946  9.0.1592  not all timer tests are marked as flaky
+  3317  9.0.1593  MS-Windows: assert error when compiled with debug mode
+ 42607  9.0.1594  some internal error messages are translated
+  9015  9.0.1595  line pointer becomes invalid when using spell checking
+  2534  9.0.1596  :registers command does not work in sandbox
+  4531  9.0.1597  cursor ends up below the window after a put
+  7852  9.0.1598  screenchar() and others are wrong with DBCS 'encoding'
+ 16484  9.0.1599  Cursor not adjusted when 'splitkeep' is not "cursor"
+  3210  9.0.1600  screenpos() does not take w_skipcol into account
+  3354  9.0.1601  filetype detection fails for *.conf file without comments
+  5533  9.0.1602  stray character visible if marker on top of double-wide char
+  4553  9.0.1603  display wrong if scrolling multiple lines with 'smoothscroll'
+  7819  9.0.1604  errors from the codestyle test are a bit confusing
+  3198  9.0.1605  crash when calling method on super in child constructor
+  3720  9.0.1606  using freed memory when 'foldcolumn' is set
+  4792  9.0.1607  screenpos() returns wrong row with diff filler lines
+  2305  9.0.1608  update_topline() is called twice
+  3892  9.0.1609  crash when an object indirectly references itself
+  4765  9.0.1610  display is wrong when 'smoothscroll' is set
+  2038  9.0.1611  v:maxcol can be changed in a :for loop
+  3201  9.0.1612  "skipcol" not reset when using multi-byte characters
+  3687  9.0.1613  some make output gets picked up by 'errorformat'
+  4091  9.0.1614  strlen() called too often for :spellrepall
+  2627  9.0.1615  URL shortcut files are not recognized
+  7074  9.0.1616  quickfix text field is truncated
+ 30480  9.0.1617  charidx() result is not consistent with byteidx()
+  1891  9.0.1618  Trace32 files are not recognized
+  2801  9.0.1619  the focus gained/lost escape sequences cause trouble
+  3271  9.0.1620  Nix files are not recognized from the hashbang line
+  5775  9.0.1621  FILETYPE_FILE is defined to the same value multiple times
+  2410  9.0.1622  filetype name t32 is a bit obscure
+ 14787  9.0.1623  the program to filetype translation is not exported
+  5183  9.0.1624  crash when calling object constructor
+  3843  9.0.1625  "super" is not considered a reserved name
+  4084  9.0.1626  Visual area not shown when using 'showbreak'
+ 30553  9.0.1627  no generic mechanism to test syntax plugins
+  2986  9.0.1628  syntax tests fail on FreeBSD
+  5558  9.0.1629  having utf16idx() rounding up is inconvenient
+  1842  9.0.1630  "make clean" at the toplevel fails
+ 16874  9.0.1631  passing wrong variable type to option gives multiple errors
+  7622  9.0.1632  not all cabal config files are recognized
+  2782  9.0.1633  duplicate code for converting float to string
+  4106  9.0.1634  message is cleared when removing mode message
+  4538  9.0.1635  error message is cleared when removing mode message
+  5071  9.0.1636  expanding a pattern interferes with cmdline completion
+  2908  9.0.1637  compiler warning for uninitialized variable
+  2730  9.0.1638  crypt tests hang and cause memory errors
+  2950  9.0.1639  build failure without the crypt feature
+  2917  9.0.1640  compiler warning for unused variables without crypt feature
+  4085  9.0.1641  the log file does not give information about window sizes
+  2843  9.0.1642  build failure with tiny features
+  2383  9.0.1643  filetype detection fails if file name ends in many '~'
+  2283  9.0.1644  not all filetype file name matches are tested
+  2215  9.0.1645  zserio files are not recognized
+  1750  9.0.1646  CI: codecov may take a very long time to run
+180457  9.0.1647  insufficient testing for syntax plugins
+  4510  9.0.1648  result of syntax tests is hard to see
+  1660  9.0.1649  syntax test failure causes script to abort
+  3265  9.0.1650  MS-Windows: default 'viewdir' may include read-only directory
+  1812  9.0.1651  unclear why syntax test fails on Mac
+  1984  9.0.1652  unclear why syntax test fails on Mac
+  3629  9.0.1653  Amiga: default 'viewdir' may not work
+  1874  9.0.1654  MS-Windows: test for default 'viewdir' fails
+  1728  9.0.1655  syntax test fails when Vim window is not tall enough
+ 22058  9.0.1656  syntax test fails when detected shell type differs
+  2749  9.0.1657  one more syntax test depends on the system
+  4550  9.0.1658  autoload files for "zig" are not installed
+  3465  9.0.1659  Termdebug: default highlight cleared if changing colorscheme
+  4091  9.0.1660  error for using matchfuzzy() returning a list of dicts
+  3041  9.0.1661  BUCK files are not recognized
+  2545  9.0.1662  crash when using a class member twice
+  5301  9.0.1663  Termdebug on MS-Windows: some file names are not recognized
+  4425  9.0.1664  divide by zero when scrolling with 'smoothscroll' set
+  2996  9.0.1665  empty CmdlineEnter autocommand causes errors in Ex mode
+  1546  9.0.1666  compiler may warn for uninitialized variable
+  3981  9.0.1667  regression test doesn't fail when fix is reverted
+  2085  9.0.1668  PEM files are not recognized
+  7173  9.0.1669  Crash syncing swapfile in new buffer when using sodium crypt
+  3751  9.0.1670  resetting local option to global value is inconsistent
+  4189  9.0.1671  Termdebug: error with more than 99 breakpoints
+  3897  9.0.1672  tabline highlight wrong after truncated double width label

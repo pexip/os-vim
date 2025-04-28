@@ -1,10 +1,8 @@
 " Normally we use vim-extensions. If you want true vi-compatibility
 " remove change the following statements
 set nocompatible	" Use Vim defaults instead of 100% vi compatibility
-set backspace=indent,eol,start	" more powerful backspacing
 
 " Now we set some defaults for the editor
-set history=50		" keep 50 lines of command line history
 set ruler		" show the cursor position all the time
 
 " modelines have historically been a source of security/resource
