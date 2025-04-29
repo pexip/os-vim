@@ -1,3 +1,9 @@
+vim (2:9.1.1230-1+pexip25u1) pexip-trixie; urgency=medium
+
+  * Initial trixie build
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Tue, 29 Apr 2025 22:59:51 +0100
+
 vim (2:9.1.1230-1) unstable; urgency=medium
 
   * Merge upstream tag v9.1.1230
