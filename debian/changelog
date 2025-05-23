@@ -1,3 +1,10 @@
+vim (2:9.1.1230-2) unstable; urgency=medium
+
+  * Backport v9.1.1242 and v9.1.1244 to fix crash when evaluating a variable
+    name. (Closes: #1106133)
+
+ -- James McCoy <jamessan@debian.org>  Thu, 22 May 2025 20:48:59 -0400
+
 vim (2:9.1.1230-1) unstable; urgency=medium
 
   * Merge upstream tag v9.1.1230

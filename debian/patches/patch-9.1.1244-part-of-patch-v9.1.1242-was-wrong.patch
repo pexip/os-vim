@@ -1,0 +1,44 @@
+From: Christian Brabandt <cb@256bit.org>
+Date: Wed, 26 Mar 2025 20:36:12 +0100
+Subject: patch 9.1.1244: part of patch v9.1.1242 was wrong
+
+Problem:  part of patch v9.1.1242 was wrong
+Solution: revert part of the patch
+
+fixes: #16983
+related: #16972
+
+Signed-off-by: Christian Brabandt <cb@256bit.org>
+(cherry picked from commit 35cb38d34b69e4263f0eb9f78a676a5fb6d11250)
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/eval.c    | 2 --
+ src/version.c | 2 ++
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/eval.c b/src/eval.c
+index eb6b8d9..4cdd1f2 100644
+--- a/src/eval.c
++++ b/src/eval.c
+@@ -2051,8 +2051,6 @@ get_lval(
+ 	    }
+ 	}
+ 	lp->ll_name = lp->ll_exp_name;
+-	if (lp->ll_name != NULL)
+-	    lp->ll_name_end = lp->ll_name + STRLEN(lp->ll_name);
+     }
+     else
+     {
+diff --git a/src/version.c b/src/version.c
+index 6b9759c..30f58fd 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -704,6 +704,8 @@ static char *(features[]) =
+ 
+ static int included_patches[] =
+ {   /* Add new patch number below this line */
++/**/
++    1244,
+ /**/
+     1242,
+ /**/
