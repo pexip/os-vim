@@ -1,3 +1,9 @@
+vim (2:9.1.1230-1+pexip25u2) pexip-trixie; urgency=medium
+
+  * Trixie build for product distribution
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Thu, 04 Dec 2025 14:02:35 +0000
+
 vim (2:9.1.1230-1+pexip25u1) pexip-trixie; urgency=medium
 
   * Initial trixie build
