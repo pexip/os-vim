@@ -3,4 +3,6 @@ debian/Detect-the-rst-filetype-using-the-contents-of-the-file.patch
 debian/Add-recognition-of-more-LaTeX-commands-for-tex-filetype-d.patch
 debian/Document-Debian-s-decision-to-disable-modelines-by-defaul.patch
 Revert-patch-9.1.0949-popups-inconsistently-shifted-to-th.patch
+patch-9.1.1242-Crash-when-evaluating-variable-name.patch
+patch-9.1.1244-part-of-patch-v9.1.1242-was-wrong.patch
 pexip_remove_bad_tests.patch

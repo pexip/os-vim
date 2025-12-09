@@ -1,0 +1,57 @@
+From: Christian Brabandt <cb@256bit.org>
+Date: Wed, 26 Mar 2025 19:25:57 +0100
+Subject: patch 9.1.1242: Crash when evaluating variable name
+
+Problem:  Crash when evaluating variable name (after v9.1.0870)
+Solution: calculate the strlen() directly instead of pointer
+          arithmetics, fix missing assignment to lp->ll_name_end in
+          get_lval() (zeertzjq)
+
+closes: #16972
+fixes: vim-airline/vim-airline#2710
+related: #16066
+
+Co-authored-by: zeertzjq <zeertzjq@outlook.com>
+Signed-off-by: Christian Brabandt <cb@256bit.org>
+(cherry picked from commit 06774a271a7d728f188175340154361255d6b0a4)
+Signed-off-by: James McCoy <jamessan@debian.org>
+---
+ src/eval.c    | 4 +++-
+ src/version.c | 2 ++
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/eval.c b/src/eval.c
+index 9a140c1..eb6b8d9 100644
+--- a/src/eval.c
++++ b/src/eval.c
+@@ -2051,6 +2051,8 @@ get_lval(
+ 	    }
+ 	}
+ 	lp->ll_name = lp->ll_exp_name;
++	if (lp->ll_name != NULL)
++	    lp->ll_name_end = lp->ll_name + STRLEN(lp->ll_name);
+     }
+     else
+     {
+@@ -2261,7 +2263,7 @@ set_var_lval(
+ 
+ 	    // handle +=, -=, *=, /=, %= and .=
+ 	    di = NULL;
+-	    if (eval_variable(lp->ll_name, (int)(lp->ll_name_end - lp->ll_name),
++	    if (eval_variable(lp->ll_name, (int)STRLEN(lp->ll_name),
+ 				 lp->ll_sid, &tv, &di, EVAL_VAR_VERBOSE) == OK)
+ 	    {
+ 		if (di != NULL && check_typval_is_value(&di->di_tv) == FAIL)
+diff --git a/src/version.c b/src/version.c
+index 11ba12a..6b9759c 100644
+--- a/src/version.c
++++ b/src/version.c
+@@ -704,6 +704,8 @@ static char *(features[]) =
+ 
+ static int included_patches[] =
+ {   /* Add new patch number below this line */
++/**/
++    1242,
+ /**/
+     1230,
+ /**/
