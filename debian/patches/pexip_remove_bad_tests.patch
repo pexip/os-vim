@@ -1,8 +1,8 @@
-Index: os-vim/src/testdir/Make_all.mak
+Index: vim/src/testdir/Make_all.mak
 ===================================================================
---- os-vim.orig/src/testdir/Make_all.mak
-+++ os-vim/src/testdir/Make_all.mak
-@@ -290,7 +290,6 @@ NEW_TESTS = \
+--- vim.orig/src/testdir/Make_all.mak
++++ vim/src/testdir/Make_all.mak
+@@ -317,7 +317,6 @@ NEW_TESTS = \
  	test_tcl \
  	test_termcodes \
  	test_termencoding \
@@ -10,7 +10,7 @@ Index: os-vim/src/testdir/Make_all.mak
  	test_terminal2 \
  	test_terminal3 \
  	test_terminal_fail \
-@@ -523,7 +522,6 @@ NEW_TESTS_RES = \
+@@ -568,7 +567,6 @@ NEW_TESTS_RES = \
  	test_tcl.res \
  	test_termcodes.res \
  	test_termencoding.res \
