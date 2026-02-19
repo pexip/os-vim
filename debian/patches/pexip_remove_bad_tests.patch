@@ -1,3 +1,5 @@
+Disable failing tests
+
 Index: vim/src/testdir/Make_all.mak
 ===================================================================
 --- vim.orig/src/testdir/Make_all.mak
