@@ -3,5 +3,7 @@ include:
   - remote: 'https://salsa.debian.org/salsa-ci-team/pipeline/raw/master/recipes/debian.yml'
 
 variables:
+  RELEASE: 'trixie'
+  SALSA_CI_IMAGES_LINTIAN: "${SALSA_CI_IMAGES}/lintian:trixie"
   SALSA_CI_DISABLE_REPROTEST: 1
   SALSA_CI_BLHC_ARGS: --ignore-flag -D_FORTIFY_SOURCE=2 --ignore-line .*doctags.*

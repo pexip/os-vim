@@ -1,3 +1,56 @@
+vim (2:9.1.1230-2+deb13u2) trixie-security; urgency=medium
+
+  * Backport 9.2.0132 to fix test_recover.vim test failure on big-endian systems.
+    (Closes: #1152930)
+
+ -- James McCoy <jamessan@debian.org>  Wed, 04 Nov 2026 17:12:34 -0500
+
+vim (2:9.1.1230-2+deb13u1) trixie-security; urgency=medium
+
+  * Fix CVE-2025-53905
+  * Fix CVE-2025-53906
+  * Fix CVE-2026-25749
+  * Fix CVE-2026-26269
+  * Fix CVE-2026-28417 + fix regression
+  * Fix CVE-2026-28418
+  * Fix CVE-2026-28419
+  * Fix CVE-2026-28420
+  * Fix CVE-2026-28421
+  * Fix CVE-2026-28422
+  * Fix CVE-2026-32249
+  * Fix CVE-2026-33412
+  * Fix CVE-2026-34982 + fix regression
+  * Fix CVE-2026-35177
+  * Fix CVE-2026-39881
+  * Fix CVE-2026-41411
+  * Fix CVE-2026-42307
+  * Fix CVE-2026-43961
+  * Fix CVE-2026-44656
+  * Fix CVE-2026-45130
+  * Fix CVE-2026-46483
+  * Fix CVE-2026-47162
+  * Fix CVE-2026-47167
+  * Fix CVE-2026-52858 + fix regression
+  * Fix CVE-2026-52859
+  * Fix CVE-2026-52860
+  * Fix CVE-2026-55693
+  * Fix CVE-2026-55892
+  * Fix CVE-2026-55895
+  * Fix CVE-2026-57452
+  * Fix CVE-2026-57455
+  * Fix CVE-2026-57456
+  * Fix CVE-2026-59856
+  * Fix CVE-2026-59857
+  * Fix CVE-2026-59858
+  * Update gbp and salsa CI config to match trixie
+  * Fix CVE-2026-73072 + fix regression
+  * Fix CVE-2026-73073
+  * Fix CVE-2026-73076
+  * Fix CVE-2026-73077 + fix regression
+  * Fix CVE-2026-73078
+
+ -- Lee Garrett <debian@rocketjump.eu>  Fri, 25 Sep 2026 22:25:55 +0200
+
 vim (2:9.1.1230-2) unstable; urgency=medium
 
   * Backport v9.1.1242 and v9.1.1244 to fix crash when evaluating a variable
