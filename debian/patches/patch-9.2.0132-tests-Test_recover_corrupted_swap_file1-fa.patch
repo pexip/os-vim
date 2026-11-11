@@ -1,0 +1,130 @@
+From: James McCoy <jamessan@debian.org>
+Date: Tue, 10 Mar 2026 18:39:40 +0000
+Subject: patch 9.2.0132: tests: Test_recover_corrupted_swap_file1 fails on be
+ systems
+
+Problem:  tests: Test_recover_corrupted_swap_file1 fails on big-ending
+          systems (after v9.2.0077)
+Solution: Skip the test on big-endian systems (James McCoy)
+
+The POC files were generated on 64-bit little-endian systems and
+therefore are not portable to any other system type.
+
+Extract the 64-bit / endianness detection from
+Test_recover_corrupted_swap_file() into a SetUp() function and use that
+data to determine if the test should be run.
+
+Signed-off-by: James McCoy <jamessan@debian.org>
+Signed-off-by: Christian Brabandt <cb@256bit.org>
+(cherry picked from commit ff16ebdb08bbefd41cdfcbdfc294bb67a151083f)
+---
+ src/testdir/test_recover.vim | 45 +++++++++++++++++++++++++-------------------
+ 1 file changed, 26 insertions(+), 19 deletions(-)
+
+diff --git a/src/testdir/test_recover.vim b/src/testdir/test_recover.vim
+index fadf09e..dad2ff5 100644
+--- a/src/testdir/test_recover.vim
++++ b/src/testdir/test_recover.vim
+@@ -2,6 +2,22 @@
+ 
+ source check.vim
+ 
++func SetUp()
++  edit XSetUp
++  preserve
++  let sn = swapname('')
++  let b = readblob(sn)
++  bw!
++
++  " Not all fields are written in a system-independent manner.  Detect whether
++  " the test is running on a little or big-endian system.
++  " The B0_MAGIC_LONG field may be 32-bit or 64-bit, depending on the system,
++  " even though the value stored is only 32-bits.  Therefore, need to check
++  " both the high and low 32-bits to compute these values.
++  let s:little_endian = (b[1008:1011] == 0z33323130) || (b[1012:1015] == 0z33323130)
++  let s:system_64bit = s:little_endian ? (b[1012:1015] == 0z00000000) : (b[1008:1011] == 0z00000000)
++endfunc
++
+ func Test_recover_root_dir()
+   " This used to access invalid memory.
+   split Xtest
+@@ -201,17 +217,8 @@ func Test_recover_corrupted_swap_file()
+   let save_b = copy(b)
+   bw!
+ 
+-  " Not all fields are written in a system-independent manner.  Detect whether
+-  " the test is running on a little or big-endian system, so the correct
+-  " corruption values can be set.
+-  " The B0_MAGIC_LONG field may be 32-bit or 64-bit, depending on the system,
+-  " even though the value stored is only 32-bits.  Therefore, need to check
+-  " both the high and low 32-bits to compute these values.
+-  let little_endian = (b[1008:1011] == 0z33323130) || (b[1012:1015] == 0z33323130)
+-  let system_64bit = little_endian ? (b[1012:1015] == 0z00000000) : (b[1008:1011] == 0z00000000)
+-
+   " clear the B0_MAGIC_LONG field
+-  if system_64bit
++  if s:system_64bit
+     let b[1008:1015] = 0z00000000.00000000
+   else
+     let b[1008:1011] = 0z00000000
+@@ -261,10 +268,10 @@ func Test_recover_corrupted_swap_file()
+ 
+   " set the block number in a pointer entry to a negative number
+   let b = copy(save_b)
+-  if system_64bit
+-    let b[4104:4111] = little_endian ? 0z00000000.00000080 : 0z80000000.00000000
++  if s:system_64bit
++    let b[4104:4111] = s:little_endian ? 0z00000000.00000080 : 0z80000000.00000000
+   else
+-    let b[4104:4107] = little_endian ? 0z00000080 : 0z80000000
++    let b[4104:4107] = s:little_endian ? 0z00000080 : 0z80000000
+   endif
+   call writefile(b, sn)
+   call assert_fails('recover Xfile1', 'E312:')
+@@ -283,7 +290,7 @@ func Test_recover_corrupted_swap_file()
+ 
+   " set the number of lines in the data block to zero
+   let b = copy(save_b)
+-  if system_64bit
++  if s:system_64bit
+     let b[8208:8215] = 0z00000000.00000000
+   else
+     let b[8208:8211] = 0z00000000
+@@ -297,7 +304,7 @@ func Test_recover_corrupted_swap_file()
+ 
+   " set the number of lines in the data block to a large value
+   let b = copy(save_b)
+-  if system_64bit
++  if s:system_64bit
+     let b[8208:8215] = 0z00FFFFFF.FFFFFF00
+   else
+     let b[8208:8211] = 0z00FFFF00
+@@ -312,7 +319,7 @@ func Test_recover_corrupted_swap_file()
+ 
+   " use an invalid text start for the lines in a data block
+   let b = copy(save_b)
+-  if system_64bit
++  if s:system_64bit
+     let b[8216:8219] = 0z00000000
+   else
+     let b[8212:8215] = 0z00000000
+@@ -325,7 +332,7 @@ func Test_recover_corrupted_swap_file()
+ 
+   " use an incorrect text end (db_txt_end) for the data block
+   let b = copy(save_b)
+-  let b[8204:8207] = little_endian ? 0z80000000 : 0z00000080
++  let b[8204:8207] = s:little_endian ? 0z80000000 : 0z00000080
+   call writefile(b, sn)
+   call assert_fails('recover Xfile1', 'E312:')
+   call assert_equal('Xfile1', @%)
+@@ -477,8 +484,8 @@ endfunc
+ func Test_recover_corrupted_swap_file1()
+   CheckUnix
+   " only works correctly on 64bit Unix systems:
+-  if v:sizeoflong != 8 || !has('unix')
+-    throw 'Skipped: Corrupt Swap file sample requires a 64bit Unix build'
++  if !(s:system_64bit && s:little_endian && has('unix'))
++    throw 'Skipped: Corrupt Swap file sample requires a little-endian 64bit Unix build'
+   endif
+   " Test 1: Heap buffer-overflow
+   new
